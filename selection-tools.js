@@ -252,6 +252,11 @@ function buildEditTargets(messageId, field, source, range) {
     return targets;
 }
 
+/** The original first: changing it (with events) can make the translator redo the translation. */
+function originalFirst(targets) {
+    return [...targets.filter(target => target.field === 'mes'), ...targets.filter(target => target.field !== 'mes')];
+}
+
 async function editSelection({ messageId, field, source, range }) {
     const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
     const targets = buildEditTargets(messageId, field, source, range);
@@ -261,27 +266,11 @@ async function editSelection({ messageId, field, source, range }) {
     const header = document.createElement('div');
     header.innerHTML = `
         <h3>선택한 부분 수정</h3>
-        <small class="stqa_hint stqa_edit_mode"></small>
-        <div class="stqa_keep_translation" hidden>
-            <label class="checkbox_label"><input type="checkbox"><span>번역 그대로 두기 (번역 확장이 다시 번역하지 않게)</span></label>
-            <small class="stqa_hint stqa_keep_hint"></small>
-        </div>`;
+        <small class="stqa_hint stqa_edit_mode"></small>`;
     const modeLabel = header.querySelector('.stqa_edit_mode');
-    const keepBox = header.querySelector('.stqa_keep_translation');
-    const keepInput = keepBox.querySelector('input');
-    const keepHint = keepBox.querySelector('.stqa_keep_hint');
-    keepInput.checked = settings.keepTranslation;
-    const updateKeepHint = () => {
-        keepHint.textContent = keepInput.checked
-            ? '원문만 고치고 다른 확장에는 알리지 않아요. 대부분의 번역 확장은 다시 번역하지 않지만, 확장에 따라 다를 수 있어요.'
-            : '⚠️ 원문을 고치면 번역 확장이 다시 번역하면서 지금 번역문이 바뀌거나 사라질 수 있어요.';
-    };
-    keepInput.addEventListener('change', () => {
-        settings.keepTranslation = keepInput.checked;
-        SillyTavern.getContext().saveSettingsDebounced();
-        updateKeepHint();
-    });
-    updateKeepHint();
+    const keepBox = buildKeepTranslationOption(settings);
+    keepBox.hidden = true;
+    header.append(keepBox);
 
     let switchButton = null;
     const updateMode = () => {
@@ -317,11 +306,9 @@ async function editSelection({ messageId, field, source, range }) {
     }
     targets[active].text = popup.mainInput.value;
 
-    // The original first: editing it (with events) can make the translator redo the translation
-    const ordered = [...targets.filter(target => target.field === 'mes'), ...targets.filter(target => target.field !== 'mes')];
     const chat = SillyTavern.getContext().chat;
     const silent = targets.length > 1 && settings.keepTranslation;
-    for (const target of ordered) {
+    for (const target of originalFirst(targets)) {
         // In manual translate mode, editing the original drops the translation; keep it, since
         // the user was reading the translated message
         const translationDropped = target.field === 'display_text' && !chat[messageId].extra?.display_text;
@@ -332,11 +319,120 @@ async function editSelection({ messageId, field, source, range }) {
     }
 }
 
+/** The "번역 그대로 두기" option shared by the edit and delete windows. */
+function buildKeepTranslationOption(settings) {
+    const box = document.createElement('div');
+    box.className = 'stqa_keep_translation';
+    box.innerHTML = `
+        <label class="checkbox_label"><input type="checkbox"><span>번역 그대로 두기 (번역 확장이 다시 번역하지 않게)</span></label>
+        <small class="stqa_hint stqa_keep_hint"></small>`;
+    const input = box.querySelector('input');
+    const hint = box.querySelector('.stqa_keep_hint');
+    const updateHint = () => {
+        hint.textContent = input.checked
+            ? '원문만 고치고 다른 확장에는 알리지 않아요. 대부분의 번역 확장은 다시 번역하지 않지만, 확장에 따라 다를 수 있어요.'
+            : '⚠️ 원문을 고치면 번역 확장이 다시 번역하면서 지금 번역문이 바뀌거나 사라질 수 있어요.';
+    };
+    input.checked = settings.keepTranslation;
+    input.addEventListener('change', () => {
+        settings.keepTranslation = input.checked;
+        SillyTavern.getContext().saveSettingsDebounced();
+        updateHint();
+    });
+    updateHint();
+    return box;
+}
+
+// A matched original part much longer than the selection means the match wasn't found precisely
+const UNSURE_MATCH_MIN = 400;
+const UNSURE_MATCH_RATIO = 4;
+
+/**
+ * Translated messages: shows the selected translation next to the matching original and lets
+ * the user pick which of them to delete.
+ * @returns {Promise<object[]|null>} the targets to delete from, or null when cancelled
+ */
+async function confirmTranslatedDelete(targets) {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
+    const [translation, original] = targets;
+    const unsure = original.initial.length > Math.max(UNSURE_MATCH_MIN, translation.initial.length * UNSURE_MATCH_RATIO);
+
+    const root = document.createElement('div');
+    root.className = 'stqa_delete_confirm';
+    root.innerHTML = `
+        <h3>선택한 부분 삭제</h3>
+        <div class="stqa_compare"></div>
+        <small class="stqa_hint stqa_unsure" hidden>⚠️ 원문에서 정확한 위치를 못 찾아서 넓게 잡혔어요. 원문 삭제는 꺼뒀어요.</small>`;
+    const compare = root.querySelector('.stqa_compare');
+    const checks = targets.map((target) => {
+        const side = document.createElement('div');
+        side.className = 'stqa_compare_side';
+        side.innerHTML = `<label class="checkbox_label"><input type="checkbox"><b></b></label><div class="stqa_compare_text"></div>`;
+        side.querySelector('b').textContent = `${target.label}에서 삭제`;
+        side.querySelector('.stqa_compare_text').textContent = target.initial;
+        compare.append(side);
+        return side.querySelector('input');
+    });
+    checks[0].checked = true;
+    checks[1].checked = !unsure;
+    root.querySelector('.stqa_unsure').hidden = !unsure;
+
+    const keepBox = buildKeepTranslationOption(getSettings());
+    root.append(keepBox);
+    const update = () => {
+        keepBox.hidden = !checks[1].checked;
+        compare.querySelectorAll('.stqa_compare_side').forEach((side, index) => side.classList.toggle('stqa_off', !checks[index].checked));
+    };
+    checks.forEach(check => check.addEventListener('change', update));
+    update();
+
+    const result = await new Popup(root, POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소', leftAlign: true }).show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return null;
+    }
+    return targets.filter((_, index) => checks[index].checked);
+}
+
+/** Puts a message's original and translation back exactly as they were. */
+async function restoreMessage(messageId, snapshot) {
+    const context = SillyTavern.getContext();
+    const message = context.chat[messageId];
+    message.mes = snapshot.mes;
+    if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
+        message.swipes[message.swipe_id] = snapshot.mes;
+    }
+    if (snapshot.displayText !== undefined) {
+        message.extra ??= {};
+        message.extra.display_text = snapshot.displayText;
+    }
+    context.updateMessageBlock(messageId, message);
+    await context.saveChat();
+}
+
 async function deleteSelection({ messageId, field, source, range }) {
-    await applySourceText(messageId, field, removeRange(source, expandOverWrappers(source, range)));
+    const message = SillyTavern.getContext().chat[messageId];
+    const snapshot = { mes: message.mes, displayText: message.extra?.display_text };
+    let targets = buildEditTargets(messageId, field, source, range);
+    if (targets.length > 1) {
+        targets = await confirmTranslatedDelete(targets);
+        if (!targets?.length) {
+            return;
+        }
+    }
+
+    // The translation is written back afterwards if changing the original dropped it
+    const silent = getSettings().keepTranslation;
+    const chat = SillyTavern.getContext().chat;
+    for (const target of originalFirst(targets)) {
+        const text = removeRange(target.source, expandOverWrappers(target.source, target.range));
+        await applySourceText(messageId, target.field, text, { silent: silent && Boolean(snapshot.displayText) });
+    }
+    if (snapshot.displayText && !chat[messageId].extra?.display_text) {
+        await applySourceText(messageId, 'display_text', snapshot.displayText);
+    }
     toastr.success('선택한 부분을 지웠어요. 이 알림을 누르면 되돌려요.', TITLE, {
         timeOut: 6000,
-        onclick: () => applySourceText(messageId, field, source),
+        onclick: () => restoreMessage(messageId, snapshot),
     });
 }
 

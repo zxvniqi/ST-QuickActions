@@ -118,10 +118,16 @@ function getLayout(selector) {
     return layout[selector];
 }
 
-/** Position of an item: its saved place, or after the placed ones in its natural order. */
-function orderValue(order, key, naturalIndex) {
-    const position = order.indexOf(key);
-    return position === -1 ? order.length + naturalIndex : position;
+/**
+ * Full arrangement of a container: the saved items fill the slots that saved items naturally
+ * occupy, so items that weren't in the list (invisible ones, the "…" box, items added later)
+ * keep their natural place instead of moving to the end.
+ */
+function arrange(order, naturalKeys) {
+    const placed = new Set(order);
+    const queue = order.filter(key => naturalKeys.includes(key));
+    const result = naturalKeys.map(key => (placed.has(key) ? queue.shift() : key));
+    return [...result, ...order.filter(key => !result.includes(key))];
 }
 
 function applyContainer(selector) {
@@ -133,10 +139,13 @@ function applyContainer(selector) {
     // Block containers (the extensions panel columns) only become flex once the user reorders them
     container.classList.toggle(FLEX_CLASS, order.length > 0 && getComputedStyle(container).display === 'block');
 
-    [...container.children].forEach((element, domIndex) => {
-        const key = keyOf(element, false);
+    const children = [...container.children];
+    const keys = children.map(element => keyOf(element, false));
+    const full = order.length > 0 ? arrange(order, keys) : [];
+    children.forEach((element, domIndex) => {
+        const key = keys[domIndex];
         element.setAttribute(KEY_ATTR, key);
-        const value = order.length > 0 ? String(orderValue(order, key, domIndex)) : '';
+        const value = order.length > 0 ? String(full.indexOf(key)) : '';
         element.style.order = value;
         // ST's extension containers use `display: contents`; their children are the real flex items
         if (getComputedStyle(element).display === 'contents') {
@@ -191,10 +200,24 @@ function messageButtons(selector) {
     return [...buttons.entries()].map(([key, element]) => ({ key, element }));
 }
 
+/** Button keys of a per-message container in page order (template first, then a rendered message). */
+function naturalMessageKeys(selector) {
+    const keys = [];
+    for (const source of [document.querySelector(`#message_template ${selector}`), document.querySelector(`#chat .mes ${selector}`)]) {
+        for (const element of source?.children ?? []) {
+            const key = buttonClassOf(element);
+            if (key && !keys.includes(key)) {
+                keys.push(key);
+            }
+        }
+    }
+    return keys;
+}
+
 /**
- * Rewrites the one stylesheet that arranges the buttons of every message. Built from the saved
- * layout only, so buttons other extensions add later are covered too: unplaced buttons share
- * one order value after the placed ones and therefore keep their natural order.
+ * Rewrites the one stylesheet that arranges the buttons of every message, so it covers every
+ * current and future message. Buttons that aren't known yet (added later by other extensions)
+ * go after the arranged ones.
  */
 function applyMessageStyles() {
     const rules = [];
@@ -205,8 +228,9 @@ function applyMessageStyles() {
         const { order, hidden } = getLayout(selector);
         const scope = `#chat .mes ${selector} >`;
         if (order.length > 0) {
-            rules.push(`${scope} * { order: ${order.length}; }`);
-            order.forEach((key, index) => rules.push(`${scope} .${CSS.escape(key)} { order: ${index}; }`));
+            const full = arrange(order, naturalMessageKeys(selector));
+            rules.push(`${scope} * { order: ${full.length}; }`);
+            full.forEach((key, index) => rules.push(`${scope} .${CSS.escape(key)} { order: ${index}; }`));
         }
         for (const key of hidden) {
             if (!lockedKeys.has(key)) {
@@ -232,8 +256,10 @@ export function listItems(selector, { natural = false } = {}) {
     const { hidden, order } = getLayout(selector);
     let entries;
     if (findContainer(selector)?.perMessage) {
-        entries = messageButtons(selector).map(({ key, element }, index) => ({
-            key, element, sortIndex: natural ? index : orderValue(order, key, index),
+        const buttons = messageButtons(selector);
+        const full = arrange(order, buttons.map(({ key }) => key));
+        entries = buttons.map(({ key, element }, index) => ({
+            key, element, sortIndex: natural ? index : full.indexOf(key),
         }));
     } else {
         const container = document.querySelector(selector);
@@ -258,9 +284,14 @@ export function listItems(selector, { natural = false } = {}) {
         }));
 }
 
-/** Stores and applies a container's arrangement (locked items can never be hidden). */
+/**
+ * Stores and applies a container's arrangement (locked items can never be hidden). An order
+ * that matches the page's own isn't stored, so untouched containers stay as the page lays them out.
+ */
 export function saveLayout(selector, { order, hidden }) {
-    getSettings().layout[selector] = { order: [...order], hidden: hidden.filter(key => !lockedKeys.has(key)) };
+    const natural = listItems(selector, { natural: true }).map(item => item.key);
+    const unchanged = order.length === natural.length && order.every((key, index) => key === natural[index]);
+    getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: hidden.filter(key => !lockedKeys.has(key)) };
     findContainer(selector)?.perMessage ? applyMessageStyles() : applyContainer(selector);
 }
 

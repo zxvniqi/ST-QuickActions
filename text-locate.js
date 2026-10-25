@@ -74,26 +74,90 @@ function segmentsOf(text, span, pattern) {
     return pieces;
 }
 
+// Parts a translation keeps unchanged: tags, numbers, Latin words, quote marks, list markers
+const KEPT_TOKEN = /<\/?[\w-]+|\d+|[A-Za-z][\w-]+|["“”「」『』*`[\]]|^\s*[-•]/g;
+
+/** How alike two paragraphs of different languages look (0..2): shared kept parts + similar length share. */
+function similarity(a, b, lengthShareA, lengthShareB) {
+    const tokensA = new Set(a.match(KEPT_TOKEN));
+    const tokensB = new Set(b.match(KEPT_TOKEN));
+    const union = new Set([...tokensA, ...tokensB]).size;
+    const shared = [...tokensA].filter(token => tokensB.has(token)).length;
+    const tokenScore = union === 0 ? 0.3 : shared / union;
+    return tokenScore + Math.min(lengthShareA, lengthShareB) / Math.max(lengthShareA, lengthShareB);
+}
+
+/**
+ * Pairs up the paragraphs of two versions when one has extra ones (e.g. translator's notes):
+ * the pairing with the highest total similarity, extra paragraphs left unpaired.
+ * @returns {number[]} for each `from` piece, the index of its `to` piece or -1
+ */
+function alignPieces(fromText, fromPieces, toText, toPieces) {
+    const texts = (text, pieces) => pieces.map(piece => text.slice(piece.start, piece.end));
+    const shares = list => {
+        const total = list.reduce((sum, text) => sum + text.length, 0) || 1;
+        return list.map(text => text.length / total);
+    };
+    const fromTexts = texts(fromText, fromPieces);
+    const toTexts = texts(toText, toPieces);
+    const fromShares = shares(fromTexts);
+    const toShares = shares(toTexts);
+    const rows = fromTexts.length;
+    const cols = toTexts.length;
+    // best[i][j]: best total for the first i / j pieces
+    const best = Array.from({ length: rows + 1 }, () => new Float64Array(cols + 1));
+    for (let i = 1; i <= rows; i++) {
+        for (let j = 1; j <= cols; j++) {
+            const paired = best[i - 1][j - 1] + similarity(fromTexts[i - 1], toTexts[j - 1], fromShares[i - 1], toShares[j - 1]);
+            best[i][j] = Math.max(paired, best[i - 1][j], best[i][j - 1]);
+        }
+    }
+    const result = new Array(rows).fill(-1);
+    for (let i = rows, j = cols; i > 0 && j > 0;) {
+        if (best[i][j] === best[i - 1][j]) {
+            i--;
+        } else if (best[i][j] === best[i][j - 1]) {
+            j--;
+        } else {
+            result[--i] = --j;
+        }
+    }
+    return result;
+}
+
 /**
  * Maps a range in one version of a message (e.g. the translation) to the matching part of
  * another version (the original). Pieces are matched by position, going finer level by level
- * while both versions have the same number of pieces; otherwise the last match is kept
- * (in the worst case the whole other text).
+ * while both versions have the same number of pieces. Paragraphs are paired by similarity when
+ * their numbers differ; finer levels stop there, keeping the last match (worst case the whole text).
  * @returns {{ start: number, end: number }}
  */
 export function mapToMatchingPart(fromText, range, toText) {
     let fromSpan = { start: 0, end: fromText.length };
     let toSpan = { start: 0, end: toText.length };
-    for (const pattern of SEGMENT_LEVELS) {
+    for (const [level, pattern] of SEGMENT_LEVELS.entries()) {
         const fromPieces = segmentsOf(fromText, fromSpan, pattern);
         const toPieces = segmentsOf(toText, toSpan, pattern);
         const first = fromPieces.findIndex(piece => piece.end > range.start);
         const last = fromPieces.findLastIndex(piece => piece.start < range.end);
-        if (fromPieces.length !== toPieces.length || first === -1 || last === -1 || first > last) {
+        if (first === -1 || last === -1 || first > last) {
             break;
         }
+        let toFirst = first;
+        let toLast = last;
+        if (fromPieces.length !== toPieces.length) {
+            if (level > 0) {
+                break;
+            }
+            const paired = alignPieces(fromText, fromPieces, toText, toPieces).slice(first, last + 1).filter(index => index !== -1);
+            if (paired.length === 0) {
+                break;
+            }
+            toFirst = Math.min(...paired);
+            toLast = Math.max(...paired);
+        }
         fromSpan = { start: fromPieces[first].start, end: fromPieces[last].end };
-        toSpan = { start: toPieces[first].start, end: toPieces[last].end };
+        toSpan = { start: toPieces[toFirst].start, end: toPieces[toLast].end };
     }
     return toSpan;
 }

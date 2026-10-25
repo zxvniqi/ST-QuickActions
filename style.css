@@ -374,3 +374,38 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     text-align: center;
     opacity: 0.6;
 }
+
+/* Delete window for translated messages: translation and original side by side */
+.stqa_compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.stqa_compare_side {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.stqa_compare_text {
+    max-height: 30vh;
+    overflow-y: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.95em;
+}
+
+.stqa_compare_side.stqa_off .stqa_compare_text {
+    opacity: 0.45;
+}
+
+.stqa_delete_confirm [hidden],
+.stqa_keep_translation[hidden] {
+    display: none;
+}
