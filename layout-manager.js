@@ -12,10 +12,27 @@ const FLEX_CLASS = 'stqa_layout_flex';
 const KEY_ATTR = 'data-stqa-key';
 const STYLE_ID = 'stqa_layout_style';
 const RECENT_MESSAGES = 4;
-// Per-message wrappers that aren't buttons themselves
-const CONTAINER_KEYS = new Set(['extraMesButtons']);
+// The message menu is one list: the feature-button box (번역·복사 등) inside the edit/delete
+// row is unpacked into it. Themes that show the box inline get it flattened into one row.
+const MESSAGE_ROW = '.mes_buttons';
+const NESTED_BOX = 'extraMesButtons';
+const LEGACY_NESTED_SELECTOR = '.extraMesButtons';
 // Classes shared by many buttons, so they can't identify one
 const GENERIC_CLASS = /^(mes_button|fa-|fa$|interactable|displayNone|menu_button|list-group-item)/;
+// Buttons that take turns in one spot count as one item: Stop replaces Send while a reply is
+// generated (script controls appear right before it), Unhide replaces Hide
+const SAME_SPOT = Object.freeze({
+    mes_stop: 'send_but',
+    stscript_continue: 'send_but',
+    stscript_pause: 'send_but',
+    stscript_stop: 'send_but',
+    mes_unhide: 'mes_hide',
+});
+
+const sameSpotKey = key => SAME_SPOT[key] ?? key;
+const unique = list => [...new Set(list)];
+/** A spot's key and the keys of the buttons that share it. */
+const spotMembers = key => [key, ...Object.keys(SAME_SPOT).filter(other => SAME_SPOT[other] === key)];
 
 /** Containers that can be arranged, grouped the way they appear in the settings window. */
 export const LAYOUT_AREAS = Object.freeze([
@@ -37,11 +54,7 @@ export const LAYOUT_AREAS = Object.freeze([
     },
     {
         title: '메시지 메뉴',
-        containers: [
-            // Themes differ: the first row may sit inside a "…" menu or always be visible
-            { selector: '.extraMesButtons', label: '기능 버튼 (번역·복사 등)', perMessage: true },
-            { selector: '.mes_buttons', label: '수정·삭제 버튼 줄', perMessage: true },
-        ],
+        containers: [{ selector: MESSAGE_ROW, label: '', perMessage: true }],
         // The "…" toggle (in themes that have it) and the edit button keep every action reachable
         locked: ['extraMesButtonsHint', 'mes_edit'],
     },
@@ -62,7 +75,8 @@ const lockedKeys = new Set(LAYOUT_AREAS.flatMap(area => area.locked));
 const KNOWN_LABELS = Object.freeze({
     options_button: '옵션 메뉴 (≡)',
     extensionsMenuButton: '마법봉 메뉴 버튼',
-    send_but: '보내기',
+    send_but: '보내기 / 요청 중단',
+    mes_hide: '메시지 숨기기 / 다시 보이기',
     mes_impersonate: '대신 써주기 (Impersonate)',
     mes_continue: '이어쓰기 (Continue)',
     extraMesButtonsHint: '… (메뉴 펼치기)',
@@ -81,10 +95,8 @@ function buttonClassOf(element) {
 }
 
 function keyOf(element, perMessage) {
-    if (perMessage) {
-        return buttonClassOf(element);
-    }
-    return element.id || `text:${labelOf(element)}`;
+    const key = perMessage ? buttonClassOf(element) : element.id || `text:${labelOf(element)}`;
+    return key && sameSpotKey(key);
 }
 
 /** A readable name for an item: a known name, its heading/title/text, or the id. */
@@ -112,10 +124,13 @@ function isMeaningful(element) {
     return element.children.length > 0 || element.textContent.trim() !== '' || element.matches('[class*="fa-"]');
 }
 
+/** A container's saved arrangement, with buttons sharing a spot folded into one key. */
 function getLayout(selector) {
-    const layout = getSettings().layout;
-    layout[selector] ??= { order: [], hidden: [] };
-    return layout[selector];
+    const saved = getSettings().layout[selector];
+    return {
+        order: unique((saved?.order ?? []).map(sameSpotKey)),
+        hidden: unique((saved?.hidden ?? []).map(sameSpotKey)),
+    };
 }
 
 /**
@@ -141,10 +156,12 @@ function applyContainer(selector) {
 
     const children = [...container.children];
     const keys = children.map(element => keyOf(element, false));
-    const full = order.length > 0 ? arrange(order, keys) : [];
+    const full = order.length > 0 ? arrange(order, unique(keys)) : [];
     children.forEach((element, domIndex) => {
         const key = keys[domIndex];
         element.setAttribute(KEY_ATTR, key);
+        // Buttons sharing a spot get the same value and so stay together in page order
+        // (script controls come right before Send / Stop)
         const value = order.length > 0 ? String(full.indexOf(key)) : '';
         element.style.order = value;
         // ST's extension containers use `display: contents`; their children are the real flex items
@@ -169,80 +186,108 @@ function isDisplayed(element) {
     return displayed;
 }
 
-/**
- * Buttons the current theme actually shows on messages, collected from the last few rendered
- * messages (user and AI messages can differ). Containers (the "…" menu box) aren't buttons.
- * Falls back to the message template when no chat is open.
- */
-function messageButtons(selector) {
+/** A message's buttons in page order, with the feature-button box unpacked in its place. */
+function rowButtons(row) {
+    return [...row?.children ?? []].flatMap(element => (element.classList.contains(NESTED_BOX) ? [...element.children] : [element]));
+}
+
+function rowKeys(row) {
+    return unique(rowButtons(row).map(element => keyOf(element, true)).filter(Boolean));
+}
+
+/** Runs `measure` with this extension's message rules switched off. */
+function withoutOwnRules(measure) {
     const style = document.getElementById(STYLE_ID);
-    const rendered = [...document.querySelectorAll(`#chat .mes ${selector}`)].slice(-RECENT_MESSAGES);
-    const sources = rendered.length > 0 ? rendered : [document.querySelector(`#message_template ${selector}`)];
-    // Measure without this extension's rules, so hidden-by-us buttons still count as available
     if (style) {
         style.disabled = true;
     }
-    const buttons = new Map();
     try {
-        for (const source of sources) {
-            for (const element of source?.children ?? []) {
-                const key = buttonClassOf(element);
-                if (key && !CONTAINER_KEYS.has(key) && !buttons.has(key) && (rendered.length === 0 || isDisplayed(element))) {
-                    buttons.set(key, element);
-                }
-            }
-        }
+        return measure();
     } finally {
         if (style) {
             style.disabled = false;
         }
     }
-    return [...buttons.entries()].map(([key, element]) => ({ key, element }));
-}
-
-function childKeys(container) {
-    return [...container?.children ?? []].map(buttonClassOf).filter(Boolean);
 }
 
 /**
- * Button keys of a per-message container in page order. A rendered message comes first, since
- * other extensions add buttons to rendered messages only (often at the start); buttons that only
- * the template has go after their template neighbour.
+ * Buttons the current theme actually shows on messages, collected from the last few rendered
+ * messages (user and AI messages can differ). Falls back to the message template when no chat is open.
  */
-function naturalMessageKeys(selector) {
-    const keys = childKeys([...document.querySelectorAll(`#chat .mes ${selector}`)].at(-1));
-    const templateKeys = childKeys(document.querySelector(`#message_template ${selector}`));
+function messageButtons() {
+    const rendered = [...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].slice(-RECENT_MESSAGES);
+    const sources = rendered.length > 0 ? rendered : [document.querySelector(`#message_template ${MESSAGE_ROW}`)];
+    const buttons = new Map();
+    // Measured without this extension's rules, so buttons hidden here still count as available
+    withoutOwnRules(() => {
+        for (const element of sources.flatMap(rowButtons)) {
+            const key = keyOf(element, true);
+            const own = buttonClassOf(element) === key;
+            // A spot shared by several buttons is shown with its main button when possible
+            if (key && (!buttons.has(key) || (own && !buttons.get(key).own)) && (rendered.length === 0 || isDisplayed(element))) {
+                buttons.set(key, { element, own });
+            }
+        }
+    });
+    return [...buttons.entries()].map(([key, { element }]) => ({ key, element }));
+}
+
+/**
+ * Button keys of the message menu in page order. A rendered message comes first, since other
+ * extensions add buttons to rendered messages only (often at the start); buttons that only the
+ * template has go after their template neighbour.
+ */
+function naturalMessageKeys() {
+    const keys = rowKeys([...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].at(-1));
+    const templateKeys = rowKeys(document.querySelector(`#message_template ${MESSAGE_ROW}`));
     templateKeys.forEach((key, index) => {
         if (!keys.includes(key)) {
             const previous = templateKeys.slice(0, index).findLast(other => keys.includes(other));
             keys.splice(previous ? keys.indexOf(previous) + 1 : 0, 0, key);
         }
     });
-    return [...new Set(keys)];
+    return unique(keys);
+}
+
+// Whether the theme shows the feature-button box inline (no "…" menu); kept while no chat is open
+let nestedBoxInline = false;
+
+function detectInlineBox() {
+    const row = [...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].at(-1);
+    const box = row?.querySelector(`:scope > .${NESTED_BOX}`);
+    if (!box) {
+        return;
+    }
+    withoutOwnRules(() => {
+        const hint = row.querySelector(':scope > .extraMesButtonsHint');
+        nestedBoxInline = getComputedStyle(box).display !== 'none' && (!hint || getComputedStyle(hint).display === 'none');
+    });
 }
 
 /**
  * Rewrites the one stylesheet that arranges the buttons of every message, so it covers every
  * current and future message. Buttons that aren't known yet (added later by other extensions)
- * go after the arranged ones.
+ * go after the arranged ones. Order values are shared by the row and the feature-button box:
+ * themes that show the box inline get it flattened into the row, so the whole menu is one line;
+ * with a "…" menu each button keeps its place relative to the others in its own box.
  */
 function applyMessageStyles() {
     const rules = [];
-    for (const { selector, perMessage } of CONTAINERS) {
-        if (!perMessage) {
-            continue;
+    const { order, hidden } = getLayout(MESSAGE_ROW);
+    const scopes = [`#chat .mes ${MESSAGE_ROW} >`, `#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} >`];
+    const selectorFor = key => scopes.flatMap(scope => spotMembers(key).map(member => `${scope} .${CSS.escape(member)}`)).join(', ');
+    detectInlineBox();
+    if (order.length > 0) {
+        if (nestedBoxInline) {
+            rules.push(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} { display: contents !important; }`);
         }
-        const { order, hidden } = getLayout(selector);
-        const scope = `#chat .mes ${selector} >`;
-        if (order.length > 0) {
-            const full = arrange(order, naturalMessageKeys(selector));
-            rules.push(`${scope} * { order: ${full.length}; }`);
-            full.forEach((key, index) => rules.push(`${scope} .${CSS.escape(key)} { order: ${index}; }`));
-        }
-        for (const key of hidden) {
-            if (!lockedKeys.has(key)) {
-                rules.push(`${scope} .${CSS.escape(key)} { display: none !important; }`);
-            }
+        const full = arrange(order, naturalMessageKeys());
+        rules.push(`${scopes.map(scope => `${scope} *`).join(', ')} { order: ${full.length}; }`);
+        full.forEach((key, index) => rules.push(`${selectorFor(key)} { order: ${index}; }`));
+    }
+    for (const key of hidden) {
+        if (!lockedKeys.has(key)) {
+            rules.push(`${selectorFor(key)} { display: none !important; }`);
         }
     }
     let style = document.getElementById(STYLE_ID);
@@ -266,7 +311,7 @@ function watchRenderedMessages() {
     if (!chat) {
         return;
     }
-    const containers = CONTAINERS.filter(container => container.perMessage).map(container => container.selector).join(', ');
+    const containers = `${MESSAGE_ROW}, .${NESTED_BOX}`;
     let scheduled = false;
     new MutationObserver((records) => {
         // New messages, or buttons added to a message's button rows
@@ -291,22 +336,21 @@ export function listItems(selector, { natural = false } = {}) {
     const { hidden, order } = getLayout(selector);
     let entries;
     if (findContainer(selector)?.perMessage) {
-        const buttons = messageButtons(selector);
+        const buttons = messageButtons();
         const full = arrange(order, buttons.map(({ key }) => key));
         entries = buttons.map(({ key, element }, index) => ({
             key, element, sortIndex: natural ? index : full.indexOf(key),
         }));
     } else {
-        const container = document.querySelector(selector);
-        // Only what the page shows: e.g. script controls or the hidden input-bar copies of
-        // Impersonate / Continue stay out of the list
-        entries = [...(container?.children ?? [])]
-            .filter(element => isMeaningful(element) && isDisplayed(element))
-            .map((element, index) => ({
-                key: keyOf(element, false),
-                element,
-                sortIndex: natural || element.style.order === '' ? index : Number(element.style.order),
-            }));
+        const children = [...(document.querySelector(selector)?.children ?? [])];
+        const keys = children.map(element => keyOf(element, false));
+        // Only what the page shows (e.g. the hidden input-bar copies of Impersonate / Continue
+        // stay out); a shared spot counts when any of its buttons shows, e.g. Stop while generating
+        const shownKeys = new Set(keys.filter((key, index) => isMeaningful(children[index]) && isDisplayed(children[index])));
+        entries = unique(keys).filter(key => shownKeys.has(key)).map((key, index) => {
+            const element = children.find(child => child.id === key) ?? children[keys.indexOf(key)];
+            return { key, element, sortIndex: natural || element.style.order === '' ? index : Number(element.style.order) };
+        });
     }
     return entries
         .sort((a, b) => a.sortIndex - b.sortIndex)
@@ -330,7 +374,33 @@ export function saveLayout(selector, { order, hidden }) {
     findContainer(selector)?.perMessage ? applyMessageStyles() : applyContainer(selector);
 }
 
+/**
+ * Older versions arranged the feature-button box as a list of its own: fold it into the message
+ * menu in its place, so the arrangement the user made looks the same.
+ */
+function migrateNestedLayout() {
+    const layout = getSettings().layout;
+    const nested = layout[LEGACY_NESTED_SELECTOR];
+    if (!nested) {
+        return;
+    }
+    const row = layout[MESSAGE_ROW] ?? { order: [], hidden: [] };
+    if (nested.order?.length || row.order?.length) {
+        const template = document.querySelector(`#message_template ${MESSAGE_ROW}`);
+        const classesOf = container => [...container?.children ?? []].map(buttonClassOf).filter(Boolean);
+        const rowOrder = row.order?.length ? row.order : classesOf(template);
+        const nestedOrder = nested.order?.length ? nested.order : classesOf(template?.querySelector(`.${NESTED_BOX}`));
+        const at = rowOrder.indexOf(NESTED_BOX);
+        row.order = at === -1 ? [...nestedOrder, ...rowOrder] : [...rowOrder.slice(0, at), ...nestedOrder, ...rowOrder.slice(at + 1)];
+    }
+    row.hidden = unique([...(row.hidden ?? []), ...(nested.hidden ?? [])]);
+    layout[MESSAGE_ROW] = row;
+    delete layout[LEGACY_NESTED_SELECTOR];
+    SillyTavern.getContext().saveSettingsDebounced();
+}
+
 export function initLayoutManager() {
+    migrateNestedLayout();
     applyMessageStyles();
     watchRenderedMessages();
     for (const { selector, perMessage } of CONTAINERS) {
