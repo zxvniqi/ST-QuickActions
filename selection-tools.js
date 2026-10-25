@@ -1,6 +1,6 @@
 // Edit / delete buttons that appear when text inside a message is selected.
 import { MODULE, getSettings } from './settings.js';
-import { countOccurrences, locateInSource, expandOverWrappers, removeRange } from './text-locate.js';
+import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToSameParagraphs } from './text-locate.js';
 
 const TOOLBAR_ID = 'stqa_selection_toolbar';
 const SELECTION_DEBOUNCE_MS = 150;
@@ -160,17 +160,20 @@ async function applySourceText(messageId, field, text) {
     const context = SillyTavern.getContext();
     const message = context.chat[messageId];
     if (field === 'display_text') {
-        // Only the shown translation changes; MESSAGE_EDITED would make the translator redo it.
+        // Only the shown translation changes. No edit/update events: the translate extension
+        // treats MESSAGE_UPDATED as "the original changed" and drops or redoes the translation.
         message.extra.display_text = text;
+        context.updateMessageBlock(messageId, message);
     } else {
         message.mes = text;
         if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
             message.swipes[message.swipe_id] = text;
         }
+        // Same events as ST's own message edit
         await context.eventSource.emit(context.eventTypes.MESSAGE_EDITED, messageId);
+        context.updateMessageBlock(messageId, message);
+        await context.eventSource.emit(context.eventTypes.MESSAGE_UPDATED, messageId);
     }
-    context.updateMessageBlock(messageId, message);
-    await context.eventSource.emit(context.eventTypes.MESSAGE_UPDATED, messageId);
     await context.saveChat();
 }
 
@@ -213,18 +216,70 @@ async function runAction(action) {
     }
 }
 
+/**
+ * One editable version of the selection: the shown text (translation or original) and, for
+ * translated messages, the matching paragraphs of the original.
+ */
+function buildEditTargets(messageId, field, source, range) {
+    const targets = [{ field, source, range, label: field === 'display_text' ? '번역문' : '원문' }];
+    if (field === 'display_text') {
+        const original = SillyTavern.getContext().chat[messageId].mes;
+        targets.push({ field: 'mes', source: original, range: mapToSameParagraphs(source, range, original), label: '원문' });
+    }
+    for (const target of targets) {
+        target.initial = target.source.slice(target.range.start, target.range.end);
+        target.text = target.initial;
+    }
+    return targets;
+}
+
 async function editSelection({ messageId, field, source, range }) {
-    const { callGenericPopup, POPUP_TYPE } = SillyTavern.getContext();
-    const original = source.slice(range.start, range.end);
-    const edited = await callGenericPopup('선택한 부분 수정', POPUP_TYPE.INPUT, original, {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
+    const targets = buildEditTargets(messageId, field, source, range);
+    let active = 0;
+
+    const header = document.createElement('div');
+    header.innerHTML = '<h3>선택한 부분 수정</h3><small class="stqa_hint stqa_edit_mode"></small>';
+    const modeLabel = header.querySelector('.stqa_edit_mode');
+    const updateModeLabel = () => {
+        modeLabel.textContent = targets.length > 1 ? `${targets[active].label} 수정 중` : '';
+    };
+    updateModeLabel();
+
+    const popup = new Popup(header, POPUP_TYPE.INPUT, targets[0].text, {
         rows: 6,
         okButton: '적용',
         cancelButton: '취소',
+        // Translated messages: switch between editing the translation and the original
+        customButtons: targets.length > 1 ? [{
+            text: '원문 전환',
+            icon: 'fa-language',
+            action: () => {
+                targets[active].text = popup.mainInput.value;
+                active = (active + 1) % targets.length;
+                popup.mainInput.value = targets[active].text;
+                updateModeLabel();
+            },
+        }] : null,
     });
-    if (typeof edited !== 'string' || edited === original) {
+    const result = await popup.show();
+    if (result === null || result === false || result === POPUP_RESULT.CANCELLED) {
         return;
     }
-    await applySourceText(messageId, field, source.slice(0, range.start) + edited + source.slice(range.end));
+    targets[active].text = popup.mainInput.value;
+
+    // The original first: editing it can make the translator redo the translation
+    const ordered = [...targets.filter(target => target.field === 'mes'), ...targets.filter(target => target.field !== 'mes')];
+    const chat = SillyTavern.getContext().chat;
+    for (const target of ordered) {
+        // In manual translate mode, editing the original drops the translation; keep it, since
+        // the user was reading the translated message
+        const translationDropped = target.field === 'display_text' && !chat[messageId].extra?.display_text;
+        if (target.text !== target.initial || translationDropped) {
+            const { source: text, range: { start, end } } = target;
+            await applySourceText(messageId, target.field, text.slice(0, start) + target.text + text.slice(end));
+        }
+    }
 }
 
 async function deleteSelection({ messageId, field, source, range }) {

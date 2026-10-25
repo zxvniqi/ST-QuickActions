@@ -49,6 +49,34 @@ export function locateInSource(source, selected, occurrence) {
     return { start: match.index, end: match.index + match[0].length };
 }
 
+/** Start/end offsets of every non-empty line. */
+function nonEmptyLines(text) {
+    const lines = [];
+    for (const match of text.matchAll(/[^\n]+/g)) {
+        if (match[0].trim()) {
+            lines.push({ start: match.index, end: match.index + match[0].length });
+        }
+    }
+    return lines;
+}
+
+/**
+ * Maps a range in one version of a message (e.g. the translation) to the same paragraphs of
+ * another version (the original). Translations keep the paragraph layout, so paragraphs are
+ * matched by position; if the layouts differ, the whole other text is used.
+ * @returns {{ start: number, end: number }}
+ */
+export function mapToSameParagraphs(fromText, range, toText) {
+    const fromLines = nonEmptyLines(fromText);
+    const toLines = nonEmptyLines(toText);
+    const first = fromLines.findIndex(line => line.end > range.start);
+    const last = fromLines.findLastIndex(line => line.start < range.end);
+    if (fromLines.length !== toLines.length || first === -1 || last === -1) {
+        return { start: 0, end: toText.length };
+    }
+    return { start: toLines[first].start, end: toLines[last].end };
+}
+
 /** Widens a range over markdown markers that wrap it exactly (e.g. *text*), so deleting leaves no stray markers. */
 export function expandOverWrappers(source, { start, end }) {
     while (start > 0 && end < source.length && source[start - 1] === source[end] && WRAPPER_CHARS.includes(source[end])) {
