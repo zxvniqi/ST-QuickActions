@@ -30,6 +30,7 @@ export function createInlineSelect({ options, value, onChange }) {
             item.classList.toggle('stqa_selected', item.dataset.value === value);
         }
     };
+    // A tap outside closes the list; scrolling the page (no click) keeps it open
     const onOutside = (event) => {
         if (!root.contains(event.target)) {
             setOpen(false);
@@ -38,7 +39,7 @@ export function createInlineSelect({ options, value, onChange }) {
     const setOpen = (open) => {
         list.hidden = !open;
         root.classList.toggle('stqa_open', open);
-        open ? document.addEventListener('pointerdown', onOutside, true) : document.removeEventListener('pointerdown', onOutside, true);
+        open ? document.addEventListener('click', onOutside, true) : document.removeEventListener('click', onOutside, true);
     };
 
     box.addEventListener('click', () => setOpen(list.hidden));

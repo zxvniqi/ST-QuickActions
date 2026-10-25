@@ -1,6 +1,6 @@
 // Edit / delete buttons that appear when text inside a message is selected.
 import { MODULE, getSettings } from './settings.js';
-import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToSameParagraphs } from './text-locate.js';
+import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart } from './text-locate.js';
 
 const TOOLBAR_ID = 'stqa_selection_toolbar';
 const SELECTION_DEBOUNCE_MS = 150;
@@ -91,15 +91,23 @@ function findBlocker(top, left, width, height) {
     return null;
 }
 
-/** Moves the box up past floating elements sitting where it would appear. */
+/**
+ * Moves the box past floating elements sitting where it would appear: further down in
+ * 'below' mode, otherwise up. Stops at the screen edge.
+ */
 function dodgeFloatingElements(position, width, height) {
+    const downward = getSettings().selectionToolbarPosition === 'below';
     let { top } = position;
     for (let step = 0; step < MAX_DODGE_STEPS; step++) {
         const blocker = findBlocker(top, position.left, width, height);
-        if (!blocker || blocker.top - height - TOOLBAR_GAP < TOOLBAR_GAP) {
+        if (!blocker) {
             break;
         }
-        top = blocker.top - height - TOOLBAR_GAP;
+        const next = downward ? blocker.bottom + TOOLBAR_GAP : blocker.top - height - TOOLBAR_GAP;
+        if (next < TOOLBAR_GAP || next + height > window.innerHeight - TOOLBAR_GAP) {
+            break;
+        }
+        top = next;
     }
     return { top, left: position.left };
 }
@@ -156,13 +164,24 @@ function getSourceText(message, field) {
     return field === 'display_text' ? message.extra.display_text : message.mes;
 }
 
-async function applySourceText(messageId, field, text) {
+/**
+ * @param {{ silent?: boolean }} [options] silent: change the original without telling other
+ *   extensions (translators then keep the current translation instead of redoing it)
+ */
+async function applySourceText(messageId, field, text, { silent = false } = {}) {
     const context = SillyTavern.getContext();
     const message = context.chat[messageId];
-    if (field === 'display_text') {
-        // Only the shown translation changes. No edit/update events: the translate extension
-        // treats MESSAGE_UPDATED as "the original changed" and drops or redoes the translation.
-        message.extra.display_text = text;
+    if (field === 'display_text' || silent) {
+        // No edit/update events: translate extensions treat them as "the original changed"
+        // and drop or redo the translation.
+        if (field === 'display_text') {
+            message.extra.display_text = text;
+        } else {
+            message.mes = text;
+            if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
+                message.swipes[message.swipe_id] = text;
+            }
+        }
         context.updateMessageBlock(messageId, message);
     } else {
         message.mes = text;
@@ -224,7 +243,7 @@ function buildEditTargets(messageId, field, source, range) {
     const targets = [{ field, source, range, label: field === 'display_text' ? '번역문' : '원문' }];
     if (field === 'display_text') {
         const original = SillyTavern.getContext().chat[messageId].mes;
-        targets.push({ field: 'mes', source: original, range: mapToSameParagraphs(source, range, original), label: '원문' });
+        targets.push({ field: 'mes', source: original, range: mapToMatchingPart(source, range, original), label: '원문' });
     }
     for (const target of targets) {
         target.initial = target.source.slice(target.range.start, target.range.end);
@@ -238,13 +257,41 @@ async function editSelection({ messageId, field, source, range }) {
     const targets = buildEditTargets(messageId, field, source, range);
     let active = 0;
 
+    const settings = getSettings();
     const header = document.createElement('div');
-    header.innerHTML = '<h3>선택한 부분 수정</h3><small class="stqa_hint stqa_edit_mode"></small>';
+    header.innerHTML = `
+        <h3>선택한 부분 수정</h3>
+        <small class="stqa_hint stqa_edit_mode"></small>
+        <div class="stqa_keep_translation" hidden>
+            <label class="checkbox_label"><input type="checkbox"><span>번역 그대로 두기 (번역 확장이 다시 번역하지 않게)</span></label>
+            <small class="stqa_hint stqa_keep_hint"></small>
+        </div>`;
     const modeLabel = header.querySelector('.stqa_edit_mode');
-    const updateModeLabel = () => {
-        modeLabel.textContent = targets.length > 1 ? `${targets[active].label} 수정 중` : '';
+    const keepBox = header.querySelector('.stqa_keep_translation');
+    const keepInput = keepBox.querySelector('input');
+    const keepHint = keepBox.querySelector('.stqa_keep_hint');
+    keepInput.checked = settings.keepTranslation;
+    const updateKeepHint = () => {
+        keepHint.textContent = keepInput.checked
+            ? '원문만 고치고 다른 확장에는 알리지 않아요. 대부분의 번역 확장은 다시 번역하지 않지만, 확장에 따라 다를 수 있어요.'
+            : '⚠️ 원문을 고치면 번역 확장이 다시 번역하면서 지금 번역문이 바뀌거나 사라질 수 있어요.';
     };
-    updateModeLabel();
+    keepInput.addEventListener('change', () => {
+        settings.keepTranslation = keepInput.checked;
+        SillyTavern.getContext().saveSettingsDebounced();
+        updateKeepHint();
+    });
+    updateKeepHint();
+
+    let switchButton = null;
+    const updateMode = () => {
+        const editingOriginal = targets[active].field === 'mes' && targets.length > 1;
+        modeLabel.textContent = targets.length > 1 ? `${targets[active].label} 수정 중` : '';
+        keepBox.hidden = !editingOriginal;
+        if (switchButton) {
+            switchButton.innerHTML = `<i class="fa-solid fa-language"></i> ${editingOriginal ? '번역 전환' : '원문 전환'}`;
+        }
+    };
 
     const popup = new Popup(header, POPUP_TYPE.INPUT, targets[0].text, {
         rows: 6,
@@ -253,31 +300,34 @@ async function editSelection({ messageId, field, source, range }) {
         // Translated messages: switch between editing the translation and the original
         customButtons: targets.length > 1 ? [{
             text: '원문 전환',
-            icon: 'fa-language',
             action: () => {
                 targets[active].text = popup.mainInput.value;
                 active = (active + 1) % targets.length;
                 popup.mainInput.value = targets[active].text;
-                updateModeLabel();
+                updateMode();
             },
         }] : null,
     });
+    switchButton = popup.dlg.querySelector('.popup-button-custom');
+    updateMode();
+
     const result = await popup.show();
     if (result === null || result === false || result === POPUP_RESULT.CANCELLED) {
         return;
     }
     targets[active].text = popup.mainInput.value;
 
-    // The original first: editing it can make the translator redo the translation
+    // The original first: editing it (with events) can make the translator redo the translation
     const ordered = [...targets.filter(target => target.field === 'mes'), ...targets.filter(target => target.field !== 'mes')];
     const chat = SillyTavern.getContext().chat;
+    const silent = targets.length > 1 && settings.keepTranslation;
     for (const target of ordered) {
         // In manual translate mode, editing the original drops the translation; keep it, since
         // the user was reading the translated message
         const translationDropped = target.field === 'display_text' && !chat[messageId].extra?.display_text;
         if (target.text !== target.initial || translationDropped) {
             const { source: text, range: { start, end } } = target;
-            await applySourceText(messageId, target.field, text.slice(0, start) + target.text + text.slice(end));
+            await applySourceText(messageId, target.field, text.slice(0, start) + target.text + text.slice(end), { silent });
         }
     }
 }

@@ -49,32 +49,53 @@ export function locateInSource(source, selected, occurrence) {
     return { start: match.index, end: match.index + match[0].length };
 }
 
-/** Start/end offsets of every non-empty line. */
-function nonEmptyLines(text) {
-    const lines = [];
-    for (const match of text.matchAll(/[^\n]+/g)) {
-        if (match[0].trim()) {
-            lines.push({ start: match.index, end: match.index + match[0].length });
+/**
+ * Ways to cut a text into pieces, from coarse to fine. Translations keep this structure
+ * (paragraphs, "Name: 「line」" parts, sentences) even when the words differ completely.
+ */
+const SEGMENT_LEVELS = Object.freeze([
+    /[^\n]+/g, // paragraphs
+    /[^:：「」『』"“”()（）[\]]+/g, // speaker name / quoted parts
+    /[^.。!！?？…]+[.。!！?？…]*/g, // sentences
+]);
+
+/** Non-blank pieces of text[span] at one level, as absolute { start, end } (trimmed). */
+function segmentsOf(text, span, pattern) {
+    const pieces = [];
+    const slice = text.slice(span.start, span.end);
+    for (const match of slice.matchAll(pattern)) {
+        const leading = match[0].length - match[0].trimStart().length;
+        const content = match[0].trim();
+        if (content) {
+            const start = span.start + match.index + leading;
+            pieces.push({ start, end: start + content.length });
         }
     }
-    return lines;
+    return pieces;
 }
 
 /**
- * Maps a range in one version of a message (e.g. the translation) to the same paragraphs of
- * another version (the original). Translations keep the paragraph layout, so paragraphs are
- * matched by position; if the layouts differ, the whole other text is used.
+ * Maps a range in one version of a message (e.g. the translation) to the matching part of
+ * another version (the original). Pieces are matched by position, going finer level by level
+ * while both versions have the same number of pieces; otherwise the last match is kept
+ * (in the worst case the whole other text).
  * @returns {{ start: number, end: number }}
  */
-export function mapToSameParagraphs(fromText, range, toText) {
-    const fromLines = nonEmptyLines(fromText);
-    const toLines = nonEmptyLines(toText);
-    const first = fromLines.findIndex(line => line.end > range.start);
-    const last = fromLines.findLastIndex(line => line.start < range.end);
-    if (fromLines.length !== toLines.length || first === -1 || last === -1) {
-        return { start: 0, end: toText.length };
+export function mapToMatchingPart(fromText, range, toText) {
+    let fromSpan = { start: 0, end: fromText.length };
+    let toSpan = { start: 0, end: toText.length };
+    for (const pattern of SEGMENT_LEVELS) {
+        const fromPieces = segmentsOf(fromText, fromSpan, pattern);
+        const toPieces = segmentsOf(toText, toSpan, pattern);
+        const first = fromPieces.findIndex(piece => piece.end > range.start);
+        const last = fromPieces.findLastIndex(piece => piece.start < range.end);
+        if (fromPieces.length !== toPieces.length || first === -1 || last === -1 || first > last) {
+            break;
+        }
+        fromSpan = { start: fromPieces[first].start, end: fromPieces[last].end };
+        toSpan = { start: toPieces[first].start, end: toPieces[last].end };
     }
-    return { start: toLines[first].start, end: toLines[last].end };
+    return toSpan;
 }
 
 /** Widens a range over markdown markers that wrap it exactly (e.g. *text*), so deleting leaves no stray markers. */

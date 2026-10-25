@@ -110,6 +110,10 @@ async function showChatPicker(character, initialChats) {
 
     const root = document.createElement('div');
     root.className = 'stqa_picker';
+    // Take the popup's initial focus here, so the search box (and the phone keyboard) only
+    // activates when the user taps it
+    root.tabIndex = -1;
+    root.setAttribute('autofocus', '');
     root.innerHTML = `
         <div class="stqa_picker_head">
             <img class="stqa_picker_avatar" alt="">

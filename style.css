@@ -112,30 +112,77 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     flex-direction: column;
 }
 
-/* Layout editor */
-.stqa_layout_area {
-    margin-top: 8px;
+/* Layout editor: tabs */
+.stqa_tabs {
+    display: flex;
+    gap: 4px;
+    margin: 6px 0 10px;
+    padding: 3px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
 }
 
-.stqa_layout_area summary {
+.stqa_tab {
+    flex: 1;
+    padding: 6px 4px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.9em;
     cursor: pointer;
-    font-weight: bold;
+    opacity: 0.7;
 }
 
-.stqa_layout_group {
-    margin-top: 6px;
+.stqa_tab.stqa_tab_active {
+    background: var(--SmartThemeBlurTintColor);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    font-weight: bold;
+    opacity: 1;
+}
+
+/* Layout editor: item rows */
+.stqa_layout_group + .stqa_layout_group {
+    margin-top: 12px;
+}
+
+.stqa_layout_group_title {
+    margin-bottom: 4px;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.stqa_layout_list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .stqa_layout_row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 4px;
-    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 60%, transparent);
 }
 
-.stqa_layout_row_hidden .stqa_layout_label {
-    opacity: 0.45;
+.stqa_layout_row.stqa_dragging {
+    border-color: var(--SmartThemeQuoteColor);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    opacity: 0.95;
+}
+
+.stqa_layout_handle {
+    padding: 6px 4px;
+    cursor: grab;
+    opacity: 0.6;
+    touch-action: none;
+}
+
+.stqa_layout_icon {
+    width: 18px;
+    text-align: center;
+    opacity: 0.85;
 }
 
 .stqa_layout_label {
@@ -146,15 +193,24 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     white-space: nowrap;
 }
 
-.stqa_layout_move {
-    padding: 4px 6px;
-    cursor: pointer;
-    opacity: 0.7;
+.stqa_layout_row_hidden .stqa_layout_icon,
+.stqa_layout_row_hidden .stqa_layout_label {
+    opacity: 0.35;
+    text-decoration: line-through;
 }
 
-.stqa_layout_move.stqa_disabled {
-    opacity: 0.2;
-    pointer-events: none;
+.stqa_layout_eye {
+    padding: 6px;
+    cursor: pointer;
+}
+
+.stqa_layout_eye.stqa_locked {
+    cursor: default;
+    opacity: 0.4;
+}
+
+.stqa_layout_reset {
+    margin-top: 10px;
 }
 
 .stqa_hint {
