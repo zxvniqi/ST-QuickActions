@@ -257,12 +257,21 @@ function applyMessageStyles() {
     }
 }
 
-/** Rebuilds the message button rules once messages are drawn (their buttons may differ from the template). */
+/**
+ * Rebuilds the message button rules when buttons are added to drawn messages: other extensions
+ * add theirs to rendered messages at their own time, so they aren't in the template.
+ */
 function watchRenderedMessages() {
-    const { eventSource, eventTypes } = SillyTavern.getContext();
+    const chat = document.getElementById('chat');
+    if (!chat) {
+        return;
+    }
+    const containers = CONTAINERS.filter(container => container.perMessage).map(container => container.selector).join(', ');
     let scheduled = false;
-    const refresh = () => {
-        if (scheduled) {
+    new MutationObserver((records) => {
+        // New messages, or buttons added to a message's button rows
+        const relevant = records.some(record => record.addedNodes.length > 0 && (record.target === chat || record.target.matches?.(containers)));
+        if (scheduled || !relevant) {
             return;
         }
         scheduled = true;
@@ -270,10 +279,7 @@ function watchRenderedMessages() {
             scheduled = false;
             applyMessageStyles();
         });
-    };
-    for (const type of [eventTypes.CHAT_CHANGED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED]) {
-        eventSource.on(type, refresh);
-    }
+    }).observe(chat, { childList: true, subtree: true });
 }
 
 /**
