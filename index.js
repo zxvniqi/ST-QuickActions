@@ -4,10 +4,12 @@ import { initDeleteButton, applyDeleteButtonSetting } from './delete-button.js';
 import { initChatPicker } from './chat-picker.js';
 import { NAME_KINDS, initNameOverride, getStoredName, setOverride, setOverrideEnabled } from './name-override.js';
 import { initSaveGuard } from './save-guard.js';
+import { initSelectionTools } from './selection-tools.js';
 
 const TOGGLES = [
     ['deleteButton', '메시지 메뉴에 삭제 버튼 표시'],
     ['chatPicker', '캐릭터 선택 시 채팅 목록 띄우기'],
+    ['selectionTools', '글자 드래그 시 수정/삭제 버튼 띄우기'],
     ['saveGuard', '모바일 저장 보호 (화면 전환 시 바로 저장)'],
 ];
 
@@ -100,5 +102,6 @@ function addMenuButton() {
     initChatPicker();
     initSaveGuard();
     initNameOverride();
+    initSelectionTools();
     addMenuButton();
 })();

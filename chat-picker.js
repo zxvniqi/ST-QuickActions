@@ -1,111 +1,111 @@
-// Selecting a character shows its chat list instead of opening the latest chat.
+// Selecting a character shows its chat list (with rename / export / delete / import)
+// instead of opening the latest chat.
 import { MODULE, getSettings } from './settings.js';
+import { listChats, setActiveChat, renameChat, deleteChat, exportChat, importChats } from './chat-api.js';
 
 const CHARACTER_LIST_ID = 'rm_print_characters_block';
 // Classes ST puts on the character list while in bulk-edit / multi-select mode
 const BULK_MODE_CLASSES = ['bulk_select', 'group_overlay_mode_select'];
 const SEARCH_DEBOUNCE_MS = 300;
+const TITLE = '편의성 모음';
+
+const ITEM_ACTIONS = [
+    ['rename', 'fa-pen', '이름 바꾸기'],
+    ['export-jsonl', 'fa-file-export', '내보내기 (.jsonl)'],
+    ['export-txt', 'fa-file-lines', '내보내기 (.txt)'],
+    ['delete', 'fa-trash-can', '삭제'],
+];
 
 let isPickerOpen = false;
-
-/**
- * @returns {Promise<object[]|null>} Chats sorted newest first, or null on failure.
- */
-async function fetchChats(avatar, query) {
-    const context = SillyTavern.getContext();
-    try {
-        const response = await fetch('/api/chats/search', {
-            method: 'POST',
-            headers: context.getRequestHeaders(),
-            body: JSON.stringify({ query, avatar_url: avatar, group_id: null }),
-        });
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        const chats = await response.json();
-        if (!Array.isArray(chats)) {
-            return null;
-        }
-        for (const chat of chats) {
-            chat.moment = context.timestampToMoment(chat.last_mes);
-        }
-        return chats.sort((a, b) => (b.moment.valueOf() || 0) - (a.moment.valueOf() || 0));
-    } catch (error) {
-        console.error(`[${MODULE}] Could not load chats`, error);
-        return null;
-    }
-}
-
-/** Saves the chosen chat as the character's active chat, the same way ST does. */
-async function persistActiveChat(character, chatName) {
-    const context = SillyTavern.getContext();
-    character.chat = chatName;
-    try {
-        const response = await fetch('/api/characters/merge-attributes', {
-            method: 'POST',
-            headers: context.getRequestHeaders(),
-            body: JSON.stringify({ avatar: character.avatar, chat: chatName }),
-        });
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-    } catch (error) {
-        console.warn(`[${MODULE}] Could not persist active chat`, error);
-    }
-}
 
 async function openCharacterAtChat(characterId, chatName) {
     const context = SillyTavern.getContext();
     const character = context.characters[characterId];
     if (chatName && character.chat !== chatName) {
-        await persistActiveChat(character, chatName);
+        await setActiveChat(character, chatName);
     }
     await context.selectCharacterById(characterId);
 }
 
-function renderChatList(listElement, chats, activeChat) {
+function renderChatList(listElement, chats, activeChat, highlight = []) {
     const fragment = document.createDocumentFragment();
+    const actionsHtml = ITEM_ACTIONS
+        .map(([action, icon, label]) => `<div class="stqa_chat_action fa-solid ${icon}" data-action="${action}" title="${label}"></div>`)
+        .join('');
 
     for (const chat of chats) {
-        const name = chat.file_name.replace(/\.jsonl$/, '');
-
         const item = document.createElement('div');
         item.className = 'stqa_chat_item';
-        item.dataset.chat = name;
-        item.classList.toggle('stqa_active', name === activeChat);
+        item.dataset.chat = chat.name;
+        item.classList.toggle('stqa_active', chat.name === activeChat);
+        item.classList.toggle('stqa_flash', highlight.includes(chat.name));
 
         const header = document.createElement('div');
         header.className = 'stqa_chat_header';
         const title = document.createElement('span');
         title.className = 'stqa_chat_name';
-        title.textContent = name;
+        title.textContent = chat.name;
         const meta = document.createElement('span');
         meta.className = 'stqa_chat_meta';
-        meta.textContent = `${chat.moment.isValid() ? chat.moment.format('lll') : ''} · ${chat.message_count ?? 0}💬`;
+        meta.textContent = [chat.moment.isValid() ? chat.moment.format('lll') : '', chat.size, `${chat.count}💬`].filter(Boolean).join(' · ');
         header.append(title, meta);
 
         const preview = document.createElement('div');
         preview.className = 'stqa_chat_preview';
-        preview.textContent = chat.preview_message ?? '';
+        preview.textContent = chat.preview;
 
-        item.append(header, preview);
+        const actions = document.createElement('div');
+        actions.className = 'stqa_chat_actions';
+        actions.innerHTML = actionsHtml;
+
+        item.append(header, preview, actions);
         fragment.append(item);
     }
 
     if (chats.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'stqa_chat_empty';
-        empty.textContent = '검색 결과가 없습니다.';
+        empty.textContent = '채팅이 없어요.';
         fragment.append(empty);
     }
 
     listElement.replaceChildren(fragment);
 }
 
+async function askRename(character, name) {
+    const { callGenericPopup, POPUP_TYPE } = SillyTavern.getContext();
+    const input = await callGenericPopup('새 채팅 이름', POPUP_TYPE.INPUT, name, { okButton: '바꾸기', cancelButton: '취소' });
+    const newName = typeof input === 'string' ? input.trim() : '';
+    if (!newName || newName === name) {
+        return null;
+    }
+    const existing = await listChats(character.avatar);
+    if (existing?.some(chat => chat.name.toLowerCase() === newName.toLowerCase())) {
+        toastr.warning('같은 이름의 채팅이 이미 있어요.', TITLE);
+        return null;
+    }
+    return renameChat(character, name, newName);
+}
+
+function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
+}
+
+async function askDelete(character, name) {
+    const { Popup, POPUP_RESULT } = SillyTavern.getContext();
+    // The popup renders HTML, and chat names are user-defined
+    const answer = await Popup.show.confirm('채팅 삭제', `"${escapeHtml(name)}" 채팅을 삭제할까요? 되돌릴 수 없어요.`, { okButton: '삭제', cancelButton: '취소' });
+    if (answer !== POPUP_RESULT.AFFIRMATIVE) {
+        return false;
+    }
+    await deleteChat(character, name);
+    return true;
+}
+
 /**
  * @returns {Promise<{chat?: string, newChat?: boolean}|null>} The user's choice, or null if cancelled.
  */
-async function showChatPicker(character, chats) {
+async function showChatPicker(character, initialChats) {
     const { Popup, POPUP_TYPE, POPUP_RESULT, getThumbnailUrl } = SillyTavern.getContext();
 
     const root = document.createElement('div');
@@ -114,6 +114,10 @@ async function showChatPicker(character, chats) {
         <div class="stqa_picker_head">
             <img class="stqa_picker_avatar" alt="">
             <b class="stqa_picker_title"></b>
+            <label class="menu_button stqa_picker_import" title="채팅 파일 불러오기 (.jsonl / .json)">
+                <i class="fa-solid fa-file-import"></i> 불러오기
+                <input type="file" accept=".jsonl,.json" multiple hidden>
+            </label>
         </div>
         <input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색...">
         <div class="stqa_chat_list"></div>`;
@@ -122,41 +126,73 @@ async function showChatPicker(character, chats) {
 
     const listElement = root.querySelector('.stqa_chat_list');
     const searchInput = root.querySelector('.stqa_picker_search');
-    renderChatList(listElement, chats, character.chat);
+    renderChatList(listElement, initialChats, character.chat);
+
+    // Stale search responses are dropped by sequence number
+    let refreshSeq = 0;
+    const refresh = async (highlight = []) => {
+        const seq = ++refreshSeq;
+        const chats = await listChats(character.avatar, searchInput.value.trim());
+        if (seq === refreshSeq && chats) {
+            renderChatList(listElement, chats, character.chat, highlight);
+        }
+    };
 
     let choice = null;
     const popup = new Popup(root, POPUP_TYPE.TEXT, '', {
         okButton: false,
         cancelButton: '취소',
         allowVerticalScrolling: true,
-        customButtons: [{
-            text: '새 채팅',
-            icon: 'fa-plus',
-            result: POPUP_RESULT.CUSTOM1,
-        }],
+        customButtons: [{ text: '새 채팅', icon: 'fa-plus', result: POPUP_RESULT.CUSTOM1 }],
     });
+
+    const runItemAction = async (action, name) => {
+        try {
+            if (action === 'rename') {
+                const renamed = await askRename(character, name);
+                renamed && await refresh([renamed]);
+            } else if (action === 'delete') {
+                (await askDelete(character, name)) && await refresh();
+            } else {
+                await exportChat(character, name, action === 'export-txt' ? 'txt' : 'jsonl');
+            }
+        } catch (error) {
+            console.error(`[${MODULE}] Chat action failed`, error);
+            toastr.error('작업을 하지 못했어요.', TITLE);
+        }
+    };
 
     listElement.addEventListener('click', (event) => {
         const item = event.target.closest('.stqa_chat_item');
         if (!item) {
             return;
         }
+        const action = event.target.closest('[data-action]')?.dataset.action;
+        if (action) {
+            runItemAction(action, item.dataset.chat);
+            return;
+        }
         choice = { chat: item.dataset.chat };
         popup.complete(POPUP_RESULT.AFFIRMATIVE);
     });
 
-    // Server-side search matches message content too; stale responses are dropped.
+    root.querySelector('.stqa_picker_import input').addEventListener('change', async (event) => {
+        const files = [...event.target.files];
+        event.target.value = '';
+        if (files.length === 0) {
+            return;
+        }
+        const imported = await importChats(character, files);
+        if (imported.length > 0) {
+            toastr.success(`채팅 ${imported.length}개를 불러왔어요.`, TITLE);
+            await refresh(imported);
+        }
+    });
+
     let searchTimer = 0;
-    let searchSeq = 0;
     searchInput.addEventListener('input', () => {
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(async () => {
-            const seq = ++searchSeq;
-            const results = await fetchChats(character.avatar, searchInput.value.trim());
-            if (seq === searchSeq && results) {
-                renderChatList(listElement, results, character.chat);
-            }
-        }, SEARCH_DEBOUNCE_MS);
+        searchTimer = setTimeout(refresh, SEARCH_DEBOUNCE_MS);
     });
 
     const result = await popup.show();
@@ -173,7 +209,7 @@ async function openChatPicker(characterId) {
     const context = SillyTavern.getContext();
     try {
         const character = context.characters[characterId];
-        const chats = await fetchChats(character.avatar, '');
+        const chats = await listChats(character.avatar);
 
         // No chats yet (or the list failed to load): fall back to ST's default behavior.
         if (!chats || chats.length === 0) {
@@ -189,7 +225,7 @@ async function openChatPicker(characterId) {
         }
     } catch (error) {
         console.error(`[${MODULE}] Chat picker failed`, error);
-        toastr.error('채팅 목록을 열지 못했습니다.', '편의성 모음');
+        toastr.error('채팅 목록을 열지 못했습니다.', TITLE);
     } finally {
         isPickerOpen = false;
     }

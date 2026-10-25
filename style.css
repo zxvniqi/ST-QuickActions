@@ -3,6 +3,40 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     display: none;
 }
 
+/* Toolbar shown over selected message text */
+#stqa_selection_toolbar {
+    position: fixed;
+    z-index: 10000;
+    display: none;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--SmartThemeBlurTintColor, #222);
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
+    user-select: none;
+}
+
+#stqa_selection_toolbar.stqa_visible {
+    display: flex;
+}
+
+.stqa_sel_button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.95em;
+}
+
+.stqa_sel_button:hover {
+    background: var(--white30a, rgba(255, 255, 255, 0.15));
+}
+
 /* Wand-menu panel */
 .stqa_panel {
     text-align: left;
@@ -113,6 +147,53 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-word;
+}
+
+.stqa_picker_title {
+    flex: 1;
+}
+
+.stqa_picker_import {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+    width: auto;
+    margin: 0;
+    padding: 4px 10px;
+    white-space: nowrap;
+}
+
+.stqa_chat_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.stqa_chat_action {
+    padding: 5px 7px;
+    border-radius: 6px;
+    opacity: 0.6;
+    cursor: pointer;
+}
+
+.stqa_chat_action:hover {
+    opacity: 1;
+    background-color: var(--white30a);
+}
+
+.stqa_chat_action[data-action="delete"]:hover {
+    color: #ff6b6b;
+}
+
+.stqa_chat_item.stqa_flash {
+    animation: stqa_flash 1.6s ease-out;
+}
+
+@keyframes stqa_flash {
+    from { background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent); }
+    to { background-color: transparent; }
 }
 
 .stqa_chat_empty {

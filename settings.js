@@ -4,6 +4,7 @@ const defaultSettings = Object.freeze({
     deleteButton: true,
     chatPicker: true,
     saveGuard: true,
+    selectionTools: true,
     nameOverride: true,
     charName: '',
     userName: '',
