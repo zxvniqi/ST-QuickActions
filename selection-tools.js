@@ -62,10 +62,10 @@ function showToolbar(info) {
     const { rect } = info;
     const width = toolbar.offsetWidth;
     const height = toolbar.offsetHeight;
-    // Below the selection, so it doesn't cover the phone's own copy/paste menu above it
-    let top = rect.bottom + TOOLBAR_GAP;
-    if (top + height > window.innerHeight - TOOLBAR_GAP) {
-        top = Math.max(TOOLBAR_GAP, rect.top - height - TOOLBAR_GAP);
+    // Above the selection (other extensions put their menus below it); below only if there's no room
+    let top = rect.top - height - TOOLBAR_GAP;
+    if (top < TOOLBAR_GAP) {
+        top = Math.min(rect.bottom + TOOLBAR_GAP, window.innerHeight - height - TOOLBAR_GAP);
     }
     const left = Math.min(Math.max(TOOLBAR_GAP, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - TOOLBAR_GAP);
     toolbar.style.top = `${top}px`;

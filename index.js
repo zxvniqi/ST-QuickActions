@@ -3,7 +3,8 @@ import { MODULE, getSettings } from './settings.js';
 import { initDeleteButton, applyDeleteButtonSetting } from './delete-button.js';
 import { initChatPicker } from './chat-picker.js';
 import { NAME_KINDS, initNameOverride, getStoredName, setOverride, setOverrideEnabled } from './name-override.js';
-import { initSaveGuard } from './save-guard.js';
+import { initSaveGuard, countOtherTabs } from './save-guard.js';
+import { runSaveDiagnosis } from './save-check.js';
 import { initSelectionTools } from './selection-tools.js';
 
 const TOGGLES = [
@@ -26,6 +27,7 @@ function buildPanel() {
                 <input type="checkbox" data-setting="${key}">
                 <span>${label}</span>
             </label>`).join('')}
+        <div class="menu_button stqa_diag_button"><i class="fa-solid fa-stethoscope"></i> 저장 진단 (설정이 되돌아갈 때)</div>
         <hr>
         <label class="checkbox_label">
             <input type="checkbox" class="stqa_name_toggle">
@@ -69,6 +71,7 @@ function buildPanel() {
             applyDeleteButtonSetting();
         }
     });
+    panel.querySelector('.stqa_diag_button').addEventListener('click', () => runSaveDiagnosis(countOtherTabs));
     panel.addEventListener('input', (event) => {
         const kind = event.target.dataset?.nameKind;
         if (kind) {
