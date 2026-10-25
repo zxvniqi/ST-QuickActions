@@ -5,7 +5,21 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.4.0",
+    "version": "1.4.1",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
-    "auto_update": true
+    "auto_update": true,
+    "cache_files": [
+        "index.js",
+        "main.js",
+        "settings.js",
+        "delete-button.js",
+        "chat-picker.js",
+        "chat-api.js",
+        "name-override.js",
+        "save-guard.js",
+        "save-check.js",
+        "selection-tools.js",
+        "text-locate.js",
+        "style.css"
+    ]
 }
