@@ -56,6 +56,54 @@ function hideToolbar() {
     toolbar?.classList.remove('stqa_visible');
 }
 
+const MAX_DODGE_STEPS = 4;
+// Elements covering more than this share of the screen are layout containers, not floating buttons
+const CONTAINER_AREA_RATIO = 0.25;
+
+/** The nearest fixed/absolute-positioned ancestor that is small enough to be a floating button. */
+function floatingAncestor(element) {
+    const screenArea = window.innerWidth * window.innerHeight;
+    for (let node = element; node && node !== document.body; node = node.parentElement) {
+        const { position } = getComputedStyle(node);
+        if (position === 'fixed' || position === 'absolute' || position === 'sticky') {
+            const rect = node.getBoundingClientRect();
+            return rect.width * rect.height < screenArea * CONTAINER_AREA_RATIO ? node : null;
+        }
+    }
+    return null;
+}
+
+/** A floating element (e.g. another extension's button) under the given box, if any. */
+function findBlocker(top, left, width, height) {
+    const points = [[0.1, 0.5], [0.5, 0.5], [0.9, 0.5], [0.5, 0.1], [0.5, 0.9]];
+    for (const [fx, fy] of points) {
+        for (const element of document.elementsFromPoint(left + width * fx, top + height * fy)) {
+            if (toolbar.contains(element)) {
+                continue;
+            }
+            const blocker = floatingAncestor(element);
+            if (blocker) {
+                return blocker.getBoundingClientRect();
+            }
+            break; // only the topmost non-toolbar element matters
+        }
+    }
+    return null;
+}
+
+/** Moves the box up past floating elements sitting where it would appear. */
+function dodgeFloatingElements(position, width, height) {
+    let { top } = position;
+    for (let step = 0; step < MAX_DODGE_STEPS; step++) {
+        const blocker = findBlocker(top, position.left, width, height);
+        if (!blocker || blocker.top - height - TOOLBAR_GAP < TOOLBAR_GAP) {
+            break;
+        }
+        top = blocker.top - height - TOOLBAR_GAP;
+    }
+    return { top, left: position.left };
+}
+
 /**
  * 'dock' (default) pins the toolbar above the chat input, away from the phone's own copy/paste
  * bar and other extensions' menus around the selection; 'above' / 'below' follow the selection.
@@ -81,7 +129,9 @@ function computePosition(rect, width, height) {
 function showToolbar(info) {
     pending = info;
     toolbar.classList.add('stqa_visible');
-    const { top, left } = computePosition(info.rect, toolbar.offsetWidth, toolbar.offsetHeight);
+    const width = toolbar.offsetWidth;
+    const height = toolbar.offsetHeight;
+    const { top, left } = dodgeFloatingElements(computePosition(info.rect, width, height), width, height);
     toolbar.style.top = `${top}px`;
     toolbar.style.left = `${left}px`;
 }

@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -16,10 +16,11 @@
         "chat-picker.js",
         "chat-api.js",
         "name-override.js",
-        "save-guard.js",
-        "save-check.js",
         "selection-tools.js",
         "text-locate.js",
+        "layout-manager.js",
+        "layout-editor.js",
+        "inline-select.js",
         "style.css"
     ]
 }

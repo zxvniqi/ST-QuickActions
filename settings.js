@@ -3,12 +3,13 @@ export const MODULE = 'st_quick_actions';
 const defaultSettings = Object.freeze({
     deleteButton: true,
     chatPicker: true,
-    saveGuard: true,
     selectionTools: true,
     selectionToolbarPosition: 'dock',
     nameOverride: true,
     charName: '',
     userName: '',
+    // Per container selector: { order: string[], hidden: string[] }
+    layout: {},
 });
 
 export function getSettings() {
@@ -17,7 +18,7 @@ export function getSettings() {
     const settings = extensionSettings[MODULE];
     for (const [key, value] of Object.entries(defaultSettings)) {
         if (!Object.hasOwn(settings, key)) {
-            settings[key] = value;
+            settings[key] = structuredClone(value);
         }
     }
     return settings;

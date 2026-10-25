@@ -47,7 +47,7 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     text-align: center;
 }
 
-.stqa_diag_button {
+.stqa_panel_button {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
@@ -57,13 +57,104 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     white-space: nowrap;
 }
 
-.stqa_diag_list {
-    margin: 6px 0 10px;
-    padding-left: 18px;
+/* Inline select: options unfold below the box */
+.stqa_select {
+    flex: 1;
+    min-width: 0;
 }
 
-.stqa_diag_list li {
-    margin-bottom: 4px;
+.stqa_select_box {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.stqa_select.stqa_open .stqa_select_box i {
+    transform: rotate(180deg);
+}
+
+.stqa_select_list {
+    max-height: 180px;
+    overflow-y: auto;
+    margin-top: 3px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+}
+
+.stqa_select_list[hidden] {
+    display: none;
+}
+
+.stqa_select_item {
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.stqa_select_item:hover {
+    background-color: var(--white30a);
+}
+
+.stqa_select_item.stqa_selected {
+    color: var(--SmartThemeQuoteColor);
+    font-weight: bold;
+}
+
+/* Layout: hidden items and the flex switch for block containers */
+.stqa_layout_hidden {
+    display: none !important;
+}
+
+.stqa_layout_flex {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Layout editor */
+.stqa_layout_area {
+    margin-top: 8px;
+}
+
+.stqa_layout_area summary {
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.stqa_layout_group {
+    margin-top: 6px;
+}
+
+.stqa_layout_row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+}
+
+.stqa_layout_row_hidden .stqa_layout_label {
+    opacity: 0.45;
+}
+
+.stqa_layout_label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stqa_layout_move {
+    padding: 4px 6px;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.stqa_layout_move.stqa_disabled {
+    opacity: 0.2;
+    pointer-events: none;
 }
 
 .stqa_hint {
@@ -74,6 +165,8 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 
 .stqa_name_field > span.stqa_wide_label {
     flex: 0 0 auto;
+    align-self: flex-start;
+    padding-top: 6px;
     font-family: inherit;
 }
 
