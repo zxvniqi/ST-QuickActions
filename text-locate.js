@@ -1,7 +1,8 @@
 // Maps text selected on screen back to its position in the raw message source.
 // The rendered text lacks markdown markers / HTML tags, so the search tolerates them.
 
-const MARKUP_GAP = '(?:[*_~`]|<[^>]*>)*';
+// Real tags only (a letter after "<"), so emoticons like ( >///< ) stay plain text
+const MARKUP_GAP = '(?:[*_~`]|</?[A-Za-z][^<>]*>)*';
 const WRAPPER_CHARS = '*_~';
 
 function escapeRegex(text) {
@@ -171,7 +172,7 @@ export function expandOverWrappers(source, { start, end }) {
     return { start, end };
 }
 
-const MARKUP_TOKEN = /[*_~`]+|<[^>]*>/g;
+const MARKUP_TOKEN = /[*_~`]+|<\/?[A-Za-z][^<>]*>/g;
 
 /**
  * Joins the two sides of a cut, dropping markup that became an empty pair exactly at the

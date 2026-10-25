@@ -200,18 +200,25 @@ function messageButtons(selector) {
     return [...buttons.entries()].map(([key, element]) => ({ key, element }));
 }
 
-/** Button keys of a per-message container in page order (template first, then a rendered message). */
+function childKeys(container) {
+    return [...container?.children ?? []].map(buttonClassOf).filter(Boolean);
+}
+
+/**
+ * Button keys of a per-message container in page order. A rendered message comes first, since
+ * other extensions add buttons to rendered messages only (often at the start); buttons that only
+ * the template has go after their template neighbour.
+ */
 function naturalMessageKeys(selector) {
-    const keys = [];
-    for (const source of [document.querySelector(`#message_template ${selector}`), document.querySelector(`#chat .mes ${selector}`)]) {
-        for (const element of source?.children ?? []) {
-            const key = buttonClassOf(element);
-            if (key && !keys.includes(key)) {
-                keys.push(key);
-            }
+    const keys = childKeys([...document.querySelectorAll(`#chat .mes ${selector}`)].at(-1));
+    const templateKeys = childKeys(document.querySelector(`#message_template ${selector}`));
+    templateKeys.forEach((key, index) => {
+        if (!keys.includes(key)) {
+            const previous = templateKeys.slice(0, index).findLast(other => keys.includes(other));
+            keys.splice(previous ? keys.indexOf(previous) + 1 : 0, 0, key);
         }
-    }
-    return keys;
+    });
+    return [...new Set(keys)];
 }
 
 /**
@@ -244,7 +251,29 @@ function applyMessageStyles() {
         style.id = STYLE_ID;
         document.head.append(style);
     }
-    style.textContent = rules.join('\n');
+    const text = rules.join('\n');
+    if (style.textContent !== text) {
+        style.textContent = text;
+    }
+}
+
+/** Rebuilds the message button rules once messages are drawn (their buttons may differ from the template). */
+function watchRenderedMessages() {
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    let scheduled = false;
+    const refresh = () => {
+        if (scheduled) {
+            return;
+        }
+        scheduled = true;
+        requestAnimationFrame(() => {
+            scheduled = false;
+            applyMessageStyles();
+        });
+    };
+    for (const type of [eventTypes.CHAT_CHANGED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED]) {
+        eventSource.on(type, refresh);
+    }
 }
 
 /**
@@ -297,6 +326,7 @@ export function saveLayout(selector, { order, hidden }) {
 
 export function initLayoutManager() {
     applyMessageStyles();
+    watchRenderedMessages();
     for (const { selector, perMessage } of CONTAINERS) {
         const container = perMessage ? null : document.querySelector(selector);
         if (!container) {
