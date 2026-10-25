@@ -1,7 +1,8 @@
-// Entry point: refreshes stale cached files after an update, then loads the extension.
+// Entry point: loads the extension, and quietly refreshes stale cached files after an update.
 // ST's server sends no cache headers, so phone browsers may keep running an old copy of the
 // extension for hours after it was updated. When the version in manifest.json changes, every
-// file listed there is re-downloaded into the browser cache and the page reloads once.
+// file listed there is re-downloaded into the browser cache in the background (no reload),
+// so the next time the page is opened the new code runs.
 const KEY = 'st_quick_actions_loaded_version';
 
 async function refreshCacheIfUpdated() {
@@ -9,24 +10,15 @@ async function refreshCacheIfUpdated() {
         const base = new URL('./', import.meta.url);
         const manifest = await (await fetch(new URL('manifest.json', base), { cache: 'no-cache' })).json();
         if (localStorage.getItem(KEY) === manifest.version) {
-            return false;
+            return;
         }
-        localStorage.setItem(KEY, manifest.version);
-        // At most one reload per tab session, even if this browser keeps wiping localStorage
-        if (sessionStorage.getItem(KEY) === manifest.version) {
-            return false;
-        }
-        sessionStorage.setItem(KEY, manifest.version);
         const files = Array.isArray(manifest.cache_files) ? manifest.cache_files : [];
         await Promise.all(files.map(file => fetch(new URL(file, base), { cache: 'reload' })));
-        location.reload();
-        return true;
+        localStorage.setItem(KEY, manifest.version);
     } catch {
-        // Storage or network trouble: just run whatever is loaded
-        return false;
+        // Storage or network trouble: the cache simply refreshes on its own later
     }
 }
 
-if (!(await refreshCacheIfUpdated())) {
-    await import('./main.js');
-}
+await import('./main.js');
+refreshCacheIfUpdated();
