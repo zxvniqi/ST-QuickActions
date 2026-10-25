@@ -3,11 +3,24 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     display: none;
 }
 
-/* Settings panel: name override */
+/* Wand-menu panel */
+.stqa_panel {
+    text-align: left;
+}
+
+.stqa_panel h3 {
+    margin-top: 0;
+    text-align: center;
+}
+
 .stqa_hint {
     display: block;
     margin: 2px 0 6px;
     opacity: 0.75;
+}
+
+.stqa_name_fields.stqa_off {
+    opacity: 0.45;
 }
 
 .stqa_name_field {

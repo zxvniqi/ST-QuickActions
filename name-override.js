@@ -1,32 +1,17 @@
-// Per-chat override of what {{char}} / {{user}} resolve to (e.g. an NPC inside a multi-character card).
+// Global override of what {{char}} / {{user}} resolve to (e.g. an NPC inside a multi-character card).
 // Works with both macro engines:
 //  - experimental engine: an official MacroEnvBuilder provider rewrites env.names
 //  - legacy engine: a registered macro shadows the built-in value, only while an override is set
-import { MODULE } from './settings.js';
+import { getSettings } from './settings.js';
 
-const META_KEY = `${MODULE}_names`;
 export const NAME_KINDS = Object.freeze(['char', 'user']);
+const SETTING_KEYS = Object.freeze({ char: 'charName', user: 'userName' });
 const PROVIDER_ORDER_LATE = 90;
 
 // Hot-path cache: macro substitution runs many times per generation, so avoid getContext() there.
-let overrides = { char: '', user: '' };
+const overrides = { char: '', user: '' };
 let isGroupChat = false;
 const legacyRegistered = { char: false, user: false };
-const changeListeners = new Set();
-
-export function getOverrides() {
-    return { ...overrides };
-}
-
-export function onOverridesChanged(listener) {
-    changeListeners.add(listener);
-}
-
-function notifyChange() {
-    for (const listener of changeListeners) {
-        listener(getOverrides());
-    }
-}
 
 function applyToEnv(env) {
     if (overrides.user) {
@@ -66,44 +51,34 @@ function syncLegacyMacros() {
     }
 }
 
-function loadFromChat() {
-    const { chatMetadata, groupId } = SillyTavern.getContext();
-    const stored = chatMetadata?.[META_KEY] ?? {};
-    overrides = {
-        char: typeof stored.char === 'string' ? stored.char : '',
-        user: typeof stored.user === 'string' ? stored.user : '',
-    };
-    isGroupChat = groupId !== undefined && groupId !== null;
+/** Rebuilds the hot-path cache: stored names apply only while the feature is switched on. */
+function refreshOverrides() {
+    const settings = getSettings();
+    for (const kind of NAME_KINDS) {
+        overrides[kind] = settings.nameOverride ? String(settings[SETTING_KEYS[kind]] ?? '').trim() : '';
+    }
     syncLegacyMacros();
-    notifyChange();
 }
 
-export function hasOpenChat() {
-    return Boolean(SillyTavern.getContext().getCurrentChatId());
+export function getStoredName(kind) {
+    return getSettings()[SETTING_KEYS[kind]];
 }
 
 /**
  * @param {'char'|'user'} kind
- * @param {string} value Empty string clears the override.
- * @param {{ debounced?: boolean }} [options]
+ * @param {string} value Empty string restores the default name.
  */
-export async function setOverride(kind, value, { debounced = false } = {}) {
-    const context = SillyTavern.getContext();
-    if (!context.getCurrentChatId()) {
-        throw new Error('No chat is open');
-    }
-    const name = String(value ?? '').trim();
-    const stored = { ...(context.chatMetadata[META_KEY] ?? {}), [kind]: name };
-    if (stored.char || stored.user) {
-        context.chatMetadata[META_KEY] = stored;
-    } else {
-        delete context.chatMetadata[META_KEY];
-    }
+export function setOverride(kind, value) {
+    getSettings()[SETTING_KEYS[kind]] = String(value ?? '').trim();
+    refreshOverrides();
+    SillyTavern.getContext().saveSettingsDebounced();
+}
 
-    overrides[kind] = name;
-    syncLegacyMacros();
-    notifyChange();
-    debounced ? context.saveMetadataDebounced() : await context.saveMetadata();
+/** Switches the override on/off without touching the stored names. */
+export function setOverrideEnabled(enabled) {
+    getSettings().nameOverride = enabled;
+    refreshOverrides();
+    SillyTavern.getContext().saveSettingsDebounced();
 }
 
 function registerSlashCommands() {
@@ -111,13 +86,13 @@ function registerSlashCommands() {
     for (const kind of NAME_KINDS) {
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: `qa-${kind}`,
-            callback: async (_args, value) => {
-                const context = SillyTavern.getContext();
-                if (!context.getCurrentChatId()) {
-                    toastr.warning('채팅을 먼저 열어주세요.', 'Quick Actions');
-                    return '';
+            callback: (_args, value) => {
+                const name = String(value ?? '').trim();
+                setOverride(kind, name);
+                if (name) {
+                    setOverrideEnabled(true);
                 }
-                await setOverride(kind, String(value ?? ''));
+                const context = SillyTavern.getContext();
                 return overrides[kind] || (kind === 'char' ? context.name2 : context.name1);
             },
             returns: `the name {{${kind}}} now resolves to`,
@@ -128,7 +103,7 @@ function registerSlashCommands() {
                     isRequired: false,
                 }),
             ],
-            helpString: `<div>Overrides what <code>{{${kind}}}</code> resolves to in the current chat (saved with the chat). Call without a name to restore the default.</div>
+            helpString: `<div>Overrides what <code>{{${kind}}}</code> resolves to in every chat. Call without a name to restore the default.</div>
                 <div>Example: <code>/qa-${kind} NPC</code></div>`,
         }));
     }
@@ -137,7 +112,10 @@ function registerSlashCommands() {
 export function initNameOverride() {
     const { macros, eventSource, eventTypes } = SillyTavern.getContext();
     macros?.envBuilder?.registerProvider?.(applyToEnv, PROVIDER_ORDER_LATE);
-    eventSource.on(eventTypes.CHAT_CHANGED, loadFromChat);
+    eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        const { groupId } = SillyTavern.getContext();
+        isGroupChat = groupId !== undefined && groupId !== null;
+    });
+    refreshOverrides();
     registerSlashCommands();
-    loadFromChat();
 }

@@ -189,7 +189,7 @@ async function openChatPicker(characterId) {
         }
     } catch (error) {
         console.error(`[${MODULE}] Chat picker failed`, error);
-        toastr.error('채팅 목록을 열지 못했습니다.', 'Quick Actions');
+        toastr.error('채팅 목록을 열지 못했습니다.', '편의성 모음');
     } finally {
         isPickerOpen = false;
     }

@@ -1,11 +1,11 @@
 {
-    "display_name": "Quick Actions",
+    "display_name": "편의성 모음",
     "loading_order": 100,
     "dependencies": [],
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true
 }

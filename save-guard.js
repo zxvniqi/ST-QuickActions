@@ -55,7 +55,7 @@ function watchOtherTabs() {
             channel.postMessage('here');
         }
         if (getSettings().saveGuard && (event.data === 'hello' || event.data === 'here')) {
-            toastr.warning('SillyTavern이 다른 탭에도 열려 있어요. 설정이 덮어써질 수 있으니 한쪽 탭은 닫아주세요.', 'Quick Actions', { timeOut: 10000, preventDuplicates: true });
+            toastr.warning('SillyTavern이 다른 탭에도 열려 있어요. 설정이 덮어써질 수 있으니 한쪽 탭은 닫아주세요.', '편의성 모음', { timeOut: 10000, preventDuplicates: true });
         }
     });
     channel.postMessage('hello');
