@@ -1,0 +1,90 @@
+/* Delete button: hidden unless the feature is enabled */
+body:not(.stqa_delete_on) .stqa_mes_delete {
+    display: none;
+}
+
+/* Chat picker */
+.stqa_picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_picker_head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stqa_picker_avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.stqa_picker_search {
+    margin: 0;
+}
+
+.stqa_chat_list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_chat_item {
+    padding: 8px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.stqa_chat_item:hover {
+    background-color: var(--white30a);
+}
+
+.stqa_chat_item.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_chat_header {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.stqa_chat_name {
+    font-weight: bold;
+    word-break: break-all;
+}
+
+.stqa_chat_meta {
+    font-size: 0.85em;
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+.stqa_chat_preview {
+    margin-top: 4px;
+    font-size: 0.9em;
+    opacity: 0.8;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+.stqa_chat_empty {
+    padding: 16px;
+    text-align: center;
+    opacity: 0.6;
+}

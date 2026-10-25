@@ -1,0 +1,11 @@
+{
+    "display_name": "Quick Actions",
+    "loading_order": 100,
+    "dependencies": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "zxvniqi",
+    "version": "1.0.0",
+    "homePage": "https://github.com/zxvniqi/ST-QuickActions",
+    "auto_update": true
+}
