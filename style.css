@@ -72,6 +72,11 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     opacity: 0.75;
 }
 
+.stqa_name_field > span.stqa_wide_label {
+    flex: 0 0 auto;
+    font-family: inherit;
+}
+
 .stqa_name_fields.stqa_off {
     opacity: 0.45;
 }

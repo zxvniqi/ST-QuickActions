@@ -5,6 +5,7 @@ const defaultSettings = Object.freeze({
     chatPicker: true,
     saveGuard: true,
     selectionTools: true,
+    selectionToolbarPosition: 'dock',
     nameOverride: true,
     charName: '',
     userName: '',

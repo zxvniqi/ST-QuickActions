@@ -5,7 +5,33 @@ import * as script from '../../../../script.js';
 import { MODULE, getSettings } from './settings.js';
 
 const STAMP_KEY = `${MODULE}_save_stamp`;
+const DEVICE_KEY = `${MODULE}_device_id`;
 const TITLE = '편의성 모음';
+const MAX_LISTED_DIFFS = 8;
+// Friendly names for settings people commonly report as "turning back on"
+const SETTING_LABELS = Object.freeze({
+    allow_name1_display: '응답에 {{user}}: 표시',
+    allow_name2_display: '응답에 {{char}}: 표시',
+});
+
+let deviceId = null;
+
+/** A random id for this browser, so the diagnosis can tell which device saved last. */
+function getDeviceId() {
+    if (deviceId) {
+        return deviceId;
+    }
+    try {
+        deviceId = localStorage.getItem(DEVICE_KEY);
+        if (!deviceId) {
+            deviceId = Math.random().toString(36).slice(2, 10);
+            localStorage.setItem(DEVICE_KEY, deviceId);
+        }
+    } catch {
+        deviceId = 'unknown';
+    }
+    return deviceId;
+}
 
 function readLocalStamp() {
     try {
@@ -25,7 +51,16 @@ function writeLocalStamp(stamp) {
 
 /** Called on every settings edit; the stamp is saved together with ST's next settings save. */
 export function stampSettingsEdit() {
-    getSettings().saveStamp = Date.now();
+    const settings = getSettings();
+    settings.saveStamp = Date.now();
+    settings.saveDevice = getDeviceId();
+}
+
+/** Settings whose value on the server differs from what is applied right now. */
+function diffSettings(serverPowerUser, livePowerUser) {
+    return Object.keys(livePowerUser)
+        .filter(key => JSON.stringify(serverPowerUser?.[key]) !== JSON.stringify(livePowerUser[key]))
+        .map(key => SETTING_LABELS[key] ?? key);
 }
 
 /** ST reported a successful save: remember which edit this browser believes was saved. */
@@ -99,6 +134,26 @@ export async function runSaveDiagnosis(countOtherTabs) {
     const items = [];
     const advice = [];
     try {
+        // Before saving anything: what the server holds vs what is applied in this page
+        const before = await readServerSettings();
+        const lastDevice = before?.extension_settings?.[MODULE]?.saveDevice;
+        if (lastDevice) {
+            const fromHere = lastDevice === getDeviceId();
+            items.push(line(fromHere ? true : 'info', fromHere
+                ? '설정을 마지막으로 바꾼 곳은 이 기기(브라우저)예요.'
+                : '설정을 마지막으로 바꾼 곳은 다른 기기나 다른 브라우저예요.'));
+            if (!fromHere) {
+                advice.push('다른 기기(PC 등)나 다른 브라우저에서 실리가 열려 있으면, 거기에 남아 있는 예전 설정이 저장되면서 덮어써요. 다른 곳의 실리 탭을 닫거나 새로고침해 주세요.');
+            }
+        }
+        const diffs = diffSettings(before?.power_user, SillyTavern.getContext().powerUserSettings ?? {});
+        items.push(line(diffs.length === 0, diffs.length === 0
+            ? '서버에 저장된 설정과 지금 적용된 설정이 같아요.'
+            : `서버에 저장된 값과 지금 적용된 값이 다른 설정: ${diffs.slice(0, MAX_LISTED_DIFFS).join(', ')}${diffs.length > MAX_LISTED_DIFFS ? ` 외 ${diffs.length - MAX_LISTED_DIFFS}개` : ''}`));
+        if (diffs.length > 0) {
+            advice.push('새로고침 직후인데도 값이 다르다면, 서버에는 제대로 저장돼 있는데 다른 확장·스크립트(예: 주점/酒馆 도우미 스크립트, 프리셋 자동 적용 확장)가 켤 때 값을 바꾸는 거예요. 확장을 하나씩 꺼보며 범인을 찾아보세요. (방금 설정을 바꾼 직후라면 아직 저장 전이라 다를 수 있어요.)');
+        }
+
         const token = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         getSettings().diagToken = token;
 
@@ -137,7 +192,7 @@ export async function runSaveDiagnosis(countOtherTabs) {
             : '브라우저가 공간이 부족하면 이 사이트 데이터를 지울 수 있어요. (실리 설정 자체는 서버에 있어서 영향 없음)'));
 
         if (advice.length === 0) {
-            advice.push('저장 경로는 정상이에요. 그래도 되돌아간다면 PC 등 다른 기기에 켜둔 SillyTavern이 예전 설정으로 덮어쓰는 경우가 대부분이에요. 다른 기기의 실리 탭을 닫거나 새로고침해 주세요.');
+            advice.push('저장 경로는 정상이에요. 설정을 바꾼 뒤 새로고침하고 곧바로 다시 진단해 보면, 되돌아가는 원인이 위 항목에 나타나요.');
         }
     } catch (error) {
         console.error(`[${MODULE}] Save diagnosis failed`, error);
@@ -150,6 +205,7 @@ export async function runSaveDiagnosis(countOtherTabs) {
 
     const html = `
         <h3>저장 진단</h3>
+        <small class="stqa_hint">정확히 보려면: 되돌아가는 설정을 바꿈 → 새로고침 → 바로 이 진단 실행</small>
         <ul class="stqa_diag_list">${items.join('')}</ul>
         <b>추천</b>
         <ul class="stqa_diag_list">${advice.map(text => `<li>${text}</li>`).join('')}</ul>`;

@@ -27,6 +27,14 @@ function buildPanel() {
                 <input type="checkbox" data-setting="${key}">
                 <span>${label}</span>
             </label>`).join('')}
+        <label class="stqa_name_field">
+            <span class="stqa_wide_label">수정/삭제 버튼 위치</span>
+            <select class="text_pole" data-setting="selectionToolbarPosition">
+                <option value="dock">화면 아래 (입력창 위)</option>
+                <option value="above">선택한 글자 위</option>
+                <option value="below">선택한 글자 아래</option>
+            </select>
+        </label>
         <div class="menu_button stqa_diag_button"><i class="fa-solid fa-stethoscope"></i> 저장 진단 (설정이 되돌아갈 때)</div>
         <hr>
         <label class="checkbox_label">
@@ -42,8 +50,8 @@ function buildPanel() {
                 </label>`).join('')}
         </div>`;
 
-    for (const input of panel.querySelectorAll('input[data-setting]')) {
-        input.checked = settings[input.dataset.setting];
+    for (const input of panel.querySelectorAll('[data-setting]')) {
+        input.type === 'checkbox' ? (input.checked = settings[input.dataset.setting]) : (input.value = settings[input.dataset.setting]);
     }
     for (const input of panel.querySelectorAll('input[data-name-kind]')) {
         const kind = input.dataset.nameKind;
@@ -65,7 +73,7 @@ function buildPanel() {
         if (!key) {
             return;
         }
-        settings[key] = event.target.checked;
+        settings[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
         SillyTavern.getContext().saveSettingsDebounced();
         if (key === 'deleteButton') {
             applyDeleteButtonSetting();

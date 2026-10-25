@@ -56,18 +56,32 @@ function hideToolbar() {
     toolbar?.classList.remove('stqa_visible');
 }
 
+/**
+ * 'dock' (default) pins the toolbar above the chat input, away from the phone's own copy/paste
+ * bar and other extensions' menus around the selection; 'above' / 'below' follow the selection.
+ */
+function computePosition(rect, width, height) {
+    const clampTop = top => Math.min(Math.max(TOOLBAR_GAP, top), window.innerHeight - height - TOOLBAR_GAP);
+    const position = getSettings().selectionToolbarPosition;
+
+    if (position === 'above' || position === 'below') {
+        const aboveTop = rect.top - height - TOOLBAR_GAP;
+        const belowTop = rect.bottom + TOOLBAR_GAP;
+        const top = position === 'above'
+            ? (aboveTop >= TOOLBAR_GAP ? aboveTop : belowTop)
+            : (belowTop + height <= window.innerHeight - TOOLBAR_GAP ? belowTop : aboveTop);
+        const left = rect.left + rect.width / 2 - width / 2;
+        return { top: clampTop(top), left: Math.min(Math.max(TOOLBAR_GAP, left), window.innerWidth - width - TOOLBAR_GAP) };
+    }
+
+    const inputTop = document.getElementById('send_form')?.getBoundingClientRect().top ?? window.innerHeight;
+    return { top: clampTop(inputTop - height - TOOLBAR_GAP), left: (window.innerWidth - width) / 2 };
+}
+
 function showToolbar(info) {
     pending = info;
     toolbar.classList.add('stqa_visible');
-    const { rect } = info;
-    const width = toolbar.offsetWidth;
-    const height = toolbar.offsetHeight;
-    // Above the selection (other extensions put their menus below it); below only if there's no room
-    let top = rect.top - height - TOOLBAR_GAP;
-    if (top < TOOLBAR_GAP) {
-        top = Math.min(rect.bottom + TOOLBAR_GAP, window.innerHeight - height - TOOLBAR_GAP);
-    }
-    const left = Math.min(Math.max(TOOLBAR_GAP, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - TOOLBAR_GAP);
+    const { top, left } = computePosition(info.rect, toolbar.offsetWidth, toolbar.offsetHeight);
     toolbar.style.top = `${top}px`;
     toolbar.style.left = `${left}px`;
 }
