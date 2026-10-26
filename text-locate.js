@@ -75,90 +75,204 @@ function segmentsOf(text, span, pattern) {
     return pieces;
 }
 
-// Parts a translation keeps unchanged: tags, numbers, Latin words, quote marks, list markers
-const KEPT_TOKEN = /<\/?[\w-]+|\d+|[A-Za-z][\w-]+|["“”「」『』*`[\]]|^\s*[-•]/g;
+// Parts a translation keeps unchanged: tags, numbers, Latin words, quote marks, list markers,
+// and the tone of a sentence (? ! …)
+const KEPT_TOKEN = /<\/?[\w-]+|\d+|[A-Za-z][\w-]+|["“”「」『』*`[\]]|^\s*[-•]|[?？]|[!！]|…|\.\.\./g;
+// Translations often switch quote marks (「」 -> "") and full-width marks
+const SAME_TOKEN = { '？': '?', '！': '!', '...': '…', '“': '"', '”': '"', '「': '"', '」': '"', '『': '"', '』': '"' };
+// What kind of line a piece is: dialogue, a tag / bracket line, a list item, or narration.
+// Translators keep this, so pairing different kinds is costly.
+const PIECE_KIND = [[/^\s*["“”「」『』]/, 'quote'], [/^\s*[<[]/, 'tag'], [/^\s*[-•*]\s/, 'list']];
+const KIND_MISMATCH_COST = 1.5;
 
-/** How alike two paragraphs of different languages look (0..2): shared kept parts + similar length share. */
-function similarity(a, b, lengthShareA, lengthShareB) {
-    const tokensA = new Set(a.match(KEPT_TOKEN));
-    const tokensB = new Set(b.match(KEPT_TOKEN));
-    const union = new Set([...tokensA, ...tokensB]).size;
-    const shared = [...tokensA].filter(token => tokensB.has(token)).length;
-    const tokenScore = union === 0 ? 0.3 : shared / union;
-    return tokenScore + Math.min(lengthShareA, lengthShareB) / Math.max(lengthShareA, lengthShareB);
+function kindOf(text) {
+    return PIECE_KIND.find(([pattern]) => pattern.test(text))?.[1] ?? 'text';
 }
 
 /**
- * Pairs up the paragraphs of two versions when one has extra ones (e.g. translator's notes):
- * the pairing with the highest total similarity, extra paragraphs left unpaired.
- * @returns {number[]} for each `from` piece, the index of its `to` piece or -1
+ * How one unit of meaning can be split on each side: [from pieces, to pieces, extra cost].
+ * Translations often merge two sentences into one or split one into two; a piece may also exist
+ * on one side only (e.g. a translator's note).
+ */
+const BEADS = Object.freeze([[1, 1, 0], [2, 1, 0.6], [1, 2, 0.6], [3, 1, 1.4], [1, 3, 1.4], [1, 0, 0.8], [0, 1, 0.8]]);
+// Dropping a long piece is unlikely, so a one-sided piece also costs by its length share
+const ONE_SIDED_COST_PER_SHARE = 6;
+const TOKEN_WEIGHT = 1.2;
+
+// Pieces pair up near the "diagonal" (the n-th paragraph with about the n-th), so only that band
+// is searched; the whole table is the fallback when the band finds no path
+const BAND_SHARE = 0.25;
+const BAND_MIN = 8;
+
+function describePieces(text, pieces) {
+    const texts = pieces.map(piece => text.slice(piece.start, piece.end));
+    const total = texts.reduce((sum, piece) => sum + piece.length, 0) || 1;
+    return texts.map(piece => ({
+        share: piece.length / total,
+        kind: kindOf(piece),
+        tokens: new Set((piece.match(KEPT_TOKEN) ?? []).map(token => SAME_TOKEN[token] ?? token)),
+    }));
+}
+
+function sharesOf(pieces, start, count) {
+    let sum = 0;
+    for (let index = start; index < start + count; index++) {
+        sum += pieces[index].share;
+    }
+    return sum;
+}
+
+function tokensOf(pieces, start, count) {
+    if (count === 1) {
+        return pieces[start].tokens;
+    }
+    const tokens = new Set();
+    for (let index = start; index < start + count; index++) {
+        pieces[index].tokens.forEach(token => tokens.add(token));
+    }
+    return tokens;
+}
+
+/** Cost of treating a[i..i+di) and b[j..j+dj) as the same unit: different length shares, kinds and kept parts. */
+function groupCost(a, i, di, b, j, dj) {
+    let cost = Math.log(Math.max(sharesOf(a, i, di), 1e-4) / Math.max(sharesOf(b, j, dj), 1e-4)) ** 2;
+    // A merged unit is judged by its first piece's kind
+    if (a[i].kind !== b[j].kind) {
+        cost += KIND_MISMATCH_COST;
+    }
+    const tokensA = tokensOf(a, i, di);
+    const tokensB = tokensOf(b, j, dj);
+    // Kept parts only tell something when both sides have some (an English sentence has words,
+    // its Korean translation may have none)
+    if (tokensA.size > 0 && tokensB.size > 0) {
+        let shared = 0;
+        tokensA.forEach(token => tokensB.has(token) && shared++);
+        const union = tokensA.size + tokensB.size - shared;
+        cost += TOKEN_WEIGHT * (1 - shared / union) * (di + dj) / 2;
+    }
+    return cost;
+}
+
+function alignWithin(a, b, band) {
+    const best = Array.from({ length: a.length + 1 }, () => new Float64Array(b.length + 1).fill(Infinity));
+    const step = Array.from({ length: a.length + 1 }, () => new Int8Array(b.length + 1).fill(-1));
+    best[0][0] = 0;
+    const slope = b.length / Math.max(a.length, 1);
+    for (let i = 0; i <= a.length; i++) {
+        const from = Math.max(0, Math.floor(i * slope - band));
+        const to = Math.min(b.length, Math.ceil(i * slope + band));
+        for (let j = from; j <= to; j++) {
+            if (best[i][j] === Infinity) {
+                continue;
+            }
+            for (let index = 0; index < BEADS.length; index++) {
+                const [di, dj, extra] = BEADS[index];
+                if (i + di > a.length || j + dj > b.length) {
+                    continue;
+                }
+                const cost = di && dj
+                    ? groupCost(a, i, di, b, j, dj)
+                    : ONE_SIDED_COST_PER_SHARE * (sharesOf(a, i, di) + sharesOf(b, j, dj));
+                const total = best[i][j] + extra + cost;
+                if (total < best[i + di][j + dj]) {
+                    best[i + di][j + dj] = total;
+                    step[i + di][j + dj] = index;
+                }
+            }
+        }
+    }
+    return best[a.length][b.length] === Infinity ? null : step;
+}
+
+/**
+ * Aligns the pieces of two versions with the lowest total cost (like aligning a book with its
+ * translation sentence by sentence).
+ * @returns {{ from: number[], to: number[] }[]} units in order, each with the pieces it covers
  */
 function alignPieces(fromText, fromPieces, toText, toPieces) {
-    const texts = (text, pieces) => pieces.map(piece => text.slice(piece.start, piece.end));
-    const shares = list => {
-        const total = list.reduce((sum, text) => sum + text.length, 0) || 1;
-        return list.map(text => text.length / total);
-    };
-    const fromTexts = texts(fromText, fromPieces);
-    const toTexts = texts(toText, toPieces);
-    const fromShares = shares(fromTexts);
-    const toShares = shares(toTexts);
-    const rows = fromTexts.length;
-    const cols = toTexts.length;
-    // best[i][j]: best total for the first i / j pieces
-    const best = Array.from({ length: rows + 1 }, () => new Float64Array(cols + 1));
-    for (let i = 1; i <= rows; i++) {
-        for (let j = 1; j <= cols; j++) {
-            const paired = best[i - 1][j - 1] + similarity(fromTexts[i - 1], toTexts[j - 1], fromShares[i - 1], toShares[j - 1]);
-            best[i][j] = Math.max(paired, best[i - 1][j], best[i][j - 1]);
+    const a = describePieces(fromText, fromPieces);
+    const b = describePieces(toText, toPieces);
+    const size = Math.max(a.length, b.length);
+    const step = alignWithin(a, b, Math.max(BAND_MIN, Math.ceil(size * BAND_SHARE), Math.abs(a.length - b.length) + 2))
+        ?? alignWithin(a, b, size);
+    const units = [];
+    for (let i = a.length, j = b.length; i > 0 || j > 0;) {
+        const [di, dj] = BEADS[step[i][j]];
+        units.unshift({ from: indexes(i - di, i), to: indexes(j - dj, j) });
+        i -= di;
+        j -= dj;
+    }
+    return units;
+}
+
+function indexes(start, end) {
+    return Array.from({ length: end - start }, (_, index) => start + index);
+}
+
+const TAG_BLOCK = /<([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?<\/\1\s*>/g;
+
+const paragraphCount = text => text.split('\n').filter(line => line.trim()).length;
+
+/**
+ * Blanks out tag blocks the other version doesn't have at all (e.g. a <thinking> or <hud> block
+ * the translator left out), keeping every offset in place, so they don't throw off the alignment.
+ * A block is only left out when that brings the paragraph counts closer: a fold wrapping the
+ * whole story (<details>) whose tags the translator dropped must stay.
+ */
+function maskOneSidedBlocks(text, other) {
+    const target = paragraphCount(other);
+    let masked = text;
+    for (const match of text.matchAll(TAG_BLOCK)) {
+        if (new RegExp(`<${match[1]}\\b`, 'i').test(other)) {
+            continue;
+        }
+        const candidate = masked.slice(0, match.index) + match[0].replace(/[^\n]/g, ' ') + masked.slice(match.index + match[0].length);
+        if (Math.abs(paragraphCount(candidate) - target) < Math.abs(paragraphCount(masked) - target)) {
+            masked = candidate;
         }
     }
-    const result = new Array(rows).fill(-1);
-    for (let i = rows, j = cols; i > 0 && j > 0;) {
-        if (best[i][j] === best[i - 1][j]) {
-            i--;
-        } else if (best[i][j] === best[i][j - 1]) {
-            j--;
-        } else {
-            result[--i] = --j;
-        }
-    }
-    return result;
+    return masked;
 }
 
 /**
  * Maps a range in one version of a message (e.g. the translation) to the matching part of
- * another version (the original). Pieces are matched by position, going finer level by level
- * while both versions have the same number of pieces. Paragraphs are paired by similarity when
- * their numbers differ; finer levels stop there, keeping the last match (worst case the whole text).
+ * another version (the original), going finer level by level (paragraphs, quoted parts,
+ * sentences). At each level the pieces are aligned even when the versions split them
+ * differently; when the selection only covers pieces the other side lacks, the last match is
+ * kept (worst case the whole text).
  * @returns {{ start: number, end: number }}
  */
-export function mapToMatchingPart(fromText, range, toText) {
+export function mapToMatchingPart(fromSource, range, toSource) {
+    const fromText = maskOneSidedBlocks(fromSource, toSource);
+    const toText = maskOneSidedBlocks(toSource, fromSource);
     let fromSpan = { start: 0, end: fromText.length };
     let toSpan = { start: 0, end: toText.length };
-    for (const [level, pattern] of SEGMENT_LEVELS.entries()) {
+    for (const pattern of SEGMENT_LEVELS) {
         const fromPieces = segmentsOf(fromText, fromSpan, pattern);
         const toPieces = segmentsOf(toText, toSpan, pattern);
         const first = fromPieces.findIndex(piece => piece.end > range.start);
         const last = fromPieces.findLastIndex(piece => piece.start < range.end);
-        if (first === -1 || last === -1 || first > last) {
+        if (first === -1 || last === -1 || first > last || toPieces.length === 0) {
             break;
         }
-        let toFirst = first;
-        let toLast = last;
-        if (fromPieces.length !== toPieces.length) {
-            if (level > 0) {
-                break;
-            }
-            const paired = alignPieces(fromText, fromPieces, toText, toPieces).slice(first, last + 1).filter(index => index !== -1);
-            if (paired.length === 0) {
-                break;
-            }
-            toFirst = Math.min(...paired);
-            toLast = Math.max(...paired);
+        const aligned = alignPieces(fromText, fromPieces, toText, toPieces);
+        const units = aligned.filter(unit => unit.from.some(index => index >= first && index <= last));
+        let matched = units.flatMap(unit => unit.to);
+        if (matched.length === 0) {
+            // Only pieces the other side lacks were selected: look between the matched neighbours
+            const before = aligned.slice(0, aligned.indexOf(units[0])).flatMap(unit => unit.to);
+            const after = aligned.slice(aligned.indexOf(units.at(-1)) + 1).flatMap(unit => unit.to);
+            const low = before.length > 0 ? Math.max(...before) + 1 : 0;
+            const high = after.length > 0 ? Math.min(...after) - 1 : toPieces.length - 1;
+            matched = high >= low && high - low < 2 ? indexes(low, high + 1) : [];
         }
-        fromSpan = { start: fromPieces[first].start, end: fromPieces[last].end };
-        toSpan = { start: toPieces[toFirst].start, end: toPieces[toLast].end };
+        if (matched.length === 0) {
+            break;
+        }
+        // A unit may cover more pieces than were selected (two sentences merged into one)
+        const covered = units.flatMap(unit => unit.from);
+        fromSpan = { start: fromPieces[Math.min(...covered)].start, end: fromPieces[Math.max(...covered)].end };
+        toSpan = { start: toPieces[Math.min(...matched)].start, end: toPieces[Math.max(...matched)].end };
     }
     return toSpan;
 }
