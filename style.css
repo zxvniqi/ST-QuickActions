@@ -6,7 +6,8 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 /* Toolbar shown over selected message text */
 #stqa_selection_toolbar {
     position: fixed;
-    z-index: 10000;
+    /* Above other extensions' floating buttons, so it is never hidden under one */
+    z-index: 2147483647;
     display: none;
     gap: 2px;
     padding: 3px;

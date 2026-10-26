@@ -60,8 +60,14 @@ const MAX_DODGE_STEPS = 4;
 // Elements covering more than this share of the screen are layout containers, not floating buttons
 const CONTAINER_AREA_RATIO = 0.25;
 
-/** The nearest fixed/absolute-positioned ancestor that is small enough to be a floating button. */
+/**
+ * The nearest fixed/absolute-positioned ancestor that is small enough to be a floating button.
+ * Parts of the messages themselves (avatars, swipe arrows) don't count.
+ */
 function floatingAncestor(element) {
+    if (element.closest('#chat')) {
+        return null;
+    }
     const screenArea = window.innerWidth * window.innerHeight;
     for (let node = element; node && node !== document.body; node = node.parentElement) {
         const { position } = getComputedStyle(node);
@@ -91,25 +97,34 @@ function findBlocker(top, left, width, height) {
     return null;
 }
 
-/**
- * Moves the box past floating elements sitting where it would appear: further down in
- * 'below' mode, otherwise up. Stops at the screen edge.
- */
-function dodgeFloatingElements(position, width, height) {
-    const downward = getSettings().selectionToolbarPosition === 'below';
+/** Moves the box past floating elements in one direction; null when it runs into the screen edge. */
+function dodgeToward(downward, position, width, height) {
+    const fits = top => top >= TOOLBAR_GAP && top + height <= window.innerHeight - TOOLBAR_GAP;
     let { top } = position;
-    for (let step = 0; step < MAX_DODGE_STEPS; step++) {
+    for (let step = 0; step < MAX_DODGE_STEPS && fits(top); step++) {
         const blocker = findBlocker(top, position.left, width, height);
         if (!blocker) {
-            break;
+            return { top, left: position.left };
         }
-        const next = downward ? blocker.bottom + TOOLBAR_GAP : blocker.top - height - TOOLBAR_GAP;
-        if (next < TOOLBAR_GAP || next + height > window.innerHeight - TOOLBAR_GAP) {
-            break;
-        }
-        top = next;
+        top = downward ? blocker.bottom + TOOLBAR_GAP : blocker.top - height - TOOLBAR_GAP;
     }
-    return { top, left: position.left };
+    return null;
+}
+
+/**
+ * Moves the box past floating elements sitting where it would appear: further down in
+ * 'below' mode, otherwise up. When there is no room that way it tries the other side of the
+ * selection (so the selected text stays visible). If both fail it stays put, drawn on top.
+ */
+function dodgeFloatingElements(position, width, height, selectionRect) {
+    const mode = getSettings().selectionToolbarPosition;
+    const downward = mode === 'below';
+    const otherSide = mode === 'below'
+        ? { top: selectionRect.top - height - TOOLBAR_GAP, left: position.left }
+        : mode === 'above' ? { top: selectionRect.bottom + TOOLBAR_GAP, left: position.left } : position;
+    return dodgeToward(downward, position, width, height)
+        ?? dodgeToward(!downward, otherSide, width, height)
+        ?? position;
 }
 
 /**
@@ -139,7 +154,7 @@ function showToolbar(info) {
     toolbar.classList.add('stqa_visible');
     const width = toolbar.offsetWidth;
     const height = toolbar.offsetHeight;
-    const { top, left } = dodgeFloatingElements(computePosition(info.rect, width, height), width, height);
+    const { top, left } = dodgeFloatingElements(computePosition(info.rect, width, height), width, height, info.rect);
     toolbar.style.top = `${top}px`;
     toolbar.style.left = `${left}px`;
 }
@@ -180,6 +195,12 @@ async function applySourceText(messageId, field, text, { silent = false } = {}) 
             message.mes = text;
             if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
                 message.swipes[message.swipe_id] = text;
+            }
+            // Translators may remember which original their translation belongs to (LLM
+            // Translator: original_text_for_translation, compared the same way) and drop the
+            // translation at the next edit once it differs; the translation is kept on purpose here
+            if (typeof message.extra?.original_text_for_translation === 'string') {
+                message.extra.original_text_for_translation = context.substituteParams(text, context.name1, message.name);
             }
         }
         context.updateMessageBlock(messageId, message);
@@ -516,13 +537,16 @@ async function restoreMessage(messageId, snapshot) {
         message.extra ??= {};
         message.extra.display_text = snapshot.displayText;
     }
+    if (snapshot.translatedFrom !== undefined) {
+        message.extra.original_text_for_translation = snapshot.translatedFrom;
+    }
     context.updateMessageBlock(messageId, message);
     await context.saveChat();
 }
 
 async function deleteSelection({ messageId, field, source, range }) {
     const message = SillyTavern.getContext().chat[messageId];
-    const snapshot = { mes: message.mes, displayText: message.extra?.display_text };
+    const snapshot = { mes: message.mes, displayText: message.extra?.display_text, translatedFrom: message.extra?.original_text_for_translation };
     let targets = buildEditTargets(messageId, field, source, range);
     if (targets.length > 1) {
         targets = await confirmTranslatedDelete(targets);
