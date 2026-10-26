@@ -405,13 +405,14 @@ function tappedOffset(box, event) {
 }
 
 /**
- * The part of `target.source` to delete, shown highlighted in its surrounding text. To change
- * it, the user taps the first word, then the last word (Japanese: character by character);
- * `target.range` is updated in place.
+ * The part of `target.source` to delete, shown highlighted in its surrounding text. With
+ * `editable`, the user can change it by tapping the first word, then the last word (Japanese:
+ * character by character); `target.range` is updated in place.
  */
-function buildRangePicker(target) {
+function buildRangePicker(target, { editable }) {
     const box = document.createElement('div');
-    box.className = 'stqa_compare_text stqa_range_box';
+    box.className = 'stqa_compare_text';
+    box.classList.toggle('stqa_range_box', editable);
     let shown = null;
     let first = null; // the word tapped first, waiting for the last one
 
@@ -428,66 +429,74 @@ function buildRangePicker(target) {
         );
     };
 
-    box.addEventListener('click', (event) => {
-        const offset = tappedOffset(box, event);
-        const word = offset === null ? null : wordAt(target.source, shown.start + offset);
-        if (!word) {
-            return;
-        }
-        if (first) {
-            target.range = { start: Math.min(first.start, word.start), end: Math.max(first.end, word.end) };
-            first = null;
-        } else {
-            target.range = word;
-            first = word;
-        }
-        render();
-    });
+    if (editable) {
+        box.addEventListener('click', (event) => {
+            const offset = tappedOffset(box, event);
+            const word = offset === null ? null : wordAt(target.source, shown.start + offset);
+            if (!word) {
+                return;
+            }
+            if (first) {
+                target.range = { start: Math.min(first.start, word.start), end: Math.max(first.end, word.end) };
+                first = null;
+            } else {
+                target.range = word;
+                first = word;
+            }
+            render();
+        });
+    }
 
     render();
     return box;
 }
 
 /**
- * Translated messages: shows the selected translation next to the matching original and lets
- * the user pick which of them to delete.
+ * Shows the part to delete before deleting it. Translated messages show the selected
+ * translation next to the matching original, and the user picks which of them to delete.
  * @returns {Promise<object[]|null>} the targets to delete from, or null when cancelled
  */
-async function confirmTranslatedDelete(targets) {
+async function confirmDelete(targets) {
     const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
-    const [translation, original] = targets;
-    const unsure = original.initial.length > Math.max(UNSURE_MATCH_MIN, translation.initial.length * UNSURE_MATCH_RATIO);
+    const translated = targets.length > 1;
 
     const root = document.createElement('div');
     root.className = 'stqa_delete_confirm';
     root.innerHTML = `
         <h3>선택한 부분 삭제</h3>
         <div class="stqa_compare"></div>
-        <small class="stqa_hint">형광펜 부분이 지워져요. 바꾸려면 칸에서 첫 단어, 끝 단어를 차례로 톡톡 눌러요. (일본어는 한 글자씩)</small>
+        <small class="stqa_hint">형광펜 부분이 지워져요.<span class="stqa_range_help"> 바꾸려면 칸에서 첫 단어, 끝 단어를 차례로 톡톡 눌러요. (일본어는 한 글자씩)</span></small>
         <small class="stqa_hint stqa_unsure" hidden>⚠️ 원문에서 정확한 위치를 못 찾아서 넓게 잡혔어요. 원문 삭제는 꺼뒀어요.</small>`;
+    root.querySelector('.stqa_range_help').hidden = !translated;
     const compare = root.querySelector('.stqa_compare');
-    const pickers = targets.map(target => buildRangePicker(target));
-    const checks = targets.map((target, index) => {
+    const checks = targets.map((target) => {
         const side = document.createElement('div');
         side.className = 'stqa_compare_side';
-        side.innerHTML = `<label class="checkbox_label"><input type="checkbox"><b></b></label>`;
+        side.innerHTML = `<label class="checkbox_label"><input type="checkbox" checked><b></b></label>`;
         side.querySelector('b').textContent = `${target.label}에서 삭제`;
-        side.append(pickers[index]);
+        // Nothing to choose with a single version
+        side.querySelector('label').hidden = !translated;
+        // The selection itself is exact; only a translated message's matched original may be off
+        side.append(buildRangePicker(target, { editable: translated }));
         compare.append(side);
         return side.querySelector('input');
     });
-    checks[0].checked = true;
-    checks[1].checked = !unsure;
-    root.querySelector('.stqa_unsure').hidden = !unsure;
 
-    const keepBox = buildKeepTranslationOption(getSettings());
-    root.append(keepBox);
-    const update = () => {
-        keepBox.hidden = !checks[1].checked;
-        compare.querySelectorAll('.stqa_compare_side').forEach((side, index) => side.classList.toggle('stqa_off', !checks[index].checked));
-    };
-    checks.forEach(check => check.addEventListener('change', update));
-    update();
+    if (translated) {
+        const [translation, original] = targets;
+        const unsure = original.initial.length > Math.max(UNSURE_MATCH_MIN, translation.initial.length * UNSURE_MATCH_RATIO);
+        checks[1].checked = !unsure;
+        root.querySelector('.stqa_unsure').hidden = !unsure;
+
+        const keepBox = buildKeepTranslationOption(getSettings());
+        root.append(keepBox);
+        const update = () => {
+            keepBox.hidden = !checks[1].checked;
+            compare.querySelectorAll('.stqa_compare_side').forEach((side, index) => side.classList.toggle('stqa_off', !checks[index].checked));
+        };
+        checks.forEach(check => check.addEventListener('change', update));
+        update();
+    }
 
     const result = await new Popup(root, POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소', leftAlign: true }).show();
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
@@ -518,12 +527,9 @@ async function restoreMessage(messageId, snapshot) {
 async function deleteSelection({ messageId, field, source, range }) {
     const message = SillyTavern.getContext().chat[messageId];
     const snapshot = { mes: message.mes, displayText: message.extra?.display_text, translatedFrom: message.extra?.original_text_for_translation };
-    let targets = buildEditTargets(messageId, field, source, range);
-    if (targets.length > 1) {
-        targets = await confirmTranslatedDelete(targets);
-        if (!targets?.length) {
-            return;
-        }
+    const targets = await confirmDelete(buildEditTargets(messageId, field, source, range));
+    if (!targets?.length) {
+        return;
     }
 
     // The translation is written back afterwards if changing the original dropped it
