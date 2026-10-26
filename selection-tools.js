@@ -1,6 +1,6 @@
 // Edit / delete buttons that appear when text inside a message is selected.
 import { MODULE, getSettings } from './settings.js';
-import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart } from './text-locate.js';
+import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart, nextWordEdge } from './text-locate.js';
 
 const TOOLBAR_ID = 'stqa_selection_toolbar';
 const SELECTION_DEBOUNCE_MS = 150;
@@ -347,6 +347,114 @@ function buildKeepTranslationOption(settings) {
 const UNSURE_MATCH_MIN = 400;
 const UNSURE_MATCH_RATIO = 4;
 
+// Text shown around the part to delete, within its paragraph
+const CONTEXT_CHARS = 200;
+const RESELECT_DELAY_MS = 600;
+
+function contextAround(source, { start, end }) {
+    const lineStart = source.lastIndexOf('\n', start - 1) + 1;
+    const lineEnd = source.indexOf('\n', end);
+    return {
+        start: Math.max(lineStart, start - CONTEXT_CHARS),
+        end: Math.min(lineEnd === -1 ? source.length : lineEnd, end + CONTEXT_CHARS),
+    };
+}
+
+/** Length of the text in `container` before the given point. */
+function offsetWithin(container, node, offset) {
+    const range = document.createRange();
+    range.selectNodeContents(container);
+    range.setEnd(node, offset);
+    return range.toString().length;
+}
+
+/**
+ * The part of `target.source` to delete, shown highlighted in its surrounding text. The user
+ * can select a new part inside the box, or move either edge word by word; `target.range` is
+ * updated in place. Call `dispose` when the window closes.
+ * @returns {{ element: HTMLElement, dispose: () => void }}
+ */
+function buildRangePicker(target) {
+    const picker = document.createElement('div');
+    picker.className = 'stqa_range_picker';
+    picker.innerHTML = `
+        <div class="stqa_compare_text"></div>
+        <div class="stqa_range_steps">
+            <span>시작</span>
+            <div class="menu_button" data-edge="start" data-step="-1" title="한 단어 늘리기"><i class="fa-solid fa-caret-left"></i></div>
+            <div class="menu_button" data-edge="start" data-step="1" title="한 단어 줄이기"><i class="fa-solid fa-caret-right"></i></div>
+            <span>끝</span>
+            <div class="menu_button" data-edge="end" data-step="-1" title="한 단어 줄이기"><i class="fa-solid fa-caret-left"></i></div>
+            <div class="menu_button" data-edge="end" data-step="1" title="한 단어 늘리기"><i class="fa-solid fa-caret-right"></i></div>
+        </div>`;
+    const box = picker.querySelector('.stqa_compare_text');
+    let shown = null;
+
+    const render = () => {
+        shown = contextAround(target.source, target.range);
+        const mark = document.createElement('mark');
+        mark.className = 'stqa_range_mark';
+        mark.textContent = target.source.slice(target.range.start, target.range.end);
+        box.replaceChildren(
+            target.source.slice(shown.start, target.range.start),
+            mark,
+            target.source.slice(target.range.end, shown.end),
+        );
+    };
+
+    picker.querySelector('.stqa_range_steps').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-edge]');
+        if (!button) {
+            return;
+        }
+        const { edge } = button.dataset;
+        const source = target.source;
+        let moved = nextWordEdge(source, target.range[edge], Number(button.dataset.step));
+        // Keep the range from starting on a space or comma, or ending on a space
+        while (edge === 'start' && /[\s,，、]/.test(source[moved] ?? '')) {
+            moved++;
+        }
+        while (edge === 'end' && /\s/.test(source[moved - 1] ?? '')) {
+            moved--;
+        }
+        const range = { ...target.range, [edge]: moved };
+        if (range.end > range.start) {
+            target.range = range;
+            render();
+        }
+    });
+
+    // A new selection inside the box becomes the range once the user stops adjusting it
+    let timer = 0;
+    const onSelection = () => {
+        clearTimeout(timer);
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || !box.contains(selection.anchorNode) || !box.contains(selection.focusNode)) {
+            return;
+        }
+        timer = setTimeout(() => {
+            const range = selection.getRangeAt(0);
+            const start = shown.start + offsetWithin(box, range.startContainer, range.startOffset);
+            const end = shown.start + offsetWithin(box, range.endContainer, range.endOffset);
+            if (end > start && target.source.slice(start, end).trim()) {
+                target.range = { start, end };
+                selection.removeAllRanges();
+                render();
+            }
+        }, RESELECT_DELAY_MS);
+    };
+    document.addEventListener('selectionchange', onSelection);
+
+    render();
+    return {
+        element: picker,
+        dispose: () => {
+            clearTimeout(timer);
+            document.removeEventListener('selectionchange', onSelection);
+        },
+    };
+}
+
 /**
  * Translated messages: shows the selected translation next to the matching original and lets
  * the user pick which of them to delete.
@@ -362,14 +470,16 @@ async function confirmTranslatedDelete(targets) {
     root.innerHTML = `
         <h3>선택한 부분 삭제</h3>
         <div class="stqa_compare"></div>
+        <small class="stqa_hint">형광펜 부분이 지워져요. 다르면 칸 안에서 길게 눌러 다시 고르거나, 버튼으로 한 단어씩 늘리고 줄여요.</small>
         <small class="stqa_hint stqa_unsure" hidden>⚠️ 원문에서 정확한 위치를 못 찾아서 넓게 잡혔어요. 원문 삭제는 꺼뒀어요.</small>`;
     const compare = root.querySelector('.stqa_compare');
-    const checks = targets.map((target) => {
+    const pickers = targets.map(buildRangePicker);
+    const checks = targets.map((target, index) => {
         const side = document.createElement('div');
         side.className = 'stqa_compare_side';
-        side.innerHTML = `<label class="checkbox_label"><input type="checkbox"><b></b></label><div class="stqa_compare_text"></div>`;
+        side.innerHTML = `<label class="checkbox_label"><input type="checkbox"><b></b></label>`;
         side.querySelector('b').textContent = `${target.label}에서 삭제`;
-        side.querySelector('.stqa_compare_text').textContent = target.initial;
+        side.append(pickers[index].element);
         compare.append(side);
         return side.querySelector('input');
     });
@@ -387,6 +497,7 @@ async function confirmTranslatedDelete(targets) {
     update();
 
     const result = await new Popup(root, POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소', leftAlign: true }).show();
+    pickers.forEach(picker => picker.dispose());
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return null;
     }

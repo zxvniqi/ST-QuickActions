@@ -58,6 +58,7 @@ const SEGMENT_LEVELS = Object.freeze([
     /[^\n]+/g, // paragraphs
     /[^:：「」『』"“”()（）[\]]+/g, // speaker name / quoted parts
     /[^.。!！?？…]+[.。!！?？…]*/g, // sentences
+    /[^,，、;；]+[,，、;；]*/g, // clauses
 ]);
 
 /** Non-blank pieces of text[span] at one level, as absolute { start, end } (trimmed). */
@@ -247,6 +248,8 @@ export function mapToMatchingPart(fromSource, range, toSource) {
     const toText = maskOneSidedBlocks(toSource, fromSource);
     let fromSpan = { start: 0, end: fromText.length };
     let toSpan = { start: 0, end: toText.length };
+    // The selected units of the finest level reached: [from span, to span] of the first and last
+    let edgeUnits = null;
     for (const pattern of SEGMENT_LEVELS) {
         const fromPieces = segmentsOf(fromText, fromSpan, pattern);
         const toPieces = segmentsOf(toText, toSpan, pattern);
@@ -273,8 +276,163 @@ export function mapToMatchingPart(fromSource, range, toSource) {
         const covered = units.flatMap(unit => unit.from);
         fromSpan = { start: fromPieces[Math.min(...covered)].start, end: fromPieces[Math.max(...covered)].end };
         toSpan = { start: toPieces[Math.min(...matched)].start, end: toPieces[Math.max(...matched)].end };
+        const spanOf = (pieces, list) => ({ start: pieces[Math.min(...list)].start, end: pieces[Math.max(...list)].end });
+        const paired = units.filter(unit => unit.to.length > 0);
+        edgeUnits = paired.length === 0 ? null : [paired[0], paired.at(-1)].map(unit => [spanOf(fromPieces, unit.from), spanOf(toPieces, unit.to)]);
     }
-    return toSpan;
+    return edgeUnits ? narrowToSelectedPart(fromSource, range, toSource, toSpan, edgeUnits) : toSpan;
+}
+
+// Letters and digits: what the proportional step counts (spaces and punctuation differ by language)
+const CONTENT_CHAR = /[\p{L}\p{N}]/u;
+
+function charClass(char) {
+    if (/\s/.test(char)) {
+        return 'space';
+    }
+    if (/\p{Script=Hiragana}/u.test(char)) {
+        return 'hiragana';
+    }
+    if (/[\p{Script=Katakana}ー]/u.test(char)) {
+        return 'katakana';
+    }
+    if (/\p{Script=Han}/u.test(char)) {
+        return 'kanji';
+    }
+    return CONTENT_CHAR.test(char) || /['’-]/.test(char) ? 'word' : 'mark';
+}
+
+/**
+ * Where a word may start or end: at spaces and punctuation, and in Japanese (no spaces) where
+ * kanji / katakana begins after other characters (words often start that way, particles and
+ * endings in hiragana stay attached).
+ */
+function isWordEdge(text, position, span) {
+    if (position <= span.start || position >= span.end) {
+        return true;
+    }
+    const before = charClass(text[position - 1]);
+    const after = charClass(text[position]);
+    if (before === after) {
+        return false;
+    }
+    return ['space', 'mark'].includes(before) || ['space', 'mark'].includes(after) || after !== 'hiragana';
+}
+
+// Japanese has no spaces and kana runs can hold several words, so a step stops after this many
+const MAX_CJK_STEP = 3;
+
+/**
+ * The next word edge from `position` in `direction` (1 or -1), passing at least one letter, for
+ * adjusting a range word by word.
+ */
+export function nextWordEdge(text, position, direction) {
+    const span = { start: 0, end: text.length };
+    let letters = 0;
+    let cjk = 0;
+    let point = position;
+    while (point + direction >= 0 && point + direction <= text.length) {
+        const char = text[direction > 0 ? point : point - 1];
+        letters += CONTENT_CHAR.test(char) ? 1 : 0;
+        cjk += ['hiragana', 'katakana', 'kanji'].includes(charClass(char)) ? 1 : 0;
+        point += direction;
+        if (letters > 0 && (isWordEdge(text, point, span) || cjk >= MAX_CJK_STEP)) {
+            break;
+        }
+    }
+    return point;
+}
+
+/** `side` says which way a tie goes: toward the end of the text for a start, the other way for an end. */
+function nearestWordEdge(text, position, span, side) {
+    for (let distance = 0; distance <= span.end - span.start; distance++) {
+        // Ties go inward: picking a word too many reads worse than one too few
+        const candidates = side === 'start' ? [position + distance, position - distance] : [position - distance, position + distance];
+        for (const candidate of candidates) {
+            if (candidate >= span.start && candidate <= span.end && isWordEdge(text, candidate, span)) {
+                return candidate;
+            }
+        }
+    }
+    return position;
+}
+
+function lettersOf(text, { start, end }) {
+    const positions = [];
+    for (let index = start; index < end; index++) {
+        if (CONTENT_CHAR.test(text[index])) {
+            positions.push(index);
+        }
+    }
+    return positions;
+}
+
+/**
+ * The point in `toUnit` that sits as far into it as `position` sits into `fromUnit`, counted in
+ * letters (spaces and punctuation differ by language), moved to the nearest word edge.
+ */
+function matchingPoint(fromText, fromUnit, position, toText, toUnit, side) {
+    const fromLetters = lettersOf(fromText, fromUnit);
+    const toLetters = lettersOf(toText, toUnit);
+    const before = fromLetters.filter(index => index < position).length;
+    if (before === 0 || toLetters.length === 0) {
+        return side === 'start' ? toUnit.start : null;
+    }
+    if (before === fromLetters.length) {
+        return side === 'end' ? toUnit.end : null;
+    }
+    // Letter counts per word differ between languages, so the estimate is off by a letter or so:
+    // the end is rounded down (a word too few is easier to fix than a word too many)
+    const share = before / fromLetters.length * toLetters.length;
+    const point = side === 'start'
+        ? toLetters[Math.min(Math.round(share), toLetters.length - 1)]
+        : toLetters[Math.max(Math.floor(share), 1) - 1] + 1;
+    return nearestWordEdge(toText, point, toUnit, side);
+}
+
+/** Drops spaces and punctuation at the edges that the selection itself doesn't have. */
+function trimEdges(text, { start, end }, selected) {
+    const isLoose = char => ['space', 'mark'].includes(charClass(char));
+    if (!isLoose(selected.at(0) ?? '')) {
+        while (start < end && isLoose(text[start])) {
+            start++;
+        }
+    }
+    if (!isLoose(selected.at(-1) ?? '')) {
+        while (end > start && isLoose(text[end - 1])) {
+            end--;
+        }
+    }
+    return { start, end };
+}
+
+/**
+ * Whether a unit is written mostly in Latin letters (English etc.): its word order is far from
+ * Korean, so a part of a sentence can't be placed by position, only the whole sentence / clause.
+ */
+function isLatinText(text, span) {
+    const letters = lettersOf(text, span).map(index => text[index]);
+    return letters.filter(char => /[A-Za-zÀ-ɏ]/.test(char)).length > letters.length / 2;
+}
+
+/**
+ * When only part of the matched units is selected, picks the same part of the other version:
+ * the start is placed within the first unit and the end within the last one, each at the same
+ * share of letters, then moved to a word edge. Languages with a similar word order (Korean /
+ * Japanese) line up well this way; units in English keep their whole length.
+ */
+function narrowToSelectedPart(fromText, range, toText, toSpan, [[fromFirst, toFirst], [fromLast, toLast]]) {
+    const start = isLatinText(toText, toFirst)
+        ? toFirst.start
+        : matchingPoint(fromText, fromFirst, range.start, toText, toFirst, 'start') ?? toFirst.end;
+    const end = isLatinText(toText, toLast)
+        ? toLast.end
+        : matchingPoint(fromText, fromLast, range.end, toText, toLast, 'end') ?? toLast.start;
+    if (end <= start) {
+        return toSpan;
+    }
+    const trimmed = trimEdges(toText, { start, end }, fromText.slice(range.start, range.end).trim());
+    return trimmed.end > trimmed.start ? trimmed : { start, end };
 }
 
 /** Widens a range over markdown markers that wrap it exactly (e.g. *text*), so deleting leaves no stray markers. */

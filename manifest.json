@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.9.1",
+    "version": "1.9.2",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [

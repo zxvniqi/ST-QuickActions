@@ -409,3 +409,43 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 .stqa_keep_translation[hidden] {
     display: none;
 }
+
+/* Delete window: the part to delete is highlighted in its surrounding text */
+.stqa_range_picker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stqa_range_mark {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 1px;
+}
+
+.stqa_compare_side.stqa_off .stqa_range_mark {
+    background: transparent;
+}
+
+.stqa_range_steps {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.stqa_range_steps span {
+    margin-left: 6px;
+}
+
+.stqa_range_steps span:first-child {
+    margin-left: 0;
+}
+
+.stqa_range_steps .menu_button {
+    width: auto;
+    margin: 0;
+    padding: 4px 12px;
+}
