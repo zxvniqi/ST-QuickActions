@@ -280,7 +280,104 @@ export function mapToMatchingPart(fromSource, range, toSource) {
         const paired = units.filter(unit => unit.to.length > 0);
         edgeUnits = paired.length === 0 ? null : [paired[0], paired.at(-1)].map(unit => [spanOf(fromPieces, unit.from), spanOf(toPieces, unit.to)]);
     }
-    return edgeUnits ? narrowToSelectedPart(fromSource, range, toSource, toSpan, edgeUnits) : toSpan;
+    const found = edgeUnits ? narrowToSelectedPart(fromSource, range, toSource, toSpan, edgeUnits) : toSpan;
+    const selected = fromSource.slice(range.start, range.end).trim();
+    return includeQuoteMarks(selected, toSource, withoutEdgeTags(toSource, found));
+}
+
+const EDGE_TAG_START = /^\s*<\/?[A-Za-z][^<>]*>/;
+const EDGE_TAG_END = /<\/?[A-Za-z][^<>]*>\s*$/;
+
+/** Whether `position` falls inside a tag like <whispering> (between its < and >). */
+function insideTag(text, position) {
+    const opening = text.lastIndexOf('<', position - 1);
+    return opening !== -1 && opening > text.lastIndexOf('>', position - 1)
+        && /^<\/?[A-Za-z]/.test(text.slice(opening, opening + 3)) && text.indexOf('>', position) !== -1;
+}
+
+/** Leaves out tags at the edges of a found part (e.g. </whispering>): only readable text is picked. */
+function withoutEdgeTags(text, { start, end }) {
+    // Pieces are cut at quote marks and sentence ends, so an edge may land inside a tag
+    if (insideTag(text, start)) {
+        start = text.indexOf('>', start) + 1;
+    }
+    if (insideTag(text, end)) {
+        end = text.lastIndexOf('<', end - 1);
+    }
+    if (end <= start) {
+        return { start: Math.min(start, end), end: Math.max(start, end) };
+    }
+    let part = text.slice(start, end);
+    for (let match = part.match(EDGE_TAG_START); match && match[0].length < part.length; match = part.match(EDGE_TAG_START)) {
+        start += match[0].length;
+        part = part.slice(match[0].length);
+    }
+    for (let match = part.match(EDGE_TAG_END); match && match[0].length < part.length; match = part.match(EDGE_TAG_END)) {
+        end -= match[0].length;
+        part = part.slice(0, -match[0].length);
+    }
+    const lead = part.length - part.trimStart().length;
+    return { start: start + lead, end: end - (part.length - part.trimEnd().length) };
+}
+
+const QUOTE_PAIRS = [['「', '」'], ['『', '』'], ['“', '”'], ['（', '）'], ['(', ')']];
+const OPENING_MARK = /["“「『(（[]/;
+const CLOSING_MARK = /["”」』)）\]]/;
+
+function lineBounds(text, position) {
+    const start = text.lastIndexOf('\n', position - 1) + 1;
+    const end = text.indexOf('\n', position);
+    return { start, end: end === -1 ? text.length : end };
+}
+
+/** The opening quote mark of the quote that `position` sits in (same line), or -1. */
+function openingQuoteBefore(text, position) {
+    const line = lineBounds(text, position);
+    const before = text.slice(line.start, position);
+    const candidates = QUOTE_PAIRS.map(([open, close]) => (before.lastIndexOf(open) > before.lastIndexOf(close) ? before.lastIndexOf(open) : -1));
+    // Straight quotes open and close alike: an odd count before means we're inside one
+    if ((before.match(/"/g) ?? []).length % 2 === 1) {
+        candidates.push(before.lastIndexOf('"'));
+    }
+    const nearest = Math.max(...candidates);
+    return nearest === -1 ? -1 : line.start + nearest;
+}
+
+/** The closing quote mark of the quote that `position` sits in (same line), or -1. */
+function closingQuoteAfter(text, position) {
+    const line = lineBounds(text, position);
+    const after = text.slice(position, line.end);
+    const candidates = QUOTE_PAIRS.map(([open, close]) => {
+        const closing = after.indexOf(close);
+        const opening = after.indexOf(open);
+        return closing !== -1 && (opening === -1 || closing < opening) ? closing : Infinity;
+    });
+    if ((text.slice(line.start, position).match(/"/g) ?? []).length % 2 === 1 && after.includes('"')) {
+        candidates.push(after.indexOf('"'));
+    }
+    const nearest = Math.min(...candidates);
+    return nearest === Infinity ? -1 : position + nearest;
+}
+
+/**
+ * Quoted parts are matched by what's inside the quote marks. When the selection starts with an
+ * opening quote mark, the found part starts at the opening mark of the quote it sits in (taking
+ * along "…" or a first word split off by a comma); the same for a closing mark at the end.
+ */
+function includeQuoteMarks(selected, text, { start, end }) {
+    if (OPENING_MARK.test(selected[0] ?? '')) {
+        const opening = openingQuoteBefore(text, start);
+        if (opening !== -1) {
+            start = opening;
+        }
+    }
+    if (CLOSING_MARK.test(selected.at(-1) ?? '')) {
+        const closing = closingQuoteAfter(text, end);
+        if (closing !== -1) {
+            end = closing + 1;
+        }
+    }
+    return { start, end };
 }
 
 // Letters and digits: what the proportional step counts (spaces and punctuation differ by language)
@@ -319,28 +416,29 @@ function isWordEdge(text, position, span) {
     return ['space', 'mark'].includes(before) || ['space', 'mark'].includes(after) || after !== 'hiragana';
 }
 
-// Japanese has no spaces and kana runs can hold several words, so a step stops after this many
-const MAX_CJK_STEP = 3;
-
 /**
- * The next word edge from `position` in `direction` (1 or -1), passing at least one letter, for
- * adjusting a range word by word.
+ * The word at `position`, for picking a range by tapping: a word between spaces, or a single
+ * character in Japanese (no spaces to tell words apart). Null on a space or punctuation.
+ * @returns {{ start: number, end: number }|null}
  */
-export function nextWordEdge(text, position, direction) {
-    const span = { start: 0, end: text.length };
-    let letters = 0;
-    let cjk = 0;
-    let point = position;
-    while (point + direction >= 0 && point + direction <= text.length) {
-        const char = text[direction > 0 ? point : point - 1];
-        letters += CONTENT_CHAR.test(char) ? 1 : 0;
-        cjk += ['hiragana', 'katakana', 'kanji'].includes(charClass(char)) ? 1 : 0;
-        point += direction;
-        if (letters > 0 && (isWordEdge(text, point, span) || cjk >= MAX_CJK_STEP)) {
-            break;
-        }
+export function wordAt(text, position) {
+    const kind = charClass(text[position] ?? ' ');
+    if (kind === 'space' || kind === 'mark') {
+        return null;
     }
-    return point;
+    if (['hiragana', 'katakana', 'kanji'].includes(kind)) {
+        return { start: position, end: position + 1 };
+    }
+    const inWord = char => charClass(char) === 'word';
+    let start = position;
+    let end = position + 1;
+    while (start > 0 && inWord(text[start - 1])) {
+        start--;
+    }
+    while (end < text.length && inWord(text[end])) {
+        end++;
+    }
+    return { start, end };
 }
 
 /** `side` says which way a tie goes: toward the end of the text for a start, the other way for an end. */

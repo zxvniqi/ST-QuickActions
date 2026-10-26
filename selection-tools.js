@@ -1,6 +1,7 @@
 // Edit / delete buttons that appear when text inside a message is selected.
 import { MODULE, getSettings } from './settings.js';
-import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart, nextWordEdge } from './text-locate.js';
+import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart, wordAt } from './text-locate.js';
+import { maskHidden, messageInfo } from './hidden-text.js';
 
 const TOOLBAR_ID = 'stqa_selection_toolbar';
 const SELECTION_DEBOUNCE_MS = 150;
@@ -263,8 +264,12 @@ async function runAction(action) {
 function buildEditTargets(messageId, field, source, range) {
     const targets = [{ field, source, range, label: field === 'display_text' ? '번역문' : '원문' }];
     if (field === 'display_text') {
-        const original = SillyTavern.getContext().chat[messageId].mes;
-        targets.push({ field: 'mes', source: original, range: mapToMatchingPart(source, range, original), label: '원문' });
+        const { chat } = SillyTavern.getContext();
+        const original = chat[messageId].mes;
+        // Parts the user's regex scripts hide on screen (removed blocks, status cards) are left out
+        const info = messageInfo(chat, messageId);
+        const originalRange = mapToMatchingPart(maskHidden(source, info), range, maskHidden(original, info));
+        targets.push({ field: 'mes', source: original, range: originalRange, label: '원문' });
     }
     for (const target of targets) {
         target.initial = target.source.slice(target.range.start, target.range.end);
@@ -370,7 +375,6 @@ const UNSURE_MATCH_RATIO = 4;
 
 // Text shown around the part to delete, within its paragraph
 const CONTEXT_CHARS = 200;
-const RESELECT_DELAY_MS = 600;
 
 function contextAround(source, { start, end }) {
     const lineStart = source.lastIndexOf('\n', start - 1) + 1;
@@ -389,32 +393,33 @@ function offsetWithin(container, node, offset) {
     return range.toString().length;
 }
 
+/** Offset in `box`'s text at a tapped point, or null. */
+function tappedOffset(box, event) {
+    const caret = document.caretPositionFromPoint?.(event.clientX, event.clientY);
+    const range = caret ? null : document.caretRangeFromPoint?.(event.clientX, event.clientY);
+    const node = caret?.offsetNode ?? range?.startContainer;
+    if (!node || !box.contains(node)) {
+        return null;
+    }
+    return offsetWithin(box, node, caret?.offset ?? range.startOffset);
+}
+
 /**
- * The part of `target.source` to delete, shown highlighted in its surrounding text. The user
- * can select a new part inside the box, or move either edge word by word; `target.range` is
- * updated in place. Call `dispose` when the window closes.
- * @returns {{ element: HTMLElement, dispose: () => void }}
+ * The part of `target.source` to delete, shown highlighted in its surrounding text. To change
+ * it, the user taps the first word, then the last word (Japanese: character by character);
+ * `target.range` is updated in place.
  */
 function buildRangePicker(target) {
-    const picker = document.createElement('div');
-    picker.className = 'stqa_range_picker';
-    picker.innerHTML = `
-        <div class="stqa_compare_text"></div>
-        <div class="stqa_range_steps">
-            <span>시작</span>
-            <div class="menu_button" data-edge="start" data-step="-1" title="한 단어 늘리기"><i class="fa-solid fa-caret-left"></i></div>
-            <div class="menu_button" data-edge="start" data-step="1" title="한 단어 줄이기"><i class="fa-solid fa-caret-right"></i></div>
-            <span>끝</span>
-            <div class="menu_button" data-edge="end" data-step="-1" title="한 단어 줄이기"><i class="fa-solid fa-caret-left"></i></div>
-            <div class="menu_button" data-edge="end" data-step="1" title="한 단어 늘리기"><i class="fa-solid fa-caret-right"></i></div>
-        </div>`;
-    const box = picker.querySelector('.stqa_compare_text');
+    const box = document.createElement('div');
+    box.className = 'stqa_compare_text stqa_range_box';
     let shown = null;
+    let first = null; // the word tapped first, waiting for the last one
 
     const render = () => {
         shown = contextAround(target.source, target.range);
         const mark = document.createElement('mark');
         mark.className = 'stqa_range_mark';
+        mark.classList.toggle('stqa_range_pending', Boolean(first));
         mark.textContent = target.source.slice(target.range.start, target.range.end);
         box.replaceChildren(
             target.source.slice(shown.start, target.range.start),
@@ -423,57 +428,24 @@ function buildRangePicker(target) {
         );
     };
 
-    picker.querySelector('.stqa_range_steps').addEventListener('click', (event) => {
-        const button = event.target.closest('[data-edge]');
-        if (!button) {
+    box.addEventListener('click', (event) => {
+        const offset = tappedOffset(box, event);
+        const word = offset === null ? null : wordAt(target.source, shown.start + offset);
+        if (!word) {
             return;
         }
-        const { edge } = button.dataset;
-        const source = target.source;
-        let moved = nextWordEdge(source, target.range[edge], Number(button.dataset.step));
-        // Keep the range from starting on a space or comma, or ending on a space
-        while (edge === 'start' && /[\s,，、]/.test(source[moved] ?? '')) {
-            moved++;
+        if (first) {
+            target.range = { start: Math.min(first.start, word.start), end: Math.max(first.end, word.end) };
+            first = null;
+        } else {
+            target.range = word;
+            first = word;
         }
-        while (edge === 'end' && /\s/.test(source[moved - 1] ?? '')) {
-            moved--;
-        }
-        const range = { ...target.range, [edge]: moved };
-        if (range.end > range.start) {
-            target.range = range;
-            render();
-        }
+        render();
     });
 
-    // A new selection inside the box becomes the range once the user stops adjusting it
-    let timer = 0;
-    const onSelection = () => {
-        clearTimeout(timer);
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed || !box.contains(selection.anchorNode) || !box.contains(selection.focusNode)) {
-            return;
-        }
-        timer = setTimeout(() => {
-            const range = selection.getRangeAt(0);
-            const start = shown.start + offsetWithin(box, range.startContainer, range.startOffset);
-            const end = shown.start + offsetWithin(box, range.endContainer, range.endOffset);
-            if (end > start && target.source.slice(start, end).trim()) {
-                target.range = { start, end };
-                selection.removeAllRanges();
-                render();
-            }
-        }, RESELECT_DELAY_MS);
-    };
-    document.addEventListener('selectionchange', onSelection);
-
     render();
-    return {
-        element: picker,
-        dispose: () => {
-            clearTimeout(timer);
-            document.removeEventListener('selectionchange', onSelection);
-        },
-    };
+    return box;
 }
 
 /**
@@ -491,16 +463,16 @@ async function confirmTranslatedDelete(targets) {
     root.innerHTML = `
         <h3>선택한 부분 삭제</h3>
         <div class="stqa_compare"></div>
-        <small class="stqa_hint">형광펜 부분이 지워져요. 다르면 칸 안에서 길게 눌러 다시 고르거나, 버튼으로 한 단어씩 늘리고 줄여요.</small>
+        <small class="stqa_hint">형광펜 부분이 지워져요. 바꾸려면 칸에서 첫 단어, 끝 단어를 차례로 톡톡 눌러요. (일본어는 한 글자씩)</small>
         <small class="stqa_hint stqa_unsure" hidden>⚠️ 원문에서 정확한 위치를 못 찾아서 넓게 잡혔어요. 원문 삭제는 꺼뒀어요.</small>`;
     const compare = root.querySelector('.stqa_compare');
-    const pickers = targets.map(buildRangePicker);
+    const pickers = targets.map(target => buildRangePicker(target));
     const checks = targets.map((target, index) => {
         const side = document.createElement('div');
         side.className = 'stqa_compare_side';
         side.innerHTML = `<label class="checkbox_label"><input type="checkbox"><b></b></label>`;
         side.querySelector('b').textContent = `${target.label}에서 삭제`;
-        side.append(pickers[index].element);
+        side.append(pickers[index]);
         compare.append(side);
         return side.querySelector('input');
     });
@@ -518,7 +490,6 @@ async function confirmTranslatedDelete(targets) {
     update();
 
     const result = await new Popup(root, POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소', leftAlign: true }).show();
-    pickers.forEach(picker => picker.dispose());
     if (result !== POPUP_RESULT.AFFIRMATIVE) {
         return null;
     }

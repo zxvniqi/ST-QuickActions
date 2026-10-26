@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.9.3",
+    "version": "1.9.4",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -18,6 +18,7 @@
         "name-override.js",
         "selection-tools.js",
         "text-locate.js",
+        "hidden-text.js",
         "layout-manager.js",
         "layout-editor.js",
         "inline-select.js",

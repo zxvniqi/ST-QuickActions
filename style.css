@@ -412,12 +412,6 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 }
 
 /* Delete window: the part to delete is highlighted in its surrounding text */
-.stqa_range_picker {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
 .stqa_range_mark {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 45%, transparent);
     color: inherit;
@@ -429,24 +423,15 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     background: transparent;
 }
 
-.stqa_range_steps {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 0.85em;
-    opacity: 0.85;
+/* Tapping picks words, so the browser's own selection stays out of the way */
+.stqa_range_box {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
-.stqa_range_steps span {
-    margin-left: 6px;
-}
-
-.stqa_range_steps span:first-child {
-    margin-left: 0;
-}
-
-.stqa_range_steps .menu_button {
-    width: auto;
-    margin: 0;
-    padding: 4px 12px;
+/* First word tapped: waiting for the last one */
+.stqa_range_mark.stqa_range_pending {
+    outline: 2px dashed var(--SmartThemeQuoteColor);
 }
