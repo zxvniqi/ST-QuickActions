@@ -2,6 +2,7 @@
 import { MODULE, getSettings } from './settings.js';
 import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart, wordAt } from './text-locate.js';
 import { maskHidden, messageInfo } from './hidden-text.js';
+import { rememberTranslation } from './translator-cache.js';
 
 const TOOLBAR_ID = 'stqa_selection_toolbar';
 const SELECTION_DEBOUNCE_MS = 150;
@@ -252,7 +253,16 @@ async function applySourceText(messageId, field, text, { silent = false } = {}) 
         context.updateMessageBlock(messageId, message);
         await context.eventSource.emit(context.eventTypes.MESSAGE_UPDATED, messageId);
     }
+    // A kept (or edited) translation must also be what the translator remembers for this original
+    if (message.extra?.display_text && (field !== 'mes' || silent)) {
+        await rememberCurrentTranslation(message);
+    }
     await context.saveChat();
+}
+
+function rememberCurrentTranslation(message) {
+    const translation = showingOriginal(message) ? message.extra[BACKUP_FIELD] : message.extra.display_text;
+    return rememberTranslation(comparableOriginal(message), translation);
 }
 
 /** Resolves the pending selection to a range in the message source, or explains why not. */
@@ -626,7 +636,7 @@ function createToolbar() {
  * ST's own edit (pencil) of a translated message: with "번역 그대로 두기" the translation stays
  * instead of being dropped. Runs before the update event that translators react to.
  */
-function keepTranslationOnEdit(messageId) {
+async function keepTranslationOnEdit(messageId) {
     const message = SillyTavern.getContext().chat[messageId];
     if (!getSettings().keepTranslation || !message?.extra?.display_text) {
         return;
@@ -636,6 +646,7 @@ function keepTranslationOnEdit(messageId) {
         message.extra.display_text = comparableOriginal(message);
     }
     keepTranslationFor(message);
+    await rememberCurrentTranslation(message);
 }
 
 export function initSelectionTools() {
