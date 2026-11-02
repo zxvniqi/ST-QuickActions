@@ -259,6 +259,14 @@ function build() {
             setOpen(false);
         }
     });
+    // Scrolling elsewhere by hand (finger or wheel) folds it; scrolls the buttons do themselves don't
+    const foldOnScroll = (event) => {
+        if (open && !panel.contains(event.target) && !inputToggle?.contains(event.target)) {
+            setOpen(false);
+        }
+    };
+    document.addEventListener('touchmove', foldOnScroll, { passive: true, capture: true });
+    document.addEventListener('wheel', foldOnScroll, { passive: true, capture: true });
 }
 
 /** The input bar button that opens the shortcuts (input bar layout only). */

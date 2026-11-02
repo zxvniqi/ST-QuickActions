@@ -252,10 +252,16 @@ function applyContainer(selector) {
             rules.push(`${selector} { display: flex !important; flex-direction: column; }`);
         }
         const full = arrange(order, keys);
+        // A wrapper without a box of its own (display: contents) lays its children out in the
+        // container: they take its place. Others keep their insides as they are (an icon
+        // given an order would move past a name that is plain text).
+        const wrappers = withoutOwnRules(() => new Set([...container.children]
+            .filter(child => getComputedStyle(child).display === 'contents')));
         rules.push(`${selector} > * { order: ${full.length}; }`);
         full.forEach((key, index) => {
-            const items = spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`);
-            rules.push(`${[...items, ...items.map(item => `${item} > *`)].join(', ')} { order: ${index}; }`);
+            const members = spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`);
+            const inner = members.filter(item => [...wrappers].some(wrapper => wrapper.matches(item))).map(item => `${item} > *`);
+            rules.push(`${[...members, ...inner].join(', ')} { order: ${index}; }`);
         });
     }
     for (const key of hidden) {
