@@ -1,14 +1,14 @@
-// Hide and reorder items in the wand menu, the chat input bar, the extensions panel and the
-// per-message buttons. Items are never moved in the DOM (other extensions may rely on their
-// position): order uses the CSS `order` property on flex containers, hiding uses a class.
-//  - Single containers (menu, input bar, panel): items are tagged directly, and items other
-//    extensions add later are picked up by a MutationObserver.
-//  - Message buttons exist once per message, so they're arranged by one generated stylesheet
-//    (keyed by each button's class) that covers every current and future message at no cost.
+// Hide and reorder items in the menus, the top bar, the chat input bar, the extensions panel
+// and the per-message buttons. Items are never moved in the DOM (other extensions may rely on
+// their position): everything is done by one generated stylesheet (CSS `order` on flex
+// containers, `display: none` for hidden items). Rules match items by id (or, for items
+// without one, by a key attribute set once), so they keep applying when the page or another
+// extension redraws an item, rewrites its classes or translates its text.
+//  - Single containers (menus, bars, panel): rebuilt when items are added or removed.
+//  - Message buttons exist once per message, keyed by each button's class, so the same rules
+//    cover every current and future message at no cost.
 import { MODULE, getSettings } from './settings.js';
 
-const HIDDEN_CLASS = 'stqa_layout_hidden';
-const FLEX_CLASS = 'stqa_layout_flex';
 const KEY_ATTR = 'data-stqa-key';
 const STYLE_ID = 'stqa_layout_style';
 const RECENT_MESSAGES = 4;
@@ -41,6 +41,16 @@ export const LAYOUT_AREAS = Object.freeze([
         containers: [{ selector: '#extensionsMenu', label: '' }],
         // Hiding this would lock the user out of these settings
         locked: [`${MODULE}_menu`],
+    },
+    {
+        title: '햄버거 메뉴',
+        containers: [{ selector: '#options .options-content', label: '' }],
+        locked: [],
+    },
+    {
+        title: '상단바',
+        containers: [{ selector: '#top-settings-holder', label: '' }],
+        locked: [],
     },
     {
         title: '입력창 버튼',
@@ -83,6 +93,17 @@ const KNOWN_LABELS = Object.freeze({
     mes_edit: '수정',
     mes_bookmark: '체크포인트 표시 (깃발)',
     stqa_mes_delete: '삭제 (편의성 모음)',
+    stqa_mes_to_bottom: '메시지 맨 아래로 (편의성 모음)',
+    // Top bar drawers have only icons
+    'ai-config-button': '프리셋 · AI 응답 설정',
+    'sys-settings-button': 'API 연결',
+    'advanced-formatting-button': '고급 서식 (프롬프트 템플릿)',
+    'WI-SP-button': '월드인포 / 로어북',
+    'user-settings-button': '사용자 설정 (테마 등)',
+    'backgrounds-button': '배경',
+    'extensions-settings-button': '확장 프로그램',
+    'persona-management-button': '페르소나',
+    rightNavHolder: '캐릭터 목록',
 });
 
 function findContainer(selector) {
@@ -94,9 +115,39 @@ function buttonClassOf(element) {
     return [...element.classList].find(cls => !GENERIC_CLASS.test(cls)) ?? null;
 }
 
+/**
+ * An item's key: its class (message buttons) or id. Items without an id get a key from their
+ * text the first time they're seen, kept on the element, so later text changes (translation,
+ * counters) don't make them a different item. Things that aren't items (separators) get a key
+ * by their place, so they keep it.
+ */
 function keyOf(element, perMessage) {
-    const key = perMessage ? buttonClassOf(element) : element.id || `text:${labelOf(element)}`;
-    return key && sameSpotKey(key);
+    if (perMessage) {
+        const key = buttonClassOf(element);
+        return key && sameSpotKey(key);
+    }
+    if (element.id) {
+        return sameSpotKey(element.id);
+    }
+    if (!element.hasAttribute(KEY_ATTR)) {
+        const siblings = [...element.parentElement?.children ?? []];
+        const key = isMeaningful(element)
+            ? `text:${labelOf(element)}`
+            : `slot:${element.tagName.toLowerCase()}:${siblings.filter(other => other.tagName === element.tagName).indexOf(element)}`;
+        element.setAttribute(KEY_ATTR, key);
+    }
+    return element.getAttribute(KEY_ATTR);
+}
+
+/** The key and readable name of a menu item, for other features that list menu items (folders). */
+export function describeItem(element) {
+    const key = keyOf(element, false);
+    return { key, label: labelOf(element, key), icon: iconOf(element) };
+}
+
+/** CSS selector for the item with a key, as a direct child of a container. */
+function itemSelector(key) {
+    return /^(text|slot):/.test(key) ? `[${KEY_ATTR}="${CSS.escape(key)}"]` : `#${CSS.escape(key)}`;
 }
 
 /** A readable name for an item: a known name, its heading/title/text, or the id. */
@@ -145,45 +196,80 @@ function arrange(order, naturalKeys) {
     return [...result, ...order.filter(key => !result.includes(key))];
 }
 
+// Generated rules per single container, and for the message buttons; joined into one stylesheet
+const containerRules = new Map();
+let messageRules = '';
+
+function writeStyles() {
+    let style = document.getElementById(STYLE_ID);
+    if (!style) {
+        style = document.createElement('style');
+        style.id = STYLE_ID;
+        document.head.append(style);
+    }
+    const text = [messageRules, ...containerRules.values()].filter(Boolean).join('\n');
+    if (style.textContent !== text) {
+        style.textContent = text;
+    }
+}
+
+/**
+ * Keys of a container's children in page order (separators included, so they keep their
+ * place). When several children share a key (a hidden copy of a menu item), the one shown
+ * decides the place.
+ */
+function childKeys(container) {
+    const children = [...container?.children ?? []];
+    const keys = children.map(element => keyOf(element, false));
+    const shown = withoutOwnRules(() => children.map(isDisplayed));
+    const place = new Map();
+    keys.forEach((key, index) => {
+        if (!place.has(key) || (shown[index] && !shown[place.get(key)])) {
+            place.set(key, index);
+        }
+    });
+    return [...place.keys()].sort((a, b) => place.get(a) - place.get(b));
+}
+
+/**
+ * Rules for one container. Block containers (the panel columns, the ≡ menu) become a column
+ * flexbox only while reordered. `> *` on each item also reaches the real items inside the
+ * `display: contents` wrappers extensions use (their own children keep their order among
+ * themselves, since they all get the same value). Buttons sharing a spot get the same value
+ * and so stay together in page order (script controls come right before Send / Stop).
+ */
 function applyContainer(selector) {
     const container = document.querySelector(selector);
     if (!container) {
         return;
     }
     const { order, hidden } = getLayout(selector);
-    // Block containers (the extensions panel columns) only become flex once the user reorders them
-    container.classList.toggle(FLEX_CLASS, order.length > 0 && getComputedStyle(container).display === 'block');
-
-    const children = [...container.children];
-    const keys = children.map(element => keyOf(element, false));
-    const full = order.length > 0 ? arrange(order, unique(keys)) : [];
-    children.forEach((element, domIndex) => {
-        const key = keys[domIndex];
-        element.setAttribute(KEY_ATTR, key);
-        // Buttons sharing a spot get the same value and so stay together in page order
-        // (script controls come right before Send / Stop)
-        const value = order.length > 0 ? String(full.indexOf(key)) : '';
-        element.style.order = value;
-        // ST's extension containers use `display: contents`; their children are the real flex items
-        if (getComputedStyle(element).display === 'contents') {
-            for (const child of element.children) {
-                child.style.order = value;
-            }
+    const keys = childKeys(container);
+    const rules = [];
+    if (order.length > 0) {
+        const isBlock = withoutOwnRules(() => getComputedStyle(container).display === 'block');
+        if (isBlock) {
+            rules.push(`${selector} { display: flex !important; flex-direction: column; }`);
         }
-        element.classList.toggle(HIDDEN_CLASS, hidden.includes(key) && !lockedKeys.has(key));
-    });
+        const full = arrange(order, keys);
+        rules.push(`${selector} > * { order: ${full.length}; }`);
+        full.forEach((key, index) => {
+            const items = spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`);
+            rules.push(`${[...items, ...items.map(item => `${item} > *`)].join(', ')} { order: ${index}; }`);
+        });
+    }
+    for (const key of hidden) {
+        if (!lockedKeys.has(key)) {
+            rules.push(`${spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`).join(', ')} { display: none !important; }`);
+        }
+    }
+    containerRules.set(selector, rules.join('\n'));
+    writeStyles();
 }
 
-/**
- * Whether the page / theme displays the element, ignoring this extension's own hiding (items
- * the user hid here must stay listed so they can be shown again).
- */
+/** Whether the page / theme displays the element (call inside `withoutOwnRules`). */
 function isDisplayed(element) {
-    const hiddenByUs = element.classList.contains(HIDDEN_CLASS);
-    hiddenByUs && element.classList.remove(HIDDEN_CLASS);
-    const displayed = getComputedStyle(element).display !== 'none';
-    hiddenByUs && element.classList.add(HIDDEN_CLASS);
-    return displayed;
+    return getComputedStyle(element).display !== 'none';
 }
 
 /** A message's buttons in page order, with the feature-button box unpacked in its place. */
@@ -290,16 +376,8 @@ function applyMessageStyles() {
             rules.push(`${selectorFor(key)} { display: none !important; }`);
         }
     }
-    let style = document.getElementById(STYLE_ID);
-    if (!style) {
-        style = document.createElement('style');
-        style.id = STYLE_ID;
-        document.head.append(style);
-    }
-    const text = rules.join('\n');
-    if (style.textContent !== text) {
-        style.textContent = text;
-    }
+    messageRules = rules.join('\n');
+    writeStyles();
 }
 
 /**
@@ -345,11 +423,16 @@ export function listItems(selector, { natural = false } = {}) {
         const children = [...(document.querySelector(selector)?.children ?? [])];
         const keys = children.map(element => keyOf(element, false));
         // Only what the page shows (e.g. the hidden input-bar copies of Impersonate / Continue
-        // stay out); a shared spot counts when any of its buttons shows, e.g. Stop while generating
-        const shownKeys = new Set(keys.filter((key, index) => isMeaningful(children[index]) && isDisplayed(children[index])));
-        entries = unique(keys).filter(key => shownKeys.has(key)).map((key, index) => {
-            const element = children.find(child => child.id === key) ?? children[keys.indexOf(key)];
-            return { key, element, sortIndex: natural || element.style.order === '' ? index : Number(element.style.order) };
+        // stay out); a shared spot counts when any of its buttons shows, e.g. Stop while generating.
+        // Measured without this extension's rules, so items hidden here still count.
+        const shown = withoutOwnRules(() => children.map(child => isMeaningful(child) && isDisplayed(child)));
+        const listed = childKeys(document.querySelector(selector)).filter(key => keys.some((other, index) => other === key && shown[index]));
+        const full = arrange(order, listed);
+        entries = listed.map((key, index) => {
+            // The spot's own button names it (Send rather than Stop), else the copy that shows
+            const element = children.find((child, at) => keys[at] === key && child.id === key && shown[at])
+                ?? children.find((child, at) => keys[at] === key && shown[at]);
+            return { key, element, sortIndex: natural ? index : full.indexOf(key) };
         });
     }
     return entries

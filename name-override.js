@@ -11,9 +11,28 @@ const PROVIDER_ORDER_LATE = 90;
 // Hot-path cache: macro substitution runs many times per generation, so avoid getContext() there.
 const overrides = { char: '', user: '' };
 let isGroupChat = false;
+let realNameOnDisplayRegex = true;
 const legacyRegistered = { char: false, user: false };
+// Frames between a display regex script and the name lookup (regex engine -> macro engine)
+const STACK_DEPTH = 60;
+
+/**
+ * Whether the macro is being filled in for a regex script that changes how a message is shown
+ * (status panels and cards built from the message): those should name the real character.
+ * Seen from the call stack, as the regex engine doesn't tell the macro engine who's asking.
+ */
+function isForDisplayRegex() {
+    const limit = Error.stackTraceLimit;
+    Error.stackTraceLimit = STACK_DEPTH;
+    const stack = new Error().stack ?? '';
+    Error.stackTraceLimit = limit;
+    return stack.includes('runRegexScript') && stack.includes('messageFormatting');
+}
 
 function applyToEnv(env) {
+    if ((overrides.char || overrides.user) && realNameOnDisplayRegex && isForDisplayRegex()) {
+        return;
+    }
     if (overrides.user) {
         env.names.user = overrides.user;
     }
@@ -29,8 +48,8 @@ function applyToEnv(env) {
 
 // Fallbacks only matter if an override was cleared after the macro engine switched mode.
 const legacyHandlers = {
-    char: () => overrides.char || SillyTavern.getContext().name2,
-    user: () => overrides.user || SillyTavern.getContext().name1,
+    char: () => (overrides.char && !(realNameOnDisplayRegex && isForDisplayRegex()) ? overrides.char : SillyTavern.getContext().name2),
+    user: () => (overrides.user && !(realNameOnDisplayRegex && isForDisplayRegex()) ? overrides.user : SillyTavern.getContext().name1),
 };
 
 function syncLegacyMacros() {
@@ -57,7 +76,33 @@ function refreshOverrides() {
     for (const kind of NAME_KINDS) {
         overrides[kind] = settings.nameOverride ? String(settings[SETTING_KEYS[kind]] ?? '').trim() : '';
     }
+    realNameOnDisplayRegex = settings.statusRealName;
     syncLegacyMacros();
+}
+
+/** Whether status panels (display regex scripts) keep the real names. */
+export function setStatusRealName(enabled) {
+    getSettings().statusRealName = enabled;
+    refreshOverrides();
+    SillyTavern.getContext().saveSettingsDebounced();
+}
+
+/**
+ * Swaps what {{char}} and {{user}} resolve to. Empty fields stand for the original names, so
+ * swapping with nothing typed in makes {{char}} the persona and {{user}} the character.
+ * @returns {{ char: string, user: string }} the stored values after the swap
+ */
+export function swapNames() {
+    const context = SillyTavern.getContext();
+    const settings = getSettings();
+    const original = { char: context.name2 ?? '', user: context.name1 ?? '' };
+    const current = { char: settings.charName || original.char, user: settings.userName || original.user };
+    // A name equal to the original is stored empty, so it keeps following the chat
+    settings.charName = current.user === original.char ? '' : current.user;
+    settings.userName = current.char === original.user ? '' : current.char;
+    refreshOverrides();
+    context.saveSettingsDebounced();
+    return { char: settings.charName, user: settings.userName };
 }
 
 export function getStoredName(kind) {

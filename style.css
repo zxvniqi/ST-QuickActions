@@ -103,16 +103,6 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     font-weight: bold;
 }
 
-/* Layout: hidden items and the flex switch for block containers */
-.stqa_layout_hidden {
-    display: none !important;
-}
-
-.stqa_layout_flex {
-    display: flex;
-    flex-direction: column;
-}
-
 /* Layout editor: tabs */
 .stqa_tabs {
     display: flex;
@@ -434,4 +424,434 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 /* First word tapped: waiting for the last one */
 .stqa_range_mark.stqa_range_pending {
     outline: 2px dashed var(--SmartThemeQuoteColor);
+}
+
+/* Settings window: one section per topic */
+.stqa_section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
+}
+
+.stqa_section:first-of-type {
+    border-top: none;
+}
+
+.stqa_section > b {
+    margin-bottom: 2px;
+}
+
+.stqa_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 4px 0 0 4px;
+}
+
+.stqa_chips.stqa_off {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.stqa_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.stqa_chip input {
+    margin: 0;
+}
+
+/* Buttons at the bottom left of messages */
+.stqa_mes_footer {
+    display: none;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+body.stqa_footer_top_on .stqa_mes_footer,
+body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_system="true"]) .stqa_mes_footer {
+    display: flex;
+}
+
+#message_template .stqa_mes_footer {
+    display: none !important;
+}
+
+.stqa_footer_button {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 28px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 80%, transparent);
+    border-radius: 8px;
+    font-size: 0.85em;
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.stqa_footer_button:hover,
+.stqa_footer_button:active {
+    opacity: 1;
+}
+
+body.stqa_footer_top_on .stqa_footer_button[data-stqa-action="top"],
+body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_system="true"]) .stqa_footer_swipe {
+    display: flex;
+}
+
+body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
+    display: none !important;
+}
+
+/* Floating shortcut panel */
+#stqa_floating_panel {
+    position: fixed;
+    z-index: 3500;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    transition: transform 0.12s, box-shadow 0.12s;
+}
+
+#stqa_floating_panel[hidden],
+.stqa_floating_button[hidden] {
+    display: none !important;
+}
+
+#stqa_floating_panel.stqa_layout_horizontal,
+#stqa_floating_panel.stqa_layout_input {
+    flex-direction: row;
+}
+
+/* Folded: only the open button shows */
+#stqa_floating_panel:not(.stqa_open) .stqa_floating_button:not(.stqa_floating_toggle) {
+    display: none;
+}
+
+#stqa_floating_panel.stqa_layout_input .stqa_floating_toggle {
+    display: none;
+}
+
+#stqa_floating_panel.stqa_open .stqa_floating_toggle {
+    opacity: 0.55;
+}
+
+#stqa_shortcuts_toggle.stqa_open {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor);
+}
+
+body.stqa_hide_placeholder #send_textarea::placeholder {
+    color: transparent;
+}
+
+/* Message range form */
+.stqa_range_fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.stqa_range_fields label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.stqa_range_fields input {
+    width: 5.5em;
+    margin: 0;
+}
+
+.stqa_range_note {
+    display: block;
+    margin-top: 8px;
+    opacity: 0.75;
+}
+
+/* Past answers under a QR input popup */
+.stqa_qr_history {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    text-align: left;
+}
+
+.stqa_qr_history > small {
+    opacity: 0.7;
+}
+
+.stqa_qr_history_slot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+}
+
+.stqa_qr_history_text {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.stqa_qr_history_copy {
+    padding: 6px 10px;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.stqa_qr_history_text:hover,
+.stqa_qr_history_copy:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+}
+
+#stqa_floating_panel.stqa_floating_dragging {
+    transform: scale(1.08);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.stqa_floating_button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    color: #333;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.stqa_floating_button:hover,
+.stqa_floating_button:active {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* Quick Reply bar shapes */
+#stqa_qr_toggle {
+    display: none;
+}
+
+body.stqa_qr_fold #stqa_qr_toggle {
+    display: flex;
+}
+
+#stqa_qr_toggle.stqa_qr_toggle_off {
+    opacity: 0.45;
+}
+
+body.stqa_qr_line #qr--bar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    max-height: none !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.stqa_qr_line #qr--bar::-webkit-scrollbar {
+    display: none;
+}
+
+body.stqa_qr_line #qr--bar > .qr--buttons {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    flex: 0 0 auto !important;
+}
+
+body.stqa_qr_line #qr--bar .qr--button {
+    flex: 0 0 auto !important;
+    white-space: nowrap !important;
+}
+
+body.stqa_qr_compact #qr--bar .qr--button {
+    min-height: 0 !important;
+    padding: 2px 10px !important;
+    font-size: 0.82em !important;
+    border-radius: 999px !important;
+}
+
+body.stqa_qr_wrap #qr--bar {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    max-height: 4.6em !important;
+    overflow-y: auto !important;
+}
+
+body.stqa_qr_fold.stqa_qr_collapsed #qr--bar {
+    display: none !important;
+}
+/* Folders (wand menu, regex scripts, prompts) */
+.stqa_folder_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+li.stqa_folder_header,
+div.stqa_folder_header:not(.list-group-item) {
+    padding: 6px 8px;
+    margin: 2px 0;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 18%, transparent);
+    list-style: none;
+}
+
+.stqa_folder_name {
+    font-weight: 600;
+}
+
+.stqa_folder_note {
+    flex: 1;
+    min-width: 0;
+    opacity: 0.7;
+    overflow-wrap: anywhere;
+}
+
+.stqa_folder_caret {
+    transition: transform 0.15s;
+}
+
+.stqa_folder_header.stqa_folded .stqa_folder_caret,
+.stqa_folder.stqa_folded > .stqa_folder_header .stqa_folder_caret {
+    transform: rotate(-90deg);
+}
+
+.stqa_folder.stqa_folded > .stqa_folder_body,
+[data-stqa-folder].stqa_folded {
+    display: none !important;
+}
+
+.stqa_folder_body > *,
+[data-stqa-folder] {
+    border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
+}
+
+.stqa_folder_body > * {
+    padding-left: 14px !important;
+}
+
+/* Folder editor */
+.stqa_folder_editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_folder_edit_row,
+.stqa_folder_new,
+.stqa_folder_item_row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stqa_folder_edit_row input,
+.stqa_folder_new input {
+    flex: 1;
+    margin: 0;
+}
+
+.stqa_folder_delete {
+    padding: 6px;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.stqa_folder_items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+    padding-top: 8px;
+}
+
+.stqa_folder_item_label {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.stqa_folder_item_row select {
+    width: 40%;
+    margin: 0;
+}
+
+.stqa_folder_buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Prompt versions */
+.stqa_variant_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.stqa_variant_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 9px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    font-size: 0.82em;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.stqa_variant_chip.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 25%, transparent);
+}
+
+.stqa_variant_add {
+    opacity: 0.8;
+    border-style: dashed;
+}
+
+.stqa_variant_remove {
+    opacity: 0.6;
+    padding-left: 2px;
+}
+
+.stqa_variant_editor {
+    margin: 6px 0;
+    text-align: left;
 }

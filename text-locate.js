@@ -1,5 +1,6 @@
 // Maps text selected on screen back to its position in the raw message source.
 // The rendered text lacks markdown markers / HTML tags, so the search tolerates them.
+import { findAnchors } from './text-anchors.js';
 
 // Real tags only (a letter after "<"), so emoticons like ( >///< ) stay plain text
 const MARKUP_GAP = '(?:[*_~`]|</?[A-Za-z][^<>]*>)*';
@@ -488,6 +489,36 @@ function matchingPoint(fromText, fromUnit, position, toText, toUnit, side) {
     return nearestWordEdge(toText, point, toUnit, side);
 }
 
+/**
+ * Like matchingPoint, but first pins the point between words both versions share (anchors):
+ * inside an anchor it lands on that anchor's edge, otherwise the letter share is counted only
+ * in the stretch between the anchors around it.
+ */
+function anchoredPoint(fromText, fromUnit, position, toText, toUnit, side) {
+    const anchors = findAnchors(fromText, fromUnit, toText, toUnit);
+    const inside = anchors.find(({ from }) => (side === 'start'
+        ? from.start <= position && position < from.end
+        : from.start < position && position <= from.end));
+    if (inside) {
+        return side === 'start' ? inside.to.start : inside.to.end;
+    }
+    const before = anchors.findLast(({ from }) => from.end <= position);
+    const after = anchors.find(({ from }) => from.start >= position);
+    const fromGap = { start: before?.from.end ?? fromUnit.start, end: after?.from.start ?? fromUnit.end };
+    const toGap = { start: before?.to.end ?? toUnit.start, end: after?.to.start ?? toUnit.end };
+    const point = matchingPoint(fromText, fromGap, position, toText, toGap, side);
+    if (point === toGap.start && before && side === 'start') {
+        // A Japanese particle right after the anchor belongs to it (スリッパ|の|底 -> 底)
+        const particle = toText.slice(point, toGap.end).match(/^\p{Script=Hiragana}{1,2}(?=[\p{Script=Han}\p{Script=Katakana}])/u);
+        return point + (particle?.[0].length ?? 0);
+    }
+    if (point !== null) {
+        return point;
+    }
+    // The point sits right at an anchor's edge
+    return side === 'end' ? (before ? toGap.start : null) : (after ? toGap.end : null);
+}
+
 /** Drops spaces and punctuation at the edges that the selection itself doesn't have. */
 function trimEdges(text, { start, end }, selected) {
     const isLoose = char => ['space', 'mark'].includes(charClass(char));
@@ -513,6 +544,31 @@ function isLatinText(text, span) {
     return letters.filter(char => /[A-Za-zÀ-ɏ]/.test(char)).length > letters.length / 2;
 }
 
+// Where an English clause splits into smaller ones ("I packed my bag | and waited for the bus"):
+// Korean keeps the order of such joined parts, unlike the order of words inside them. Clauses
+// with as / when / because come first in Korean, so they are no joint.
+const LATIN_JOINT = /\s(?=(?:and|but|or|so|then|yet)\s)/gi;
+// A part is picked only when the selection reaches this far (letter share) into it: the share
+// is a rough estimate, a sliver over the edge doesn't count
+const LATIN_PART_SLACK = 0.12;
+
+/** The edge of the English part (see LATIN_JOINT) the selection starts / ends in. */
+function latinPoint(fromText, fromUnit, position, toText, toUnit, side) {
+    const joints = [...toText.slice(toUnit.start, toUnit.end).matchAll(LATIN_JOINT)].map(match => toUnit.start + match.index + 1);
+    const edges = [toUnit.start, ...joints, toUnit.end];
+    const fromLetters = lettersOf(fromText, fromUnit);
+    const toLetters = lettersOf(toText, toUnit);
+    if (joints.length === 0 || fromLetters.length === 0 || toLetters.length === 0) {
+        return side === 'start' ? toUnit.start : toUnit.end;
+    }
+    const share = fromLetters.filter(index => index < position).length / fromLetters.length;
+    const shareAt = edge => toLetters.filter(index => index < edge).length / toLetters.length;
+    if (side === 'start') {
+        return edges.findLast(edge => edge < toUnit.end && shareAt(edge) <= share + LATIN_PART_SLACK) ?? toUnit.start;
+    }
+    return edges.find(edge => edge > toUnit.start && shareAt(edge) >= share - LATIN_PART_SLACK) ?? toUnit.end;
+}
+
 /**
  * When only part of the matched units is selected, picks the same part of the other version:
  * the start is placed within the first unit and the end within the last one, each at the same
@@ -521,11 +577,11 @@ function isLatinText(text, span) {
  */
 function narrowToSelectedPart(fromText, range, toText, toSpan, [[fromFirst, toFirst], [fromLast, toLast]]) {
     const start = isLatinText(toText, toFirst)
-        ? toFirst.start
-        : matchingPoint(fromText, fromFirst, range.start, toText, toFirst, 'start') ?? toFirst.end;
+        ? latinPoint(fromText, fromFirst, range.start, toText, toFirst, 'start')
+        : anchoredPoint(fromText, fromFirst, range.start, toText, toFirst, 'start') ?? toFirst.end;
     const end = isLatinText(toText, toLast)
-        ? toLast.end
-        : matchingPoint(fromText, fromLast, range.end, toText, toLast, 'end') ?? toLast.start;
+        ? latinPoint(fromText, fromLast, range.end, toText, toLast, 'end')
+        : anchoredPoint(fromText, fromLast, range.end, toText, toLast, 'end') ?? toLast.start;
     if (end <= start) {
         return toSpan;
     }
