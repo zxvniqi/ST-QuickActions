@@ -664,6 +664,11 @@ body.stqa_qr_fold #stqa_qr_toggle {
     display: flex;
 }
 
+/* Themes may style every input bar button; without a fold the toggle stays away */
+body:not(.stqa_qr_fold) #stqa_qr_toggle {
+    display: none !important;
+}
+
 #stqa_qr_toggle.stqa_qr_toggle_off {
     opacity: 0.45;
 }
@@ -673,6 +678,7 @@ body.stqa_qr_line #qr--bar {
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
+    height: auto !important;
     max-height: none !important;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
@@ -688,12 +694,21 @@ body.stqa_qr_line #qr--bar > .qr--buttons {
     flex: 0 0 auto !important;
 }
 
+/* A theme's own folding (button sets squeezed to nothing until hovered) gives way to the chosen shape */
+body.stqa_qr_line #qr--bar > .qr--buttons,
+body.stqa_qr_wrap #qr--bar > .qr--buttons {
+    height: auto !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
 body.stqa_qr_line #qr--bar .qr--button {
     flex: 0 0 auto !important;
     white-space: nowrap !important;
 }
 
 body.stqa_qr_compact #qr--bar .qr--button {
+    height: auto !important;
     min-height: 0 !important;
     padding: 2px 10px !important;
     font-size: 0.82em !important;
