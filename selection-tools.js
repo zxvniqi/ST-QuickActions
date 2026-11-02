@@ -171,13 +171,42 @@ function onSelectionChange() {
     }, SELECTION_DEBOUNCE_MS);
 }
 
-/** The text ST renders for a message, and which field it comes from. */
+// Where LLM Translator keeps the translation while it shows the original instead
+const BACKUP_FIELD = 'original_translation_backup';
+
+/** The original as translators compare it (macros filled in). */
+function comparableOriginal(message) {
+    const context = SillyTavern.getContext();
+    return context.substituteParams(message.mes, context.name1, message.name);
+}
+
+/**
+ * Whether the translator shows the original right now ("원문 보기"): it then puts a copy of
+ * the original in display_text and keeps the translation in a backup.
+ */
+function showingOriginal(message) {
+    const extra = message.extra;
+    return typeof extra?.[BACKUP_FIELD] === 'string' && Boolean(extra.display_text) && extra.display_text === comparableOriginal(message);
+}
+
+/** The text on screen comes from: the translation, or the original (also while the translator shows it). */
 function getSourceField(message) {
-    return message.extra?.display_text ? 'display_text' : 'mes';
+    return message.extra?.display_text && !showingOriginal(message) ? 'display_text' : 'mes';
 }
 
 function getSourceText(message, field) {
-    return field === 'display_text' ? message.extra.display_text : message.mes;
+    return field === 'mes' ? message.mes : message.extra[field];
+}
+
+/**
+ * Translators may remember which original their translation belongs to (LLM Translator:
+ * original_text_for_translation, compared the same way) and drop the translation at the next
+ * edit once it differs. Pointing it at the current original keeps the translation.
+ */
+function keepTranslationFor(message) {
+    if (typeof message.extra?.original_text_for_translation === 'string') {
+        message.extra.original_text_for_translation = comparableOriginal(message);
+    }
 }
 
 /**
@@ -187,21 +216,29 @@ function getSourceText(message, field) {
 async function applySourceText(messageId, field, text, { silent = false } = {}) {
     const context = SillyTavern.getContext();
     const message = context.chat[messageId];
-    if (field === 'display_text' || silent) {
+    if (field === BACKUP_FIELD) {
+        // The translation waiting while the original is shown: nothing on screen changes
+        message.extra[BACKUP_FIELD] = text;
+    } else if (field === 'display_text' || silent) {
         // No edit/update events: translate extensions treat them as "the original changed"
         // and drop or redo the translation.
         if (field === 'display_text') {
             message.extra.display_text = text;
+            // A backup left over from switching back and forth would bring the old
+            // translation back at the next switch
+            if (typeof message.extra[BACKUP_FIELD] === 'string') {
+                message.extra[BACKUP_FIELD] = text;
+            }
         } else {
+            const original = showingOriginal(message);
             message.mes = text;
             if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
                 message.swipes[message.swipe_id] = text;
             }
-            // Translators may remember which original their translation belongs to (LLM
-            // Translator: original_text_for_translation, compared the same way) and drop the
-            // translation at the next edit once it differs; the translation is kept on purpose here
-            if (typeof message.extra?.original_text_for_translation === 'string') {
-                message.extra.original_text_for_translation = context.substituteParams(text, context.name1, message.name);
+            keepTranslationFor(message);
+            // The original on screen is the translator's copy: keep it current
+            if (original) {
+                message.extra.display_text = comparableOriginal(message);
             }
         }
         context.updateMessageBlock(messageId, message);
@@ -262,14 +299,19 @@ async function runAction(action) {
  * translated messages, the matching paragraphs of the original.
  */
 function buildEditTargets(messageId, field, source, range) {
-    const targets = [{ field, source, range, label: field === 'display_text' ? '번역문' : '원문' }];
-    if (field === 'display_text') {
-        const { chat } = SillyTavern.getContext();
-        const original = chat[messageId].mes;
+    const targets = [{ field, source, range, label: field === 'mes' ? '원문' : '번역문' }];
+    const { chat } = SillyTavern.getContext();
+    const message = chat[messageId];
+    // The other version: the original of a translation, or the translation of the original
+    // the translator shows right now
+    const other = field === 'display_text' ? { field: 'mes', label: '원문' }
+        : showingOriginal(message) ? { field: BACKUP_FIELD, label: '번역문' } : null;
+    if (other) {
+        const otherSource = getSourceText(message, other.field);
         // Parts the user's regex scripts hide on screen (removed blocks, status cards) are left out
         const info = messageInfo(chat, messageId);
-        const originalRange = mapToMatchingPart(maskHidden(source, info), range, maskHidden(original, info));
-        targets.push({ field: 'mes', source: original, range: originalRange, label: '원문' });
+        const otherRange = mapToMatchingPart(maskHidden(source, info), range, maskHidden(otherSource, info));
+        targets.push({ ...other, source: otherSource, range: otherRange });
     }
     for (const target of targets) {
         target.initial = target.source.slice(target.range.start, target.range.end);
@@ -478,15 +520,19 @@ async function confirmDelete(targets) {
     });
 
     if (translated) {
-        const [translation, original] = targets;
-        const unsure = original.initial.length > Math.max(UNSURE_MATCH_MIN, translation.initial.length * UNSURE_MATCH_RATIO);
+        // The shown version, and the matching part found in the other one
+        const [shown, matched] = targets;
+        const unsure = matched.initial.length > Math.max(UNSURE_MATCH_MIN, shown.initial.length * UNSURE_MATCH_RATIO);
         checks[1].checked = !unsure;
-        root.querySelector('.stqa_unsure').hidden = !unsure;
+        const unsureNote = root.querySelector('.stqa_unsure');
+        unsureNote.hidden = !unsure;
+        unsureNote.textContent = `⚠️ ${matched.label}에서 정확한 위치를 못 찾아서 넓게 잡혔어요. ${matched.label} 삭제는 꺼뒀어요.`;
 
         const keepBox = buildKeepTranslationOption(getSettings());
         root.append(keepBox);
+        const originalIndex = targets.findIndex(target => target.field === 'mes');
         const update = () => {
-            keepBox.hidden = !checks[1].checked;
+            keepBox.hidden = !checks[originalIndex].checked;
             compare.querySelectorAll('.stqa_compare_side').forEach((side, index) => side.classList.toggle('stqa_off', !checks[index].checked));
         };
         checks.forEach(check => check.addEventListener('change', update));
@@ -515,13 +561,22 @@ async function restoreMessage(messageId, snapshot) {
     if (snapshot.translatedFrom !== undefined) {
         message.extra.original_text_for_translation = snapshot.translatedFrom;
     }
+    if (snapshot.backup !== undefined) {
+        message.extra[BACKUP_FIELD] = snapshot.backup;
+    }
     context.updateMessageBlock(messageId, message);
     await context.saveChat();
 }
 
 async function deleteSelection({ messageId, field, source, range }) {
     const message = SillyTavern.getContext().chat[messageId];
-    const snapshot = { mes: message.mes, displayText: message.extra?.display_text, translatedFrom: message.extra?.original_text_for_translation };
+    const snapshot = {
+        mes: message.mes,
+        displayText: message.extra?.display_text,
+        translatedFrom: message.extra?.original_text_for_translation,
+        backup: message.extra?.[BACKUP_FIELD],
+    };
+    const original = showingOriginal(message);
     const targets = await confirmDelete(buildEditTargets(messageId, field, source, range));
     if (!targets?.length) {
         return;
@@ -534,7 +589,8 @@ async function deleteSelection({ messageId, field, source, range }) {
         const text = removeRange(target.source, expandOverWrappers(target.source, target.range));
         await applySourceText(messageId, target.field, text, { silent: silent && Boolean(snapshot.displayText) });
     }
-    if (snapshot.displayText && !chat[messageId].extra?.display_text) {
+    // (While the original is shown, display_text is only its copy: nothing to write back)
+    if (snapshot.displayText && !original && !chat[messageId].extra?.display_text) {
         await applySourceText(messageId, 'display_text', snapshot.displayText);
     }
     toastr.success('선택한 부분을 지웠어요. 이 알림을 누르면 되돌려요.', TITLE, {
@@ -566,8 +622,26 @@ function createToolbar() {
     document.body.append(toolbar);
 }
 
+/**
+ * ST's own edit (pencil) of a translated message: with "번역 그대로 두기" the translation stays
+ * instead of being dropped. Runs before the update event that translators react to.
+ */
+function keepTranslationOnEdit(messageId) {
+    const message = SillyTavern.getContext().chat[messageId];
+    if (!getSettings().keepTranslation || !message?.extra?.display_text) {
+        return;
+    }
+    if (typeof message.extra[BACKUP_FIELD] === 'string' && message.extra.display_text !== message.extra[BACKUP_FIELD]) {
+        // The original was on screen (the translator's copy, now outdated): show the edited one
+        message.extra.display_text = comparableOriginal(message);
+    }
+    keepTranslationFor(message);
+}
+
 export function initSelectionTools() {
     createToolbar();
     document.addEventListener('selectionchange', onSelectionChange);
     document.getElementById('chat')?.addEventListener('scroll', hideToolbar, { passive: true });
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    eventSource.on(eventTypes.MESSAGE_EDITED, keepTranslationOnEdit);
 }

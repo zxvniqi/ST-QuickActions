@@ -28,6 +28,7 @@ const TOGGLES = {
     deleteButton: ['메시지 메뉴에 삭제 버튼', applyDeleteButtonSetting],
     chatPicker: ['캐릭터 고를 때 채팅 목록 띄우기'],
     selectionTools: ['글자를 고르면 수정/삭제 버튼 띄우기'],
+    keepTranslation: ['원문을 고쳐도 번역 그대로 두기 (연필 수정 포함)'],
     footerSwipe: ['메시지 아래 < > 버튼 (이전·다음 답변, 마지막 답변에만)', applyMessageToolSettings],
     footerTop: ['메시지 아래 ↑ 버튼 (그 메시지 맨 위로)', applyMessageToolSettings],
     menuToBottom: ['메시지 메뉴에 ↓ 버튼 (그 메시지 맨 아래로)', applyMessageToolSettings],
@@ -59,6 +60,7 @@ function buildPanel() {
             ${toggle('deleteButton')}
             ${toggle('chatPicker')}
             ${toggle('selectionTools')}
+            ${toggle('keepTranslation')}
             <div class="stqa_name_field">
                 <span class="stqa_wide_label">수정/삭제 버튼 위치</span>
                 <div class="stqa_toolbar_position"></div>
