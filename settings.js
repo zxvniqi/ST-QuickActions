@@ -31,16 +31,15 @@ const defaultSettings = Object.freeze({
     menuToBottom: true,
     // Floating shortcut panel
     floatingPanel: true,
-    floatingButtons: { deleteLast: true, deleteRange: true, top: true, jump: true, bottom: true, qrRerun: true },
+    floatingButtons: { deleteLast: true, top: true, jump: true, bottom: true, qrRerun: true, names: true },
     floatingPosition: null,
-    // vertical | horizontal | input (buttons in the input bar instead of floating)
-    floatingLayout: 'vertical',
+    // input (a row above the input bar) | vertical | horizontal (floating)
+    floatingLayout: 'input',
     floatingCollapsed: true,
     // Quick Reply bar shape
     qrPreset: 'theme',
-    qrCollapsed: false,
-    // Past answers to QR input popups: { "set.label#step": string[] }
-    qrInputHistory: {},
+    // Last answers typed into QR input popups, any QR, newest first
+    qrRecentInputs: [],
     // Folders: { area: [{ id, name, keys: string[] }] }; which ones are open is not kept
     folders: {},
     // Saved toggle combinations per prompt preset: { preset: [{ name, states: { identifier: on } }] }

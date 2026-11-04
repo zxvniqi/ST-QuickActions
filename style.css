@@ -521,10 +521,12 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 4px;
-    background: #fff;
+    padding: 3px;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 12px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -590,23 +592,48 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     opacity: 0.75;
 }
 
-/* Past answers under a QR input popup */
+/* QR input popup: 삭제 / 복사 / 기록 at the top right of the input box */
+.stqa_qr_tools {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin: 6px 0 4px;
+}
+
+.stqa_qr_tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    font-size: 0.85em;
+    opacity: 0.75;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stqa_qr_tool:hover,
+.stqa_qr_tool.stqa_active {
+    opacity: 1;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+}
+
 .stqa_qr_history {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-top: 8px;
+    margin-bottom: 6px;
     text-align: left;
 }
 
-.stqa_qr_history > small {
-    opacity: 0.7;
+.stqa_qr_history[hidden] {
+    display: none;
 }
 
 .stqa_qr_history_slot {
     display: flex;
     align-items: center;
-    gap: 6px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
 }
@@ -645,86 +672,144 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     width: 36px;
     height: 36px;
     border-radius: 8px;
-    color: #333;
+    color: var(--SmartThemeBodyColor);
     font-size: 15px;
     cursor: pointer;
 }
 
 .stqa_floating_button:hover,
 .stqa_floating_button:active {
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--white30a, rgba(127, 127, 127, 0.15));
 }
 
-/* Quick Reply bar shapes */
-#stqa_qr_toggle {
-    display: none;
+/* Floating and folded: a small see-through button at the screen edge */
+#stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) {
+    opacity: 0.5;
 }
 
-body.stqa_qr_fold #stqa_qr_toggle {
-    display: flex;
+#stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) .stqa_floating_toggle {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
 }
 
-/* Themes may style every input bar button; without a fold the toggle stays away */
-body:not(.stqa_qr_fold) #stqa_qr_toggle {
-    display: none !important;
+/* In the input bar: a row in the page flow right above the input, covering nothing */
+#stqa_floating_panel.stqa_layout_input {
+    position: static;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    margin: 4px 0 0;
+    padding: 4px;
+    box-shadow: none;
 }
 
-#stqa_qr_toggle.stqa_qr_toggle_off {
-    opacity: 0.45;
+#stqa_floating_panel.stqa_layout_input .stqa_floating_button {
+    flex: 1 1 0;
+    max-width: 52px;
+    height: 32px;
 }
 
-body.stqa_qr_line #qr--bar {
+/* Quick Reply bar in the Cinema Note look. The doubled id outweighs any theme's own rules. */
+body.stqa_qrc #qr--bar#qr--bar {
+    position: relative;
     display: flex !important;
+    flex-direction: column !important;
     flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
+    gap: 5px !important;
     height: auto !important;
     max-height: none !important;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    margin-top: 5px;
+    padding: 0 10px 6px !important;
+    border-radius: 12px;
+    overflow: hidden !important;
+    opacity: 1 !important;
+    cursor: pointer;
 }
 
-body.stqa_qr_line #qr--bar::-webkit-scrollbar {
+/* The handle: tap it (or the bar around the buttons) to unfold / fold */
+body.stqa_qrc #qr--bar#qr--bar::before {
+    content: '' !important;
+    display: block !important;
+    flex: none;
+    width: 30px;
+    height: 3px;
+    margin: 9px auto 4px !important;
+    border-radius: 10px;
+    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemeBorderColor));
+    opacity: 0.5;
+    transition: width 0.3s, opacity 0.3s;
+}
+
+body.stqa_qrc.stqa_qrc_unfolded #qr--bar#qr--bar::before {
+    width: 50px;
+    opacity: 0.8;
+}
+
+body.stqa_qrc.stqa_qrc_open #qr--bar#qr--bar {
+    padding-top: 6px !important;
+    cursor: default;
+}
+
+body.stqa_qrc.stqa_qrc_open #qr--bar#qr--bar::before {
+    display: none !important;
+}
+
+body.stqa_qrc #qr--bar#qr--bar > .qr--buttons {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: safe center !important;
+    gap: 5px !important;
+    width: auto !important;
+    min-width: 100% !important;
+    height: auto !important;
+    padding: 1px 0 !important;
+    overflow: auto hidden !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    order: 0 !important;
+    scrollbar-width: none;
+    cursor: default;
+}
+
+body.stqa_qrc #qr--bar#qr--bar > .qr--buttons::-webkit-scrollbar {
     display: none;
 }
 
-body.stqa_qr_line #qr--bar > .qr--buttons {
-    display: flex !important;
-    flex-wrap: nowrap !important;
-    flex: 0 0 auto !important;
-}
-
-/* A theme's own folding (button sets squeezed to nothing until hovered) gives way to the chosen shape */
-body.stqa_qr_line #qr--bar > .qr--buttons,
-body.stqa_qr_wrap #qr--bar > .qr--buttons {
-    height: auto !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-
-body.stqa_qr_line #qr--bar .qr--button {
-    flex: 0 0 auto !important;
-    white-space: nowrap !important;
-}
-
-body.stqa_qr_compact #qr--bar .qr--button {
-    height: auto !important;
-    min-height: 0 !important;
-    padding: 2px 10px !important;
-    font-size: 0.82em !important;
-    border-radius: 999px !important;
-}
-
-body.stqa_qr_wrap #qr--bar {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    max-height: 4.6em !important;
-    overflow-y: auto !important;
-}
-
-body.stqa_qr_fold.stqa_qr_collapsed #qr--bar {
+/* Folded: no sets, or only the first one (above the handle, as in the theme) */
+body.stqa_qrc:not(.stqa_qrc_open):not(.stqa_qrc_unfolded) #qr--bar#qr--bar > .qr--buttons {
     display: none !important;
 }
+
+body.stqa_qrc.stqa_qrc_lock1 #qr--bar#qr--bar > .qr--buttons:first-child {
+    display: flex !important;
+    order: -1 !important;
+}
+
+body.stqa_qrc.stqa_qrc_lock1 #qr--bar#qr--bar {
+    padding-top: 6px !important;
+}
+
+body.stqa_qrc #qr--bar#qr--bar .qr--button {
+    display: flex !important;
+    align-items: center;
+    flex: 0 0 auto !important;
+    height: 30px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 10px !important;
+    border: 1px solid var(--black30a) !important;
+    border-radius: 20px !important;
+    background-color: var(--SmartThemeBlurTintColor) !important;
+    white-space: nowrap !important;
+    transition: border 0.3s, box-shadow 0.3s;
+}
+
+body.stqa_qrc #qr--bar#qr--bar .qr--button:hover {
+    border-color: var(--SmartThemeUnderlineColor, var(--SmartThemeQuoteColor)) !important;
+    box-shadow: rgba(0, 0, 0, 0.1) 0 0 5px !important;
+}
+
 /* Folders (wand menu, regex scripts, prompts) */
 .stqa_folder_header {
     display: flex;
@@ -778,40 +863,107 @@ div.stqa_folder_header:not(.list-group-item) {
     padding-left: 14px !important;
 }
 
-/* Folder editor */
+/* Folder editor: folders as tabs, the items of the list below */
 .stqa_folder_editor {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     text-align: left;
 }
 
-.stqa_folder_edit_row,
-.stqa_folder_new,
-.stqa_folder_item_row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.stqa_folder_editor h3 {
+    margin: 0;
+    text-align: center;
 }
 
-.stqa_folder_edit_row input,
-.stqa_folder_new input {
+.stqa_folder_tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.stqa_folder_tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stqa_folder_tab small {
+    opacity: 0.6;
+}
+
+.stqa_folder_tab.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
+    font-weight: 600;
+}
+
+.stqa_folder_add {
+    border-style: dashed;
+    opacity: 0.8;
+}
+
+.stqa_folder_current {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_folder_current input {
     flex: 1;
+    min-width: 0;
     margin: 0;
 }
 
 .stqa_folder_delete {
-    padding: 6px;
-    cursor: pointer;
-    opacity: 0.7;
+    display: inline-flex;
+    gap: 5px;
+    width: auto;
+    margin: 0;
+    padding: 5px 10px;
+    white-space: nowrap;
+}
+
+.stqa_folder_help {
+    margin: 0;
+    font-size: 0.86em;
+    line-height: 1.45;
 }
 
 .stqa_folder_items {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-top: 1px solid var(--SmartThemeBorderColor);
-    padding-top: 8px;
+}
+
+.stqa_folder_item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stqa_folder_item.stqa_in {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+}
+
+.stqa_folder_check {
+    opacity: 0.6;
+}
+
+.stqa_folder_item.stqa_in .stqa_folder_check {
+    color: var(--SmartThemeQuoteColor);
+    opacity: 1;
 }
 
 .stqa_folder_item_label {
@@ -820,9 +972,20 @@ div.stqa_folder_header:not(.list-group-item) {
     overflow-wrap: anywhere;
 }
 
-.stqa_folder_item_row select {
-    width: 40%;
-    margin: 0;
+.stqa_folder_item_owner {
+    flex: none;
+    max-width: 40%;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 35%, transparent);
+    font-size: 0.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stqa_folder_item_owner:empty {
+    display: none;
 }
 
 .stqa_folder_buttons {
@@ -1011,35 +1174,25 @@ details.stqa_section[open] > summary {
 }
 
 .stqa_feature {
-    padding: 6px 0;
+    padding: 10px 0;
     border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
 }
 
+.stqa_feature:last-child {
+    border-bottom: none;
+}
+
 .stqa_feature_head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.stqa_info {
-    padding: 4px 6px;
-    opacity: 0.45;
-    cursor: pointer;
-}
-
-.stqa_info:hover {
-    opacity: 0.9;
+    font-weight: 600;
 }
 
 .stqa_desc {
-    display: block;
-    margin: 2px 0 0 26px;
-    opacity: 0.7;
-}
-
-.stqa_desc[hidden] {
-    display: none;
+    margin: 3px 0 0 26px;
+    font-size: 0.86em;
+    line-height: 1.45;
+    opacity: 0.72;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
 }
 
 .stqa_feature_extra:not(:empty) {
@@ -1047,7 +1200,72 @@ details.stqa_section[open] > summary {
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin: 4px 0 0 26px;
+    margin: 6px 0 0 26px;
+}
+
+.stqa_feature_extra .stqa_panel_button {
+    margin: 0;
+}
+
+/* Name replacement window */
+.stqa_names_form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_names_form h3 {
+    margin: 0 0 2px;
+    text-align: center;
+}
+
+.stqa_name_grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 6px 10px;
+}
+
+.stqa_name_label {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.stqa_name_label small {
+    font-family: monospace;
+    font-size: 0.78em;
+    opacity: 0.6;
+}
+
+.stqa_name_grid input {
+    margin: 0;
+}
+
+.stqa_names_form .stqa_hint {
+    margin: -2px 0 2px;
+    font-size: 0.85em;
+}
+
+/* Menu arranging window: tabs in rows of three */
+.stqa_layout_editor .stqa_tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.stqa_layout_editor > .stqa_hint {
+    font-size: 0.86em;
+    line-height: 1.45;
+}
+
+.stqa_layout_editor .stqa_layout_actions {
+    margin-bottom: 10px;
+}
+
+.stqa_layout_editor .stqa_layout_actions .stqa_panel_button {
+    margin: 0;
 }
 
 /* Reply number between the footer arrows */
@@ -1064,31 +1282,23 @@ details.stqa_section[open] > summary {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
 }
 
-/* Range delete: pick the first and last message */
-#stqa_range_banner {
-    position: fixed;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 4000;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 6px 12px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    background: var(--SmartThemeBlurTintColor);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+/* Range delete: ST's own check boxes, shown while picking */
+body.stqa_range_mode #chat .mes > .del_checkbox {
+    display: grid !important;
+}
+
+body.stqa_range_mode #chat .mes > .for_checkbox {
+    display: none !important;
 }
 
 body.stqa_range_mode #chat .mes {
     cursor: pointer;
 }
 
-#chat .mes.stqa_range_picked {
-    outline: 2px solid var(--SmartThemeQuoteColor);
-    outline-offset: -2px;
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+/* Answer buttons: ST's own swipe arrows and counter give way to them */
+body.stqa_footer_swipe_on #chat .mes .swipe_left,
+body.stqa_footer_swipe_on #chat .mes .swipeRightBlock {
+    display: none !important;
 }
 
 /* Extensions menu as a grid of icons */

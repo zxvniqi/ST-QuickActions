@@ -1,13 +1,11 @@
-// Quick Reply input helpers: the input popups a QR opens (/input) show what was typed there the
-// last few times (tap to fill in, or copy), and the last QR can be run again with the same
-// answers, e.g. when the AI failed to reply.
+// Quick Reply input helpers: the input popups a QR opens (/input) get 삭제 / 복사 / 기록 buttons
+// at the top right of the input box (clear what is typed, copy it, the last few answers typed
+// in any QR), and the last QR can be run again with the same answers, e.g. when the AI failed
+// to reply.
 import { MODULE, getSettings, isOn } from './settings.js';
 
 const HISTORY_SIZE = 3;
-// QRs and their input steps remembered at most (oldest dropped)
-const HISTORY_KEYS = 40;
 const TITLE = '편의성 모음';
-
 let QuickReplySet = null;
 let copyText = null;
 try {
@@ -31,15 +29,9 @@ function saveSettings() {
     SillyTavern.getContext().saveSettingsDebounced();
 }
 
-function remember(key, value) {
+function remember(value) {
     const settings = getSettings();
-    const history = settings.qrInputHistory;
-    const list = [value, ...(history[key] ?? []).filter(item => item !== value)].slice(0, HISTORY_SIZE);
-    delete history[key];
-    history[key] = list;
-    for (const old of Object.keys(history).slice(0, -HISTORY_KEYS)) {
-        delete history[old];
-    }
+    settings.qrRecentInputs = [value, ...settings.qrRecentInputs.filter(item => item !== value)].slice(0, HISTORY_SIZE);
     saveSettings();
 }
 
@@ -62,38 +54,69 @@ async function copyToClipboard(text) {
     }
 }
 
-/** The history row under a popup's input box: past answers (tap to fill in) with a copy button each. */
-function buildHistory(input, key) {
-    const list = getSettings().qrInputHistory[key] ?? [];
-    if (list.length === 0) {
-        return null;
+async function copyAndTell(text) {
+    if (!text) {
+        toastr.info('복사할 내용이 없습니다.', TITLE);
+        return;
     }
-    const row = document.createElement('div');
-    row.className = 'stqa_qr_history';
-    row.innerHTML = '<small>최근 입력</small>';
-    for (const value of list) {
+    const copied = await copyToClipboard(text);
+    copied ? toastr.success('복사했습니다.', TITLE) : toastr.error('복사하지 못했습니다.', TITLE);
+}
+
+function fill(input, value) {
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+}
+
+/** The last answers (any QR): tap one to put it in the input box, or copy it. */
+function renderHistory(list, input) {
+    const recent = getSettings().qrRecentInputs;
+    list.replaceChildren();
+    if (recent.length === 0) {
+        list.innerHTML = '<div class="stqa_hint">기록이 없습니다.</div>';
+        return;
+    }
+    for (const value of recent) {
         const slot = document.createElement('div');
         slot.className = 'stqa_qr_history_slot';
-        const text = document.createElement('span');
-        text.className = 'stqa_qr_history_text';
-        text.textContent = value;
-        text.title = '눌러서 입력칸에 넣기';
-        const copy = document.createElement('i');
-        copy.className = 'fa-solid fa-copy stqa_qr_history_copy';
-        copy.title = '복사';
-        slot.append(text, copy);
-        row.append(slot);
-        text.addEventListener('click', () => {
-            input.value = value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.focus();
+        slot.innerHTML = '<span class="stqa_qr_history_text" title="입력칸에 넣기"></span><i class="fa-solid fa-copy stqa_qr_history_copy" title="복사"></i>';
+        slot.querySelector('span').textContent = value;
+        slot.querySelector('span').addEventListener('click', () => {
+            fill(input, value);
+            list.hidden = true;
         });
-        copy.addEventListener('click', async () => {
-            const copied = await copyToClipboard(value);
-            copied ? toastr.success('복사됨', TITLE) : toastr.error('복사 실패', TITLE);
-        });
+        slot.querySelector('i').addEventListener('click', () => copyAndTell(value));
+        list.append(slot);
     }
-    return row;
+}
+
+/** 삭제 / 복사 / 기록 at the top right of a popup's input box. */
+function addTools(input) {
+    const tools = document.createElement('div');
+    tools.className = 'stqa_qr_tools';
+    tools.innerHTML = `
+        <div class="stqa_qr_tool" data-tool="clear" title="지금 쓴 내용 지우기"><i class="fa-solid fa-eraser"></i><span>삭제</span></div>
+        <div class="stqa_qr_tool" data-tool="copy" title="지금 쓴 내용 복사"><i class="fa-solid fa-copy"></i><span>복사</span></div>
+        <div class="stqa_qr_tool" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"><i class="fa-solid fa-clock-rotate-left"></i><span>기록</span></div>`;
+    const list = document.createElement('div');
+    list.className = 'stqa_qr_history';
+    list.hidden = true;
+    tools.addEventListener('click', (event) => {
+        const tool = event.target.closest('[data-tool]')?.dataset.tool;
+        if (tool === 'clear') {
+            fill(input, '');
+        } else if (tool === 'copy') {
+            copyAndTell(input.value);
+        } else if (tool === 'history') {
+            list.hidden = !list.hidden;
+            if (!list.hidden) {
+                renderHistory(list, input);
+            }
+        }
+        tools.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
+    });
+    input.before(tools, list);
 }
 
 /** An input popup opened during a QR run: show the history, record the answer, or answer it by itself when replaying. */
@@ -113,9 +136,8 @@ function onInputPopup(dialog) {
         dialog.querySelector(confirmed ? '.popup-button-ok' : '.popup-button-cancel')?.click();
         return;
     }
-    const history = isOn('qrHistory') ? buildHistory(input, key) : null;
-    if (history) {
-        input.after(history);
+    if (isOn('qrHistory')) {
+        addTools(input);
     }
     let cancelled = false;
     dialog.addEventListener('click', (event) => {
@@ -139,7 +161,7 @@ function onInputPopup(dialog) {
             run.answers[step] = { value, confirmed: !cancelled };
         }
         if (value.trim()) {
-            remember(key, value);
+            remember(value);
         }
     });
     closing.observe(dialog, { attributes: true, attributeFilter: ['closing'] });
@@ -183,6 +205,8 @@ export function hasLastQr() {
 }
 
 export function initQrInput() {
+    // Per-QR history of earlier versions: one shared list now
+    delete getSettings().qrInputHistory;
     if (!QuickReplySet) {
         return;
     }

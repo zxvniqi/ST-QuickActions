@@ -121,13 +121,13 @@ export async function openLayoutEditor() {
     root.className = 'stqa_panel stqa_layout_editor';
     root.innerHTML = `
         <h3>메뉴 정리</h3>
-        <small class="stqa_hint">≡ 끌어서 순서 변경 · 눈 아이콘으로 숨기기 · 🔒 숨길 수 없음</small>
+        <div class="stqa_hint">왼쪽 ≡ 를 끌어서 순서를 바꾸고, 오른쪽 눈 아이콘을 눌러 숨깁니다. 🔒 항목은 숨길 수 없습니다. 저장을 눌러야 적용됩니다.</div>
         <div class="stqa_tabs"></div>
-        <div class="stqa_tab_body"></div>
         <div class="stqa_layout_actions">
-            <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 기본으로</div>
-            <div class="menu_button stqa_panel_button stqa_layout_folders"><i class="fa-solid fa-folder-tree"></i> 폴더로 묶기</div>
-        </div>`;
+            <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 처음 상태로</div>
+            <div class="menu_button stqa_panel_button stqa_layout_folders"><i class="fa-solid fa-folder-tree"></i> 폴더 편집</div>
+        </div>
+        <div class="stqa_tab_body"></div>`;
     const tabs = root.querySelector('.stqa_tabs');
     const body = root.querySelector('.stqa_tab_body');
     let activeArea = LAYOUT_AREAS[0];

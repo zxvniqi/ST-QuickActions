@@ -37,7 +37,7 @@ const spotMembers = key => [key, ...Object.keys(SAME_SPOT).filter(other => SAME_
 /** Containers that can be arranged, grouped the way they appear in the settings window. */
 export const LAYOUT_AREAS = Object.freeze([
     {
-        title: 'Extensions 메뉴',
+        title: '확장 메뉴',
         containers: [{ selector: '#extensionsMenu', label: '' }],
         // Its items can also be put in folders (folders.js)
         folderArea: 'wand',
@@ -45,18 +45,18 @@ export const LAYOUT_AREAS = Object.freeze([
         locked: [`${MODULE}_menu`],
     },
     {
-        title: 'Options 메뉴',
+        title: '옵션 메뉴',
         containers: [{ selector: '#options .options-content', label: '' }],
         locked: [],
     },
     {
-        title: 'Top Bar',
+        title: '상단 바',
         fillRow: true,
         containers: [{ selector: '#top-settings-holder', label: '' }],
         locked: [],
     },
     {
-        title: '입력창 (Send Form)',
+        title: '입력창',
         containers: [
             { selector: '#leftSendForm', label: '왼쪽' },
             { selector: '#rightSendForm', label: '오른쪽' },
@@ -66,13 +66,13 @@ export const LAYOUT_AREAS = Object.freeze([
         locked: ['options_button', 'extensionsMenuButton', 'send_but'],
     },
     {
-        title: 'Message Actions',
+        title: '메시지 메뉴',
         containers: [{ selector: MESSAGE_ROW, label: '', perMessage: true }],
         // The "…" toggle (in themes that have it) and the edit button keep every action reachable
         locked: ['extraMesButtonsHint', 'mes_edit'],
     },
     {
-        title: 'Extensions 패널',
+        title: '확장 설정',
         containers: [
             { selector: '#extensions_settings', label: '왼쪽 열' },
             { selector: '#extensions_settings2', label: '오른쪽 열' },

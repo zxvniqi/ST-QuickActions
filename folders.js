@@ -14,7 +14,7 @@ const FOLDED_CLASS = 'stqa_folded';
 
 export const FOLDER_AREAS = Object.freeze({
     wand: {
-        title: '마법봉 메뉴',
+        title: '확장 메뉴',
         containers: ['#extensionsMenu'],
         moves: true,
         // Empty slots of extensions that aren't loaded have nothing to put in a folder

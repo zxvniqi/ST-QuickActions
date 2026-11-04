@@ -1,10 +1,16 @@
-// Editor for the folders of one list: make / rename / remove folders and pick each item's folder.
+// Editor for the folders of one list. Folders are tabs at the top (＋ makes a new one); the
+// folder picked is named and removed right there, and tapping an item below puts it in that
+// folder or takes it out.
 import { FOLDER_AREAS, getFolders, saveFolders, listAreaItems } from './folders.js';
-
-const NONE = '';
 
 function newId() {
     return Math.random().toString(36).slice(2, 10);
+}
+
+/** The items of the list once each (the same item may show in more than one place). */
+function uniqueItems(area) {
+    const seen = new Set();
+    return listAreaItems(area).filter(({ key }) => !seen.has(key) && seen.add(key));
 }
 
 export async function openFolderEditor(area) {
@@ -12,72 +18,106 @@ export async function openFolderEditor(area) {
     const config = FOLDER_AREAS[area];
     // Work on a copy; saved when the editor closes with 저장
     const folders = structuredClone(getFolders(area));
-    const items = listAreaItems(area);
-    const folderOf = key => folders.find(folder => folder.keys.includes(key))?.id ?? NONE;
+    const items = uniqueItems(area);
+    let current = folders[0] ?? null;
 
     const content = document.createElement('div');
     content.className = 'stqa_folder_editor';
 
+    const addFolder = async () => {
+        const name = await Popup.show.input('새 폴더', '폴더 이름을 입력합니다.', '');
+        if (typeof name === 'string' && name.trim()) {
+            current = { id: newId(), name: name.trim(), keys: [] };
+            folders.push(current);
+            render();
+        }
+    };
+
+    const renderTabs = (box) => {
+        for (const folder of folders) {
+            const tab = document.createElement('div');
+            tab.className = `stqa_folder_tab${folder === current ? ' stqa_active' : ''}`;
+            tab.innerHTML = '<i class="fa-solid fa-folder"></i><span></span><small></small>';
+            tab.querySelector('span').textContent = folder.name;
+            tab.querySelector('small').textContent = folder.keys.length;
+            tab.addEventListener('click', () => {
+                current = folder;
+                render();
+            });
+            box.append(tab);
+        }
+        const add = document.createElement('div');
+        add.className = 'stqa_folder_tab stqa_folder_add';
+        add.innerHTML = '<i class="fa-solid fa-plus"></i><span>새 폴더</span>';
+        add.addEventListener('click', addFolder);
+        box.append(add);
+    };
+
+    const renderCurrent = (box) => {
+        box.innerHTML = '<input class="text_pole" type="text" title="폴더 이름"><div class="menu_button stqa_folder_delete"><i class="fa-solid fa-trash-can"></i><span>폴더 삭제</span></div>';
+        const name = box.querySelector('input');
+        name.value = current.name;
+        name.addEventListener('input', () => {
+            current.name = name.value.trim() || current.name;
+            content.querySelector('.stqa_folder_tab.stqa_active span').textContent = current.name;
+        });
+        box.querySelector('.stqa_folder_delete').addEventListener('click', () => {
+            // Only the folder goes; its items stay where they are in the list
+            folders.splice(folders.indexOf(current), 1);
+            current = folders[0] ?? null;
+            render();
+        });
+    };
+
+    const renderItems = (box) => {
+        if (items.length === 0) {
+            box.innerHTML = '<div class="stqa_hint">항목이 없습니다. 그 목록을 한 번 열어 본 뒤 다시 시도합니다.</div>';
+            return;
+        }
+        for (const item of items) {
+            const owner = folders.find(folder => folder.keys.includes(item.key));
+            const row = document.createElement('div');
+            row.className = `stqa_folder_item${owner && owner === current ? ' stqa_in' : ''}`;
+            row.innerHTML = '<i class="fa-solid stqa_folder_check"></i><span class="stqa_folder_item_label"></span><small class="stqa_folder_item_owner"></small>';
+            row.querySelector('.stqa_folder_check').classList.add(owner === current ? 'fa-square-check' : 'fa-square');
+            row.querySelector('.stqa_folder_item_label').textContent = item.label;
+            if (owner && owner !== current) {
+                row.querySelector('.stqa_folder_item_owner').textContent = owner.name;
+            }
+            row.addEventListener('click', () => {
+                // An item is in one folder at most: picking it here takes it out of any other
+                folders.forEach(folder => (folder.keys = folder.keys.filter(key => key !== item.key)));
+                if (owner !== current) {
+                    current.keys.push(item.key);
+                }
+                render();
+            });
+            box.append(row);
+        }
+    };
+
     const render = () => {
+        const scroll = content.closest('.popup-content')?.scrollTop ?? 0;
         content.innerHTML = `
             <h3>${config.title} 폴더</h3>
-            <small class="stqa_hint">폴더를 만들고 항목마다 폴더 선택</small>
-            <div class="stqa_folder_list"></div>
-            <div class="stqa_folder_new">
-                <input class="text_pole" type="text" placeholder="새 폴더 이름">
-                <div class="menu_button stqa_folder_create"><i class="fa-solid fa-folder-plus"></i> 만들기</div>
-            </div>
+            <div class="stqa_folder_tabs"></div>
+            <div class="stqa_folder_current"></div>
+            <div class="stqa_hint stqa_folder_help"></div>
             <div class="stqa_folder_items"></div>`;
-        const list = content.querySelector('.stqa_folder_list');
-        for (const folder of folders) {
-            const row = document.createElement('div');
-            row.className = 'stqa_folder_edit_row';
-            row.innerHTML = '<i class="fa-solid fa-folder"></i><input class="text_pole" type="text"><small></small><i class="fa-solid fa-trash-can stqa_folder_delete" title="폴더 지우기 (항목은 그대로)"></i>';
-            const name = row.querySelector('input');
-            name.value = folder.name;
-            name.addEventListener('input', () => (folder.name = name.value.trim() || folder.name));
-            row.querySelector('small').textContent = `${folder.keys.length}개`;
-            row.querySelector('.stqa_folder_delete').addEventListener('click', () => {
-                folders.splice(folders.indexOf(folder), 1);
-                render();
-            });
-            list.append(row);
+        renderTabs(content.querySelector('.stqa_folder_tabs'));
+        const help = content.querySelector('.stqa_folder_help');
+        if (!current) {
+            content.querySelector('.stqa_folder_current').remove();
+            content.querySelector('.stqa_folder_items').remove();
+            help.textContent = '폴더가 없습니다. "새 폴더"를 눌러 먼저 폴더를 만듭니다.';
+            return;
         }
-        const nameInput = content.querySelector('.stqa_folder_new input');
-        const create = () => {
-            const name = nameInput.value.trim();
-            if (name) {
-                folders.push({ id: newId(), name, keys: [] });
-                render();
-            }
-        };
-        content.querySelector('.stqa_folder_create').addEventListener('click', create);
-        nameInput.addEventListener('keydown', event => event.key === 'Enter' && create());
-
-        const itemBox = content.querySelector('.stqa_folder_items');
-        if (items.length === 0) {
-            itemBox.innerHTML = '<small class="stqa_hint">항목 없음. 그 목록을 한 번 연 뒤 다시 시도</small>';
-        }
-        const seen = new Set();
-        for (const item of items) {
-            if (seen.has(item.key)) {
-                continue;
-            }
-            seen.add(item.key);
-            const row = document.createElement('label');
-            row.className = 'stqa_folder_item_row';
-            row.innerHTML = '<span class="stqa_folder_item_label"></span><select class="text_pole"></select>';
-            row.querySelector('.stqa_folder_item_label').textContent = item.label;
-            const select = row.querySelector('select');
-            select.append(new Option('폴더 없음', NONE), ...folders.map(folder => new Option(folder.name, folder.id)));
-            select.value = folderOf(item.key);
-            select.disabled = folders.length === 0;
-            select.addEventListener('change', () => {
-                folders.forEach(folder => (folder.keys = folder.keys.filter(key => key !== item.key)));
-                folders.find(folder => folder.id === select.value)?.keys.push(item.key);
-                list.querySelectorAll('.stqa_folder_edit_row small').forEach((count, index) => (count.textContent = `${folders[index].keys.length}개`));
-            });
-            itemBox.append(row);
+        renderCurrent(content.querySelector('.stqa_folder_current'));
+        help.textContent = `항목을 누르면 "${current.name}" 폴더에 넣거나 뺍니다. 오른쪽에 이름이 적힌 항목은 다른 폴더에 들어 있습니다.`;
+        renderItems(content.querySelector('.stqa_folder_items'));
+        const scroller = content.closest('.popup-content');
+        if (scroller) {
+            scroller.scrollTop = scroll;
         }
     };
     render();

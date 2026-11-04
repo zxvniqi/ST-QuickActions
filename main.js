@@ -6,6 +6,7 @@ import { initNameOverride, applyNameSettings } from './name-override.js';
 import { initSelectionTools } from './selection-tools.js';
 import { initLayoutManager, applyLayoutSettings } from './layout-manager.js';
 import { openLayoutEditor } from './layout-editor.js';
+import { openFolderEditor } from './folder-editor.js';
 import { createInlineSelect } from './inline-select.js';
 import { initMessageTools, applyMessageToolSettings } from './message-tools.js';
 import { FLOATING_BUTTONS, FLOATING_LAYOUTS, initFloatingPanel, applyFloatingSettings } from './floating-panel.js';
@@ -19,60 +20,63 @@ import { initToggleSets, applyToggleSets } from './prompt-toggle-sets.js';
 import { initRangeDelete, applyRangeDelete } from './range-delete.js';
 
 const TOOLBAR_POSITIONS = [
-    { value: 'dock', label: '화면 아래' },
-    { value: 'above', label: '글자 위' },
-    { value: 'below', label: '글자 아래' },
+    { value: 'dock', label: '버튼 위치: 화면 아래' },
+    { value: 'above', label: '버튼 위치: 선택한 글자 위' },
+    { value: 'below', label: '버튼 위치: 선택한 글자 아래' },
 ];
+
+// Folder kinds with their own editor button in the settings window
+const FOLDER_EDITORS = Object.freeze({ wandFolders: 'wand', regexFolders: 'regex', presetFolders: 'presets' });
 
 /**
  * The settings window, one tab per place in ST a feature belongs to. Each feature:
- * [setting key, label, short description]. Extra controls (selects, buttons) go after the
+ * [setting key, name, description]. Extra controls (selects, buttons) go after the
  * feature they belong to, by key.
  */
 const TABS = Object.freeze([
     {
         title: '메시지',
         features: [
-            ['deleteButton', '삭제 버튼', 'Message Actions에 휴지통 버튼. 그 메시지 삭제'],
-            ['menuToBottom', '↓ 버튼', 'Message Actions에 ↓ 버튼. 그 메시지 끝으로 스크롤'],
-            ['footerSwipe', '‹ 1/3 › 버튼', '마지막 답변 왼쪽 아래. 이전·다음 답변, 끝에서 › 는 새 답변. ST 스와이프를 꺼도 동작'],
-            ['footerTop', '↑ 버튼', '메시지 왼쪽 아래. 그 메시지 첫머리로 스크롤'],
-            ['selectionTools', '드래그 수정/삭제', '메시지 글자를 드래그하면 수정·삭제 버튼. 번역문이면 원문의 같은 부분도 함께'],
-            ['keepStatusPanels', '상태창 다시 그리기', '상태창(HTML)이 코드 그대로 보이면 그 메시지를 다시 그림. 번역은 유지'],
+            ['deleteButton', '메시지 삭제 버튼', '메시지 메뉴(메시지 오른쪽 위 ⋯ 버튼)에 휴지통 버튼을 추가합니다. 누르면 그 메시지 하나만 삭제합니다.'],
+            ['menuToBottom', '메시지 끝으로 이동', '메시지 메뉴에 ↓ 버튼을 추가합니다. 누르면 그 메시지의 마지막 줄로 바로 내려갑니다. 긴 답변을 읽을 때 편합니다.'],
+            ['footerSwipe', '답변 넘기기 버튼', '마지막 답변 아래에 ‹ 1/3 › 버튼을 표시합니다. ‹ 는 이전 답변, › 는 다음 답변이며, 마지막 답변에서 › 를 누르면 새 답변을 생성합니다. 켜면 ST 기본 스와이프 화살표와 답변 번호는 숨겨집니다.'],
+            ['footerTop', '메시지 처음으로 이동', '메시지 왼쪽 아래에 ↑ 버튼을 표시합니다. 누르면 그 메시지의 첫 줄로 올라갑니다.'],
+            ['selectionTools', '드래그로 수정·삭제', '메시지 글자를 드래그해 선택하면 수정·삭제 버튼이 나타납니다. 번역된 메시지라면 원문에서 같은 부분도 함께 고치거나 지웁니다.'],
+            ['keepStatusPanels', '상태창 깨짐 복구', '상태창(HTML)이 그려지지 않고 코드 그대로 보이면 그 메시지를 자동으로 다시 그립니다. 번역은 그대로 유지됩니다.'],
         ],
     },
     {
         title: '채팅',
         features: [
-            ['chatPicker', '채팅 목록 먼저', '캐릭터를 고르면 채팅 목록 창부터 열림'],
-            ['rangeDelete', '메시지 범위 삭제', 'Options 메뉴 항목. 첫 메시지와 끝 메시지를 눌러 그 사이 삭제'],
-            ['welcomeRecent', '시작 화면 최근 채팅', '시작 화면에서 어시스턴트를 숨기고 최근 채팅을 모두 펼침'],
-            ['hdAvatars', '프로필 사진 고화질', '채팅·캐릭터 목록 사진을 썸네일 대신 원본으로'],
+            ['chatPicker', '채팅 목록 먼저 보기', '캐릭터를 누르면 마지막 채팅이 바로 열리는 대신, 그 캐릭터의 채팅 목록이 먼저 열립니다.'],
+            ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"를 추가합니다. 기본 메시지 삭제와 같은 방식으로, 첫 메시지와 끝 메시지를 누르면 그 사이만 선택되고 아래 삭제 버튼으로 지웁니다.'],
+            ['welcomeRecent', '시작 화면 최근 채팅', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지를 숨기고, 최근 채팅 목록을 전부 펼쳐 보여 줍니다.'],
+            ['hdAvatars', '프로필 사진 고화질', '채팅과 캐릭터 목록의 프로필 사진을 작은 썸네일 대신 원본 이미지로 표시합니다.'],
         ],
     },
     {
         title: '입력창',
         features: [
-            ['qrBar', 'QR바 모양', '접기형은 입력창 왼쪽 ⚡ 버튼으로 접기'],
-            ['qrHistory', 'QR 입력 기록', 'QR 입력 창에 최근 입력 3개. 눌러서 넣기·복사'],
-            ['hideInputPlaceholder', '안내 문구 숨기기', '입력창의 "Type a message…" 문구 숨김'],
+            ['qrBar', 'QR바 모양', '입력창 위 QR 버튼 줄을 시네마노트 스타일(둥근 버튼, 세트마다 한 줄)로 바꿉니다. 위쪽 손잡이를 누르면 펼치고 접습니다. "테마 그대로"를 고르면 지금 테마 모양을 그대로 씁니다.'],
+            ['qrHistory', 'QR 입력창 도구', 'QR이 띄우는 입력창 오른쪽 위에 삭제·복사·기록 버튼을 추가합니다. 삭제는 지금 쓴 내용을 지우고, 복사는 지금 쓴 내용을 복사합니다. 기록은 최근 입력 3개를 보여 주며, 어느 QR에서 입력했든 함께 나옵니다.'],
+            ['hideInputPlaceholder', '입력창 안내 문구 숨기기', '입력창에 흐리게 보이는 "Type a message…" 안내 문구를 숨깁니다.'],
         ],
     },
     {
         title: '바로가기',
         features: [
-            ['floatingPanel', '바로가기 버튼', '⋯ 버튼을 누르면 펼쳐짐. 떠 있을 땐 꾹 눌러 이동, 바깥 스크롤 시 접힘'],
+            ['floatingPanel', '바로가기 버튼', '자주 쓰는 동작을 버튼 하나에 모읍니다. "입력창 위에 펼치기"는 입력창 왼쪽 ⋯ 버튼을 누르면 입력창 바로 위에 한 줄로 펼쳐지며, 채팅을 가리지 않습니다. 떠 있는 버튼은 화면 가장자리에 붙어 있고, 꾹 눌러서 옮길 수 있습니다. 아래에서 보일 버튼을 고릅니다.'],
         ],
     },
     {
         title: '메뉴·폴더',
         features: [
-            ['layoutManager', '메뉴 정리', '숨기기·순서 변경 적용. 끄면 원래 배치'],
-            ['wandGrid', 'Extensions 메뉴 아이콘 격자', '아이콘만, 한 줄에 3개'],
-            ['wandFolders', 'Extensions 메뉴 폴더', '메뉴 정리 창의 폴더 버튼으로 만들기'],
-            ['regexFolders', '정규식 폴더', '정규식 창의 폴더 버튼'],
-            ['presetFolders', '프리셋 폴더', '프리셋 칸 옆 📁 버튼'],
-            ['toggleSetChips', '프롬프트 토글 조합', '프롬프트 목록 위 칩. 토글 조합 저장·적용'],
+            ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정의 항목을 숨기거나 순서를 바꿉니다. 끄면 원래 배치로 돌아갑니다.'],
+            ['wandGrid', '확장 메뉴 아이콘 보기', '확장 메뉴(입력창 왼쪽 마법봉 버튼)를 글자 없이 아이콘만, 한 줄에 3개씩 보여 줍니다.'],
+            ['wandFolders', '확장 메뉴 폴더', '확장 메뉴 항목을 폴더로 묶습니다. 메뉴에서 폴더를 누르면 안의 항목이 펼쳐집니다.'],
+            ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접고 펼칩니다. 정규식 실행 순서는 바뀌지 않습니다. 정규식 창의 "폴더" 버튼으로도 편집할 수 있습니다.'],
+            ['presetFolders', '프리셋 폴더', '프롬프트 프리셋을 폴더로 묶습니다. 프리셋 선택 칸 옆 폴더 버튼을 누르면 폴더별로 보고 고를 수 있습니다.'],
+            ['toggleSetChips', '프롬프트 토글 조합', '프롬프트 목록 위에 버튼을 추가합니다. 지금 켜고 끈 프롬프트 상태를 이름을 붙여 저장해 두고, 누르면 그 상태로 한 번에 바뀝니다. 프리셋마다 따로 저장됩니다.'],
         ],
     },
 ]);
@@ -100,20 +104,22 @@ function featureRow(key, label, description) {
     const row = document.createElement('div');
     row.className = 'stqa_feature';
     row.innerHTML = `
-        <div class="stqa_feature_head">
-            <label class="checkbox_label"><input type="checkbox" data-setting="${key}"><span></span></label>
-            <i class="fa-solid fa-circle-info stqa_info" title="설명"></i>
-        </div>
-        <small class="stqa_desc" hidden></small>
+        <label class="checkbox_label stqa_feature_head"><input type="checkbox" data-setting="${key}"><span></span></label>
+        <div class="stqa_desc"></div>
         <div class="stqa_feature_extra"></div>`;
     row.querySelector('span').textContent = label;
     row.querySelector('.stqa_desc').textContent = description;
     row.querySelector('input').checked = getSettings()[key] !== false;
-    row.querySelector('.stqa_info').addEventListener('click', () => {
-        const desc = row.querySelector('.stqa_desc');
-        desc.hidden = !desc.hidden;
-    });
     return row;
+}
+
+function panelButton(icon, text, onClick) {
+    const button = document.createElement('div');
+    button.className = 'menu_button stqa_panel_button';
+    button.innerHTML = `<i class="fa-solid ${icon}"></i><span></span>`;
+    button.querySelector('span').textContent = text;
+    button.addEventListener('click', onClick);
+    return button;
 }
 
 /** Controls that belong to a feature: shown under it. */
@@ -145,11 +151,9 @@ function extrasFor(key) {
         chips.querySelectorAll('input').forEach(input => (input.checked = settings.floatingButtons?.[input.dataset.floatingButton] !== false));
         extra.append(chips);
     } else if (key === 'layoutManager') {
-        const button = document.createElement('div');
-        button.className = 'menu_button stqa_panel_button';
-        button.innerHTML = '<i class="fa-solid fa-list-check"></i> 메뉴 정리 열기';
-        button.addEventListener('click', openLayoutEditor);
-        extra.append(button);
+        extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
+    } else if (FOLDER_EDITORS[key]) {
+        extra.append(panelButton('fa-folder-tree', '폴더 편집', () => openFolderEditor(FOLDER_EDITORS[key])));
     }
     return extra;
 }
