@@ -136,7 +136,8 @@ export async function openLayoutEditor() {
     folderButton.addEventListener('click', () => activeArea.folderArea && openFolderEditor(activeArea.folderArea));
     const showArea = (area) => {
         activeArea = area;
-        folderButton.hidden = !area.folderArea;
+        // Only the Extensions menu has folders (menu_button's own display would beat `hidden`)
+        folderButton.style.display = area.folderArea ? '' : 'none';
         for (const tab of tabs.children) {
             tab.classList.toggle('stqa_tab_active', tab.dataset.title === area.title);
         }

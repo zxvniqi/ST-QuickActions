@@ -1,88 +1,162 @@
-// Folders where the lists are: the prompt (preset) dropdown itself opens a picker where folders
-// fold (tap a prompt to use it; folders are edited from there), and the regex panel gets a
-// folder button.
+// Folders where the lists are. The prompt (preset) dropdown stays as it is; when it opens, a list
+// like its own unfolds right under it: folders on top (tap the arrow row to unfold its prompts
+// below it), then the prompts in no folder; the last row edits the folders. The regex panel gets
+// a folder button.
 import { isOn } from './settings.js';
 import { FOLDER_AREAS, getFolders, listAreaItems } from './folders.js';
 import { openFolderEditor } from './folder-editor.js';
 
 const PRESET_SELECT = '#settings_preset_openai';
-const DISPLAY_ID = 'stqa_preset_display';
-const PICKER_ON_CLASS = 'stqa_preset_picker_on';
+const LIST_ID = 'stqa_preset_list';
 const REGEX_BUTTON_ID = 'stqa_regex_folders';
+const GAP = 2;
 
-function presetRow(name, current, onPick) {
+let list = null;
+// Folders unfolded in the list (the one holding the prompt in use opens by itself)
+const unfoldedFolders = new Set();
+
+const nameOf = option => FOLDER_AREAS.presets.describe(option).key;
+
+function closeList() {
+    list?.remove();
+    list = null;
+    document.removeEventListener('pointerdown', onOutside, true);
+    document.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', closeList);
+}
+
+const isOnSelect = (event, select) => {
+    const box = select.getBoundingClientRect();
+    return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+};
+
+/** A tap elsewhere closes the list (a tap on the dropdown itself toggles it, on click). */
+function onOutside(event) {
+    const select = document.querySelector(PRESET_SELECT);
+    if (list && !list.contains(event.target) && !(select && isOnSelect(event, select))) {
+        closeList();
+    }
+}
+
+function pick(select, name) {
+    const option = [...select.options].find(item => nameOf(item) === name);
+    if (option && option !== select.selectedOptions[0]) {
+        select.value = option.value;
+        $(select).trigger('change');
+    }
+    closeList();
+}
+
+function itemRow(select, name, current, nested) {
     const row = document.createElement('div');
-    row.className = `stqa_picker_item${name === current ? ' stqa_active' : ''}`;
+    row.className = `stqa_preset_item${name === current ? ' stqa_active' : ''}${nested ? ' stqa_nested' : ''}`;
     row.textContent = name;
-    row.addEventListener('click', () => onPick(name));
+    row.addEventListener('click', () => pick(select, name));
     return row;
 }
 
-/** A folder (or the presets in none): a header that folds, and its presets. */
-function pickerGroup(title, names, current, open, onPick) {
-    const group = document.createElement('div');
-    group.className = `stqa_picker_group${open ? '' : ' stqa_folded'}`;
-    const header = document.createElement('div');
-    header.className = 'stqa_picker_header';
-    header.innerHTML = '<i class="fa-solid fa-folder"></i><span></span><small></small><i class="fa-solid fa-chevron-down stqa_folder_caret"></i>';
-    header.querySelector('span').textContent = title;
-    header.querySelector('small').textContent = `${names.length}`;
-    header.addEventListener('click', () => group.classList.toggle('stqa_folded'));
-    const body = document.createElement('div');
-    body.className = 'stqa_picker_body';
-    names.forEach(name => body.append(presetRow(name, current, onPick)));
-    group.append(header, body);
-    return group;
+function renderList(select) {
+    const names = listAreaItems('presets').map(item => item.key);
+    const current = select.selectedOptions[0] ? nameOf(select.selectedOptions[0]) : '';
+    const folders = getFolders('presets');
+    const filed = new Set(folders.flatMap(folder => folder.keys));
+    const rows = [];
+    for (const folder of folders) {
+        const members = names.filter(name => folder.keys.includes(name));
+        if (!members.length) {
+            continue;
+        }
+        const open = unfoldedFolders.has(folder.id);
+        const head = document.createElement('div');
+        head.className = `stqa_preset_folder${open ? ' stqa_open' : ''}${members.includes(current) ? ' stqa_holds_current' : ''}`;
+        head.innerHTML = '<i class="fa-solid fa-chevron-right"></i><span></span><small></small>';
+        head.querySelector('span').textContent = folder.name;
+        head.querySelector('small').textContent = members.length;
+        head.addEventListener('click', () => {
+            open ? unfoldedFolders.delete(folder.id) : unfoldedFolders.add(folder.id);
+            renderList(select);
+        });
+        rows.push(head);
+        if (open) {
+            rows.push(...members.map(name => itemRow(select, name, current, true)));
+        }
+    }
+    rows.push(...names.filter(name => !filed.has(name)).map(name => itemRow(select, name, current, false)));
+    const edit = document.createElement('div');
+    edit.className = 'stqa_preset_edit';
+    edit.innerHTML = '<i class="fa-solid fa-folder-tree"></i><span>폴더 편집</span>';
+    edit.addEventListener('click', async () => {
+        closeList();
+        await openFolderEditor('presets');
+    });
+    rows.push(edit);
+    const scroll = list.scrollTop;
+    list.replaceChildren(...rows);
+    list.scrollTop = scroll;
 }
 
-async function openPresetPicker() {
-    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
-    const select = document.querySelector(PRESET_SELECT);
-    if (!select) {
+/** Puts the list right under the dropdown (above it when there is more room there). */
+function placeList(select) {
+    const box = select.getBoundingClientRect();
+    const below = window.innerHeight - box.bottom - GAP * 4;
+    const above = box.top - GAP * 4;
+    const up = below < 240 && above > below;
+    list.style.left = `${box.left}px`;
+    list.style.width = `${box.width}px`;
+    list.style.maxHeight = `${Math.max(160, Math.min(up ? above : below, window.innerHeight * 0.6))}px`;
+    list.style.top = up ? '' : `${box.bottom + GAP}px`;
+    list.style.bottom = up ? `${window.innerHeight - box.top + GAP}px` : '';
+}
+
+function openList(select) {
+    if (list) {
+        closeList();
         return;
     }
-    const content = document.createElement('div');
-    content.className = 'stqa_preset_picker';
-    let popup = null;
+    // The folder with the prompt in use starts open
+    const current = select.selectedOptions[0] ? nameOf(select.selectedOptions[0]) : '';
+    getFolders('presets').filter(folder => folder.keys.includes(current)).forEach(folder => unfoldedFolders.add(folder.id));
+    list = document.createElement('div');
+    list.id = LIST_ID;
+    document.body.append(list);
+    renderList(select);
+    placeList(select);
+    list.querySelector('.stqa_active')?.scrollIntoView({ block: 'nearest' });
+    document.addEventListener('pointerdown', onOutside, true);
+    document.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', closeList);
+}
 
-    const pick = (name) => {
-        const option = [...select.options].find(item => FOLDER_AREAS.presets.describe(item).key === name);
-        if (option) {
-            select.value = option.value;
-            $(select).trigger('change');
+/** The panel under the list scrolled: the list would float away from the dropdown. */
+function onScroll(event) {
+    if (list && !list.contains(event.target)) {
+        closeList();
+    }
+}
+
+/** The dropdown opens this list instead of its own, while prompt folders are on and there are some. */
+function hookSelect() {
+    const select = document.querySelector(PRESET_SELECT);
+    if (!select || select.dataset.stqaPresetHook) {
+        return;
+    }
+    select.dataset.stqaPresetHook = '1';
+    // While on, this list (with its 폴더 편집 row) always stands in for the browser's own. The
+    // dropdown takes no taps then (CSS), so they reach the row it sits in: a tap on its spot opens
+    // the list. That works the same with any browser, touch or mouse, and scrolling stays free.
+    select.parentElement?.addEventListener('click', (event) => {
+        if (isOn('presetFolders') && isOnSelect(event, select)) {
+            openList(select);
         }
-        popup?.completeAffirmative();
-    };
-    const render = () => {
-        const names = listAreaItems('presets').map(item => item.key);
-        const current = select.selectedOptions[0] ? FOLDER_AREAS.presets.describe(select.selectedOptions[0]).key : '';
-        const folders = getFolders('presets');
-        const filed = new Set(folders.flatMap(folder => folder.keys));
-        content.replaceChildren();
-        const head = document.createElement('div');
-        head.className = 'stqa_picker_head';
-        head.innerHTML = '<h3>프롬프트 고르기</h3><div class="menu_button stqa_picker_edit"><i class="fa-solid fa-folder-tree"></i><span>폴더 편집</span></div>';
-        head.querySelector('.stqa_picker_edit').addEventListener('click', async () => {
-            await openFolderEditor('presets');
-            render();
-        });
-        content.append(head);
-        for (const folder of folders) {
-            const members = names.filter(name => folder.keys.includes(name));
-            if (members.length) {
-                // The folder holding the preset in use starts open
-                content.append(pickerGroup(folder.name, members, current, members.includes(current), pick));
-            }
+    });
+    select.addEventListener('keydown', (event) => {
+        if (isOn('presetFolders') &&(event.key === 'Enter' || event.key === ' ' || (event.altKey && event.key === 'ArrowDown'))) {
+            event.preventDefault();
+            openList(select);
         }
-        const rest = names.filter(name => !filed.has(name));
-        if (rest.length) {
-            const others = pickerGroup(folders.length ? '폴더 없음' : '전체', rest, current, !folders.length || rest.includes(current), pick);
-            content.append(others);
-        }
-    };
-    render();
-    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true });
-    await popup.show();
+    });
+    // A prompt changed elsewhere: the open list would be out of date
+    $(select).on('change', closeList);
 }
 
 function addButton(id, parent, build, first) {
@@ -94,45 +168,14 @@ function addButton(id, parent, build, first) {
     first ? parent.prepend(button) : parent.append(button);
 }
 
-/** The box shown in place of the prompt dropdown: the prompt in use; tap it to pick another. */
-function syncDisplay() {
-    const select = document.querySelector(PRESET_SELECT);
-    const display = document.getElementById(DISPLAY_ID);
-    if (select && display) {
-        display.querySelector('span').textContent = select.selectedOptions[0]?.textContent.trim() ?? '';
-    }
-}
-
-function addDisplay() {
-    const select = document.querySelector(PRESET_SELECT);
-    if (!select || document.getElementById(DISPLAY_ID)) {
-        return;
-    }
-    const display = document.createElement('div');
-    display.id = DISPLAY_ID;
-    display.className = 'text_pole flex1 interactable';
-    display.tabIndex = 0;
-    display.innerHTML = '<span></span><i class="fa-solid fa-chevron-down"></i>';
-    display.addEventListener('click', () => openPresetPicker().then(syncDisplay));
-    select.after(display);
-    // ST changes the prompt through jQuery, which native listeners don't hear
-    $(select).on('change', syncDisplay);
-    const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.SETTINGS_UPDATED, syncDisplay);
-    if (eventTypes.OAI_PRESET_CHANGED_AFTER) {
-        eventSource.on(eventTypes.OAI_PRESET_CHANGED_AFTER, syncDisplay);
-    }
-    syncDisplay();
-}
-
 /** Puts the buttons in place; the panels may be built after this extension loads. */
 export function addFolderButtons() {
-    addDisplay();
+    hookSelect();
     const regexTools = document.getElementById('open_regex_editor')?.parentElement;
     addButton(REGEX_BUTTON_ID, regexTools, () => {
         const button = document.createElement('div');
         button.className = 'menu_button menu_button_icon interactable';
-        button.title = '정규식 폴더 정리';
+        button.title = '정규식 폴더 편집';
         button.tabIndex = 0;
         button.innerHTML = '<i class="fa-solid fa-folder-tree"></i><small>폴더</small>';
         button.addEventListener('click', () => openFolderEditor('regex'));
@@ -144,10 +187,13 @@ export function addFolderButtons() {
 /** Shows the buttons of the folder kinds switched on. */
 export function applyFolderButtons() {
     const regex = document.getElementById(REGEX_BUTTON_ID);
-    document.body.classList.toggle(PICKER_ON_CLASS, isOn('presetFolders'));
-    syncDisplay();
     if (regex) {
-        regex.hidden = !isOn('regexFolders');
+        // menu_button's own display would beat `hidden`
+        regex.style.display = isOn('regexFolders') ? '' : 'none';
+    }
+    document.body.classList.toggle('stqa_preset_list_on', isOn('presetFolders'));
+    if (!isOn('presetFolders')) {
+        closeList();
     }
 }
 

@@ -596,18 +596,19 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
 .stqa_qr_tools {
     display: flex;
     justify-content: flex-end;
-    gap: 4px;
-    margin: 6px 0 4px;
+    gap: 6px;
+    margin: 0 0 6px;
 }
 
 .stqa_qr_tool {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 3px 9px;
+    justify-content: center;
+    width: 32px;
+    height: 28px;
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 999px;
-    font-size: 0.85em;
+    border-radius: 8px;
+    font-size: 0.9em;
     opacity: 0.75;
     cursor: pointer;
     user-select: none;
@@ -1328,16 +1329,75 @@ details.stqa_section[open] > summary {
 }
 
 .stqa_name_label {
-    display: flex;
-    flex-direction: column;
-    line-height: 1.2;
+    font-family: monospace;
+    font-size: 0.92em;
     white-space: nowrap;
 }
 
-.stqa_name_label small {
-    font-family: monospace;
+/* The swap row: clearly on or off */
+.stqa_swap_row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.stqa_swap_row input {
+    margin: 0;
+}
+
+.stqa_swap_row span {
+    flex: 1;
+    min-width: 0;
+}
+
+.stqa_swap_row.stqa_on {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+}
+
+.stqa_swap_row.stqa_on > i {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_swap_state {
+    flex: none;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 35%, transparent);
     font-size: 0.78em;
-    opacity: 0.6;
+    font-weight: 600;
+}
+
+.stqa_swap_row.stqa_on .stqa_swap_state {
+    background: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBlurTintColor);
+}
+
+/* Names button while {{char}} and {{user}} are swapped: a small ⇄ mark */
+.stqa_floating_button.stqa_swapping {
+    position: relative;
+}
+
+.stqa_floating_button.stqa_swapping::after {
+    content: '\f362';
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBlurTintColor);
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 8px;
 }
 
 .stqa_name_grid input {
@@ -1404,8 +1464,8 @@ body.stqa_footer_swipe_on #chat .mes .swipeRightBlock {
 /* Extensions menu as a grid of icons. Only while open: ST closes it with an inline display: none. */
 body.stqa_wand_grid #extensionsMenu:not([style*="display: none"]) {
     display: grid !important;
-    grid-template-columns: repeat(3, 52px);
-    grid-auto-rows: 48px;
+    grid-template-columns: repeat(3, 44px);
+    grid-auto-rows: 40px;
     gap: 4px;
     padding: 6px !important;
     width: max-content !important;
@@ -1420,14 +1480,17 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    width: 52px;
-    height: 48px;
+    width: 44px;
+    height: 40px;
     min-height: 0;
     margin: 0 !important;
     padding: 0 !important;
     border-radius: 10px;
+    /* Some extensions put their name as bare text (no element to hide): it must take no room */
     font-size: 0 !important;
+    line-height: 0 !important;
     gap: 0 !important;
+    overflow: hidden;
 }
 
 body.stqa_wand_grid #extensionsMenu .list-group-item > span {
@@ -1440,12 +1503,13 @@ body.stqa_wand_grid #extensionsMenu .list-group-item img {
     display: flex !important;
     align-items: center;
     justify-content: center;
-    width: 24px !important;
-    height: 24px !important;
+    flex: none !important;
+    width: 20px !important;
+    height: 20px !important;
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 20px !important;
-    line-height: 24px !important;
+    font-size: 16px !important;
+    line-height: 20px !important;
 }
 
 body.stqa_wand_grid #extensionsMenu .list-group-item:not(.stqa_folder_header) > :not([class*="fa-"]):not(svg):not(img):not(:has([class*="fa-"], svg, img)) {
@@ -1458,8 +1522,8 @@ body.stqa_wand_grid #extensionsMenu .stqa_folder {
 
 body.stqa_wand_grid #extensionsMenu .stqa_folder_body {
     display: grid;
-    grid-template-columns: repeat(3, 52px);
-    grid-auto-rows: 48px;
+    grid-template-columns: repeat(3, 44px);
+    grid-auto-rows: 40px;
     gap: 4px;
 }
 
@@ -1469,7 +1533,8 @@ body.stqa_wand_grid #extensionsMenu .stqa_folder.stqa_folded > .stqa_folder_body
 
 body.stqa_wand_grid #extensionsMenu .stqa_folder_header.list-group-item {
     width: auto;
-    height: 40px;
+    height: 36px;
+    line-height: normal !important;
     padding: 0 10px !important;
     justify-content: flex-start;
 }
@@ -1487,48 +1552,104 @@ body.stqa_wand_grid #extensionsMenu .stqa_folder_header > span {
 body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
     display: none;
 }
-/* Prompt picker: a box in place of the dropdown */
-body.stqa_preset_picker_on #settings_preset_openai {
-    display: none !important;
+/* Prompt dropdown: taps go to its row, which opens the list below instead of the browser's own */
+body.stqa_preset_list_on #settings_preset_openai {
+    pointer-events: none;
 }
 
-#stqa_preset_display {
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    min-width: 0;
-    margin: 0;
-    cursor: pointer;
-}
-
-body.stqa_preset_picker_on #stqa_preset_display {
+/* Prompt dropdown: the list it opens, with folders that unfold */
+#stqa_preset_list {
+    position: fixed;
+    z-index: 30000;
     display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 4px 0;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+    color: var(--SmartThemeBodyColor);
+    overscroll-behavior: contain;
 }
 
-#stqa_preset_display span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#stqa_preset_display i {
-    flex: none;
-    font-size: 0.8em;
-    opacity: 0.6;
-}
-
-.stqa_picker_edit {
-    display: inline-flex;
-    flex-direction: row;
+.stqa_preset_item,
+.stqa_preset_folder,
+.stqa_preset_edit {
+    display: flex;
     align-items: center;
-    gap: 5px;
-    width: auto;
-    margin: 0;
-    padding: 4px 10px;
-    white-space: nowrap;
-    flex: none;
+    gap: 8px;
+    min-height: 34px;
+    padding: 6px 12px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.stqa_preset_item:hover,
+.stqa_preset_folder:hover,
+.stqa_preset_edit:hover {
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
+}
+
+.stqa_preset_item.stqa_active {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
+    font-weight: 600;
+}
+
+.stqa_preset_item.stqa_nested {
+    padding-left: 34px;
+    box-shadow: inset 3px 0 0 var(--SmartThemeQuoteColor);
+}
+
+.stqa_preset_folder {
+    font-weight: 600;
+}
+
+.stqa_preset_folder span {
+    flex: 1;
+    min-width: 0;
+}
+
+.stqa_preset_folder small {
+    opacity: 0.6;
+    font-weight: normal;
+}
+
+.stqa_preset_folder > i {
+    width: 14px;
+    font-size: 0.8em;
+    opacity: 0.7;
+    transition: transform 0.15s;
+}
+
+.stqa_preset_folder.stqa_open > i {
+    transform: rotate(90deg);
+}
+
+.stqa_preset_folder.stqa_holds_current span {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_preset_edit {
+    justify-content: center;
+    margin-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    font-size: 0.88em;
+    opacity: 0.75;
+}
+
+/* Regex folder row: its ≡ drags the folder and its scripts together */
+.stqa_folder_drag {
+    padding: 4px 2px;
+    opacity: 0.6;
+    cursor: grab;
+    touch-action: none;
+}
+
+.stqa_folder_header.stqa_dragging {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    opacity: 0.9;
 }
 /* Quick switch menu (edit mode) */
 .stqa_set_menu {

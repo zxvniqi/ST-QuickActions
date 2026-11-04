@@ -91,14 +91,14 @@ function renderHistory(list, input) {
     }
 }
 
-/** 삭제 / 복사 / 기록 at the top right of a popup's input box. */
+/** 삭제 / 복사 / 기록 (icons) at the top right of the popup, above its text. */
 function addTools(input) {
     const tools = document.createElement('div');
     tools.className = 'stqa_qr_tools';
     tools.innerHTML = `
-        <div class="stqa_qr_tool" data-tool="clear" title="지금 쓴 내용 지우기"><i class="fa-solid fa-eraser"></i><span>삭제</span></div>
-        <div class="stqa_qr_tool" data-tool="copy" title="지금 쓴 내용 복사"><i class="fa-solid fa-copy"></i><span>복사</span></div>
-        <div class="stqa_qr_tool" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"><i class="fa-solid fa-clock-rotate-left"></i><span>기록</span></div>`;
+        <div class="stqa_qr_tool fa-solid fa-eraser" data-tool="clear" title="지금 쓴 내용 지우기"></div>
+        <div class="stqa_qr_tool fa-solid fa-copy" data-tool="copy" title="지금 쓴 내용 복사"></div>
+        <div class="stqa_qr_tool fa-solid fa-clock-rotate-left" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"></div>`;
     const list = document.createElement('div');
     list.className = 'stqa_qr_history';
     list.hidden = true;
@@ -116,7 +116,8 @@ function addTools(input) {
         }
         tools.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
     });
-    input.before(tools, list);
+    const body = input.closest('.popup-body') ?? input.parentElement;
+    body.prepend(tools, list);
 }
 
 /** An input popup opened during a QR run: show the history, record the answer, or answer it by itself when replaying. */

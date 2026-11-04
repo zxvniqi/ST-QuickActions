@@ -2,8 +2,8 @@
 // row with its name; tap it to unfold its items below.
 // The wand menu's order means nothing, so its items are moved into the folder. Regex scripts run
 // in list order, so they stay where they are: their folder row sits at the first item, and
-// folding hides the items wherever they are. Presets are a dropdown: a folder is a group in it
-// (folding is in the preset picker, preset-folders.js).
+// folding hides the items wherever they are (their folder can be dragged as a block). Presets
+// are a dropdown and stay untouched: their folders show in the list it opens (preset-folders.js).
 import { MODULE, getSettings, isOn } from './settings.js';
 import { describeItem } from './layout-manager.js';
 import { onlyOwnChanges } from './mutations.js';
@@ -30,52 +30,13 @@ export const FOLDER_AREAS = Object.freeze({
     presets: {
         title: '프롬프트',
         containers: ['#settings_preset_openai'],
-        groups: true,
-        // Options come and go as presets are saved or deleted
-        watchSubtree: true,
+        // Nothing is drawn into the dropdown itself
+        listOnly: true,
         items: select => [...select.querySelectorAll('option')],
         // Presets are known by name (the option values are list positions)
         describe: option => ({ key: option.textContent.trim(), label: option.textContent.trim() }),
     },
 });
-
-const GROUP_CLASS = 'stqa_folder_group';
-
-/** Presets: each folder is a group (📁 name) at the top of the dropdown; selection and values stay. */
-function applyOptionGroups(area, select) {
-    const config = FOLDER_AREAS[area];
-    const folders = shownFolders(area);
-    const nameOf = option => config.describe(option).key;
-    // Groups no longer wanted, and items taken out, go back to the plain list
-    for (const group of select.querySelectorAll(`optgroup.${GROUP_CLASS}`)) {
-        const folder = folders.find(item => item.id === group.dataset.folderId);
-        for (const option of [...group.children]) {
-            if (!folder?.keys.includes(nameOf(option))) {
-                select.append(option);
-            }
-        }
-        if (!folder) {
-            group.remove();
-        }
-    }
-    const options = config.items(select);
-    const groups = folders.map((folder) => {
-        let group = select.querySelector(`optgroup.${GROUP_CLASS}[data-folder-id="${CSS.escape(folder.id)}"]`);
-        if (!group) {
-            group = document.createElement('optgroup');
-            group.className = GROUP_CLASS;
-            group.dataset.folderId = folder.id;
-        }
-        group.label = `📁 ${folder.name}`;
-        for (const option of options) {
-            if (folder.keys.includes(nameOf(option)) && option.parentElement !== group) {
-                group.append(option);
-            }
-        }
-        return group;
-    }).filter(group => group.children.length > 0);
-    select.prepend(...groups);
-}
 
 // Folders unfolded right now (not saved: everything starts folded)
 const unfolded = new Set();
@@ -125,11 +86,18 @@ function folderRow(area, folder, tag) {
     const row = document.createElement(tag);
     row.className = `${FOLDER_CLASS}_header`;
     row.dataset.folderId = folder.id;
-    row.innerHTML = '<i class="fa-solid fa-folder stqa_folder_icon"></i><span class="stqa_folder_name"></span><small class="stqa_folder_note"></small><i class="fa-solid fa-chevron-down stqa_folder_caret"></i>';
+    // Regex folders move as a block (like the scripts' own ≡); the wand menu's has an icon instead
+    const lead = FOLDER_AREAS[area].moves
+        ? '<i class="fa-solid fa-folder stqa_folder_icon"></i>'
+        : '<i class="fa-solid fa-bars stqa_folder_drag" title="끌어서 폴더째 순서 바꾸기"></i>';
+    row.innerHTML = `${lead}<span class="stqa_folder_name"></span><small class="stqa_folder_note"></small><i class="fa-solid fa-chevron-down stqa_folder_caret"></i>`;
     row.querySelector('.stqa_folder_name').textContent = folder.name;
     row.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (event.target.closest('.stqa_folder_drag')) {
+            return;
+        }
         unfolded.has(folder.id) ? unfolded.delete(folder.id) : unfolded.add(folder.id);
         applyFolders(area);
     });
@@ -196,7 +164,7 @@ function applyMarkingFolders(area, container) {
     for (const item of items) {
         const { key } = config.describe(item);
         const folder = folderOf.get(key);
-        item.toggleAttribute(MEMBER_ATTR, Boolean(folder));
+        folder ? item.setAttribute(MEMBER_ATTR, folder.id) : item.removeAttribute(MEMBER_ATTR);
         item.classList.toggle(FOLDED_CLASS, Boolean(folder) && !unfolded.has(folder.id));
         if (folder && !firstOf.has(folder.id)) {
             firstOf.set(folder.id, item);
@@ -213,6 +181,129 @@ function applyMarkingFolders(area, container) {
         row.querySelector('.stqa_folder_note').textContent = `${members.length}개`;
         first.before(row);
     }
+    enableBlockDrag(area, container);
+}
+
+/**
+ * Saves the order the scripts are in on the page, the way the regex panel does after its own
+ * drag (its sortable's stop handler reads the page order, saves it and redraws the list).
+ */
+async function saveListOrder(container) {
+    let stop = null;
+    try {
+        stop = $(container).sortable('option', 'stop');
+    } catch {
+        // Not a sortable list (yet)
+    }
+    if (typeof stop === 'function') {
+        await stop.call(container);
+    }
+}
+
+/** Moves each folder's scripts together, right after its first one. Returns whether anything moved. */
+function gatherMembers(area, container) {
+    const config = FOLDER_AREAS[area];
+    let moved = false;
+    for (const folder of getFolders(area)) {
+        const items = config.items(container);
+        const members = items.filter(item => folder.keys.includes(config.describe(item).key));
+        const start = items.indexOf(members[0]);
+        if (members.every((item, index) => items[start + index] === item)) {
+            continue;
+        }
+        let last = members[0];
+        for (const item of members.slice(1)) {
+            last.after(item);
+            last = item;
+        }
+        moved = true;
+    }
+    return moved;
+}
+
+/** Puts the scripts of each regex folder next to each other (their run order changes to match) and saves. */
+export async function gatherFolderItems(area) {
+    const config = FOLDER_AREAS[area];
+    if (config.moves || config.listOnly) {
+        return;
+    }
+    for (const selector of config.containers) {
+        const container = document.querySelector(selector);
+        if (container && gatherMembers(area, container)) {
+            await saveListOrder(container);
+        }
+    }
+    applyFolders(area);
+}
+
+// A folder being dragged: the list is left alone until it is dropped
+let draggingBlock = false;
+
+/** The nearest box that scrolls, for scrolling while a folder is dragged near its edge. */
+function scrollerOf(element) {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+        if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+    }
+    return document.scrollingElement;
+}
+
+/** Dragging a folder row (≡) moves the folder and its scripts together, then saves the new order. */
+function enableBlockDrag(area, container) {
+    if (container.dataset.stqaBlockDrag) {
+        return;
+    }
+    container.dataset.stqaBlockDrag = '1';
+    container.addEventListener('pointerdown', (event) => {
+        const handle = event.target.closest('.stqa_folder_drag');
+        if (!handle || event.button !== 0) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const header = handle.closest(`.${FOLDER_CLASS}_header`);
+        const block = [header, ...container.querySelectorAll(`:scope > [${MEMBER_ATTR}="${CSS.escape(header.dataset.folderId)}"]`)];
+        const scroller = scrollerOf(container);
+        const startOrder = [...container.children];
+        draggingBlock = true;
+        header.classList.add('stqa_dragging');
+
+        const onMove = (move) => {
+            const box = scroller.getBoundingClientRect();
+            if (move.clientY < box.top + 40) {
+                scroller.scrollTop -= 10;
+            } else if (move.clientY > box.bottom - 40) {
+                scroller.scrollTop += 10;
+            }
+            // Drop spots: before another folder or a script in no folder, never inside a folder
+            const spots = [...container.children].filter(row => !block.includes(row) && !row.hasAttribute(MEMBER_ATTR));
+            const next = spots.find(row => move.clientY < row.getBoundingClientRect().top + row.offsetHeight / 2);
+            for (const element of block) {
+                next ? container.insertBefore(element, next) : container.append(element);
+            }
+        };
+        const onEnd = async () => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onEnd);
+            document.removeEventListener('pointercancel', onEnd);
+            header.classList.remove('stqa_dragging');
+            const changed = [...container.children].some((row, index) => row !== startOrder[index]);
+            try {
+                if (changed) {
+                    await saveListOrder(container);
+                }
+            } catch (error) {
+                console.error(`[${MODULE}] Saving the regex order failed`, error);
+            } finally {
+                draggingBlock = false;
+                applyFolders(area);
+            }
+        };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onEnd);
+        document.addEventListener('pointercancel', onEnd);
+    });
 }
 
 const applying = new Set();
@@ -226,9 +317,7 @@ export function applyFolders(area) {
             if (!container) {
                 continue;
             }
-            if (config.groups) {
-                applyOptionGroups(area, container);
-            } else {
+            if (!config.listOnly) {
                 config.moves ? applyMovingFolders(area, container) : applyMarkingFolders(area, container);
             }
         }
@@ -245,7 +334,7 @@ function watch(area) {
     const config = FOLDER_AREAS[area];
     let timer = null;
     const observer = new MutationObserver((records) => {
-        if (applying.has(area) || getFolders(area).length === 0 || onlyOwnChanges(records)) {
+        if (applying.has(area) || draggingBlock || getFolders(area).length === 0 || onlyOwnChanges(records)) {
             return;
         }
         clearTimeout(timer);
@@ -265,7 +354,7 @@ function watch(area) {
 }
 
 export function initFolders() {
-    const attachers = Object.keys(FOLDER_AREAS).map(area => watch(area));
+    const attachers = Object.keys(FOLDER_AREAS).filter(area => !FOLDER_AREAS[area].listOnly).map(area => watch(area));
     const refresh = () => {
         attachers.forEach(attach => attach());
         Object.keys(FOLDER_AREAS).forEach(area => getFolders(area).length && applyFolders(area));

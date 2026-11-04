@@ -4,7 +4,7 @@
 // The floating position is kept as a share of the window, so it stays put after a rotation.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { rerunLastQr } from './qr-input.js';
-import { NAME_KINDS, getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
+import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 
 const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
@@ -51,7 +51,15 @@ function settleAtEnd(top) {
     let steady = 0;
     let last = null;
     let height = null;
+    // The user scrolling by hand takes over
+    const stopNow = () => (frame = Infinity);
+    chat.addEventListener('touchstart', stopNow, { once: true, passive: true });
+    chat.addEventListener('wheel', stopNow, { once: true, passive: true });
     const step = () => {
+        if (frame === Infinity) {
+            chat.removeEventListener('wheel', stopNow);
+            return;
+        }
         chat.scrollTo({ top: top ? 0 : chat.scrollHeight, behavior: 'instant' });
         steady = chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
         last = chat.scrollTop;
@@ -59,6 +67,9 @@ function settleAtEnd(top) {
         // Until nothing has moved for a while (about half a second), at most about 3 seconds
         if (steady < 30 && ++frame < 180) {
             requestAnimationFrame(step);
+        } else {
+            chat.removeEventListener('touchstart', stopNow);
+            chat.removeEventListener('wheel', stopNow);
         }
     };
     step();
@@ -105,7 +116,8 @@ async function askAndJump() {
     await jumpTo(number);
 }
 
-const NAME_LABELS = Object.freeze({ char: '캐릭터', user: '사용자' });
+// Fields in the order the user reads them
+const NAME_ORDER = Object.freeze(['user', 'char']);
 
 /** Name replacement and the {{char}} ⇄ {{user}} swap in one window. */
 async function editNames() {
@@ -117,12 +129,17 @@ async function editNames() {
         <h3>이름 바꾸기</h3>
         <label class="checkbox_label"><input type="checkbox" data-name="on"><span>다른 이름으로 바꾸기</span></label>
         <div class="stqa_name_grid">
-            ${NAME_KINDS.map(kind => `
-                <label class="stqa_name_label" for="stqa_name_${kind}">${NAME_LABELS[kind]}<small>{{${kind}}}</small></label>
+            ${NAME_ORDER.map(kind => `
+                <label class="stqa_name_label" for="stqa_name_${kind}">{{${kind}}}</label>
                 <input class="text_pole" type="text" id="stqa_name_${kind}" data-kind="${kind}">`).join('')}
         </div>
         <div class="stqa_hint">비워 두면 원래 이름을 씁니다.</div>
-        <label class="checkbox_label"><input type="checkbox" data-name="swap"><span>{{char}}와 {{user}} 서로 바꾸기</span></label>
+        <label class="stqa_swap_row">
+            <input type="checkbox" data-name="swap">
+            <i class="fa-solid fa-right-left"></i>
+            <span>{{user}} ⇄ {{char}} 서로 바꾸기</span>
+            <b class="stqa_swap_state"></b>
+        </label>
         <label class="checkbox_label"><input type="checkbox" data-name="status"><span>상태창에는 원래 이름 쓰기</span></label>`;
     const on = content.querySelector('[data-name="on"]');
     const swap = content.querySelector('[data-name="swap"]');
@@ -130,6 +147,13 @@ async function editNames() {
     on.checked = settings.nameOverride;
     swap.checked = settings.nameSwap === true;
     status.checked = settings.statusRealName;
+    // While swapping, the row says so plainly
+    const showSwap = () => {
+        content.querySelector('.stqa_swap_row').classList.toggle('stqa_on', swap.checked);
+        content.querySelector('.stqa_swap_state').textContent = swap.checked ? '교체 중' : '꺼짐';
+    };
+    swap.addEventListener('change', showSwap);
+    showSwap();
     for (const input of content.querySelectorAll('[data-kind]')) {
         input.value = getStoredName(input.dataset.kind);
         input.placeholder = (input.dataset.kind === 'char' ? context.name2 : context.name1) || '';
@@ -144,11 +168,9 @@ async function editNames() {
     syncNamesButton();
 }
 
-/** The names button stands out while names are changed or swapped. */
+/** While {{char}} and {{user}} are swapped, the names button carries a ⇄ mark. */
 function syncNamesButton() {
-    const settings = getSettings();
-    const active = settings.nameSwap === true || (settings.nameOverride && NAME_KINDS.some(kind => getStoredName(kind)));
-    panel?.querySelector('[data-key="names"]')?.classList.toggle('stqa_on', Boolean(active));
+    panel?.querySelector('[data-key="names"]')?.classList.toggle('stqa_swapping', getSettings().nameSwap === true);
 }
 
 const ACTIONS = {

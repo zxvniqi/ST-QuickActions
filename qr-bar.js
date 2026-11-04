@@ -126,7 +126,27 @@ function drawSetNames() {
     }
 }
 
-/** Taps: the thin bar opens / closes the sets; a tap outside the bar closes them. */
+// Taps on QR buttons right after the sets opened are the same finger, not a choice
+const OPEN_GUARD_MS = 400;
+let openedAt = 0;
+
+/** The thin bar opens / closes the sets on a full tap (not on touch-down, or the finger would land on a QR as they appear). */
+function onClick(event) {
+    if (!styled() || mode() !== 'handle') {
+        return;
+    }
+    const bar = document.getElementById('qr--bar');
+    if (event.target === bar) {
+        const open = !document.body.classList.contains(OPEN_CLASS);
+        openedAt = open ? Date.now() : 0;
+        setOpen(open);
+    } else if (bar?.contains(event.target) && Date.now() - openedAt < OPEN_GUARD_MS) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+}
+
+/** A tap outside the bar closes the sets. */
 function onPointerDown(event) {
     if (!styled()) {
         return;
@@ -134,9 +154,7 @@ function onPointerDown(event) {
     const bar = document.getElementById('qr--bar');
     const inBar = bar?.contains(event.target);
     if (mode() === 'handle') {
-        if (inBar && event.target === bar) {
-            setOpen(!document.body.classList.contains(OPEN_CLASS));
-        } else if (!inBar && !event.target.closest?.('dialog')) {
+        if (!inBar && !event.target.closest?.('dialog')) {
             setOpen(false);
         }
     } else if (mode() === 'sets' && openSet && !inBar && !event.target.closest?.('dialog')) {
@@ -172,6 +190,7 @@ export function initQrBar() {
     delete getSettings().qrPreset;
     applyQrPreset();
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('click', onClick, true);
     const form = document.getElementById('send_form');
     form?.addEventListener('wheel', onWheel, { passive: false });
     // Quick Reply replaces its bar when sets change; the wand may come later than this extension

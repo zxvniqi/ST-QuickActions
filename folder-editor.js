@@ -1,16 +1,29 @@
 // Editor for the folders of one list. Folders are tabs at the top (＋ makes a new one); the
 // folder picked is named and removed right there, and tapping an item below puts it in that
 // folder or takes it out.
-import { FOLDER_AREAS, getFolders, saveFolders, listAreaItems } from './folders.js';
+import { FOLDER_AREAS, getFolders, saveFolders, listAreaItems, gatherFolderItems } from './folders.js';
 
 function newId() {
     return Math.random().toString(36).slice(2, 10);
 }
 
-/** The items of the list once each (the same item may show in more than one place). */
+/** Whether the page shows an item (not hidden in 메뉴 정리 or by its own extension). */
+function isShown(element) {
+    // Hidden only because its folder is folded
+    if (element.classList.contains('stqa_folded')) {
+        return true;
+    }
+    const display = getComputedStyle(element).display;
+    if (display === 'contents') {
+        return [...element.children].some(isShown);
+    }
+    return display !== 'none';
+}
+
+/** The items of the list once each (the same item may show in more than one place), hidden ones left out. */
 function uniqueItems(area) {
     const seen = new Set();
-    return listAreaItems(area).filter(({ key }) => !seen.has(key) && seen.add(key));
+    return listAreaItems(area).filter(({ key, element }) => isShown(element) && !seen.has(key) && seen.add(key));
 }
 
 export async function openFolderEditor(area) {
@@ -125,5 +138,7 @@ export async function openFolderEditor(area) {
     const saved = await new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton: '저장', cancelButton: '취소', allowVerticalScrolling: true }).show();
     if (saved) {
         saveFolders(area, folders);
+        // Regex scripts in a folder are put next to each other, so the folder holds together
+        await gatherFolderItems(area);
     }
 }
