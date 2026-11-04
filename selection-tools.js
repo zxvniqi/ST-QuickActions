@@ -202,10 +202,11 @@ function getSourceText(message, field) {
 /**
  * Translators may remember which original their translation belongs to (LLM Translator:
  * original_text_for_translation, compared the same way) and drop the translation at the next
- * edit once it differs. Pointing it at the current original keeps the translation.
+ * edit once it differs, and drops it outright when there is none (translations made by older
+ * versions). Pointing it at the current original keeps the translation.
  */
 function keepTranslationFor(message) {
-    if (typeof message.extra?.original_text_for_translation === 'string') {
+    if (message.extra?.display_text) {
         message.extra.original_text_for_translation = comparableOriginal(message);
     }
 }
