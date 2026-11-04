@@ -831,7 +831,7 @@ div.stqa_folder_header:not(.list-group-item) {
     gap: 6px;
 }
 
-/* Prompt versions */
+/* Chips (prompt toggle combinations) */
 .stqa_variant_chips {
     display: flex;
     flex-wrap: wrap;
@@ -866,9 +866,9 @@ div.stqa_folder_header:not(.list-group-item) {
     padding-left: 2px;
 }
 
-.stqa_variant_editor {
-    margin: 6px 0;
-    text-align: left;
+/* Toggle combinations above the prompt list */
+.stqa_toggle_sets {
+    margin: 4px 0 6px;
 }
 /* Settings window: folding sections */
 details.stqa_section > summary {

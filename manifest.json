@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -31,7 +31,7 @@
         "folders.js",
         "folder-editor.js",
         "preset-folders.js",
-        "prompt-variants.js",
+        "prompt-toggle-sets.js",
         "mutations.js",
         "layout-manager.js",
         "layout-editor.js",

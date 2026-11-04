@@ -15,7 +15,7 @@ import { initStatusGuard } from './status-guard.js';
 import { initDisplayTweaks, applyDisplayTweaks } from './display-tweaks.js';
 import { initFolders } from './folders.js';
 import { initPresetFolders } from './preset-folders.js';
-import { initPromptVariants } from './prompt-variants.js';
+import { initToggleSets } from './prompt-toggle-sets.js';
 
 const TOOLBAR_POSITIONS = [
     { value: 'dock', label: '화면 아래 (입력창 위)' },
@@ -246,5 +246,5 @@ function addMenuButton() {
     initDisplayTweaks();
     initFolders();
     initPresetFolders();
-    initPromptVariants();
+    initToggleSets();
 })();

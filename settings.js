@@ -29,8 +29,8 @@ const defaultSettings = Object.freeze({
     qrInputHistory: {},
     // Folders: { area: [{ id, name, keys: string[] }] }; which ones are open is not kept
     folders: {},
-    // Saved versions of prompts: { identifier: [{ name, content }] }
-    promptVariants: {},
+    // Saved toggle combinations per prompt preset: { preset: [{ name, states: { identifier: on } }] }
+    toggleSets: {},
     // Status panels in translated messages are taken from the original
     keepStatusPanels: true,
     hdAvatars: true,
