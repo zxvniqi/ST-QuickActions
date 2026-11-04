@@ -758,6 +758,7 @@ body.stqa_qrc #qr--bar#qr--bar > .stqa_qr_setnames {
     opacity: 1 !important;
     visibility: visible !important;
     transform: none !important;
+    transition: none !important;
     order: 0 !important;
     touch-action: pan-x;
     overscroll-behavior-x: contain;
