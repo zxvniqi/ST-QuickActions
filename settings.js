@@ -27,10 +27,15 @@ const defaultSettings = Object.freeze({
     // Buttons on messages
     footerSwipe: true,
     footerTop: true,
+    // left | center | right
+    footerSwipePos: 'left',
+    footerTopPos: 'left',
     menuToBottom: true,
     // Floating shortcut panel
     floatingPanel: true,
     floatingButtons: { deleteLast: true, top: true, jump: true, bottom: true, qrRerun: true, names: true },
+    // Button keys in the order the panel shows them (ones left out follow, as listed)
+    floatingOrder: [],
     floatingPosition: null,
     // input (a row above the input bar) | vertical | horizontal (floating)
     floatingLayout: 'input',

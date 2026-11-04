@@ -26,8 +26,36 @@ export function orderedPresetNames() {
         .map(({ name }) => name);
 }
 
-function saveOrder(names) {
-    getSettings().presetOrder = names;
+// A folder's place in presetOrder: its id after a mark no prompt name starts with
+const FOLDER_MARK = '\u0001';
+const folderKey = id => FOLDER_MARK + id;
+
+/**
+ * The prompt list from the top, in the user's order: folders (with their prompts, in order)
+ * and the prompts in no folder, mixed. Folders not placed yet come first.
+ */
+export function presetEntries() {
+    const names = orderedPresetNames();
+    const folders = getFolders('presets');
+    const filed = new Set(folders.flatMap(folder => folder.keys));
+    const order = getSettings().presetOrder ?? [];
+    const rank = new Map(order.map((key, index) => [key, index]));
+    return [
+        ...folders.map((folder, index) => ({
+            key: folderKey(folder.id),
+            folder,
+            members: names.filter(name => folder.keys.includes(name)),
+            at: rank.get(folderKey(folder.id)) ?? index - folders.length,
+        })),
+        ...names.filter(name => !filed.has(name)).map((name, index) => ({ key: name, name, at: rank.get(name) ?? order.length + index })),
+    ].sort((a, b) => a.at - b.at);
+}
+
+/** Every place in order: each folder followed by its prompts. */
+const sequenceOf = entries => entries.flatMap(entry => (entry.folder ? [entry.key, ...entry.members] : [entry.key]));
+
+function saveOrder(keys) {
+    getSettings().presetOrder = keys;
     SillyTavern.getContext().saveSettingsDebounced();
 }
 
@@ -44,7 +72,6 @@ export async function openPresetManager() {
     const picked = new Set();
 
     const folders = () => getFolders('presets');
-    const folderOf = name => folders().find(folder => folder.keys.includes(name));
 
     const askName = async (title, value = '') => {
         const name = await Popup.show.input(title, '', value);
@@ -102,8 +129,7 @@ export async function openPresetManager() {
             element.querySelector('span').textContent = label;
             element.querySelector('small').textContent = count;
             element.addEventListener('click', () => {
-                view = id;
-                render();
+                openView(id);
             });
             return element;
         };
@@ -151,6 +177,7 @@ export async function openPresetManager() {
                 }
             } else if (action === 'remove') {
                 storeFolders(folders().filter(item => item.id !== folder.id));
+                saveOrder((getSettings().presetOrder ?? []).filter(key => key !== folderKey(folder.id)));
                 view = ALL;
                 render();
             }
@@ -178,39 +205,72 @@ export async function openPresetManager() {
         box.querySelector('[data-do="delete"]').addEventListener('click', () => count && deletePicked());
     };
 
+    const promptRow = (name) => {
+        const row = document.createElement('div');
+        row.className = `stqa_layout_row stqa_manage_row${picked.has(name) ? ' stqa_picked' : ''}`;
+        row.dataset.key = name;
+        row.innerHTML = '<div class="stqa_layout_handle fa-solid fa-grip-lines" title="끌어서 순서 바꾸기"></div><i class="fa-regular stqa_manage_check"></i><span class="stqa_layout_label"></span>';
+        row.querySelector('.stqa_manage_check').classList.add(picked.has(name) ? 'fa-square-check' : 'fa-square');
+        row.querySelector('.stqa_layout_label').textContent = name;
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('.stqa_layout_handle')) {
+                return;
+            }
+            picked.has(name) ? picked.delete(name) : picked.add(name);
+            render();
+        });
+        return row;
+    };
+
+    /** A folder among the prompts: moved like them, tapped to open it. */
+    const folderRow = ({ key, folder, members }) => {
+        const row = document.createElement('div');
+        row.className = 'stqa_layout_row stqa_manage_row stqa_manage_folder';
+        row.dataset.key = key;
+        row.innerHTML = '<div class="stqa_layout_handle fa-solid fa-grip-lines" title="끌어서 순서 바꾸기"></div><i class="fa-solid fa-folder"></i><span class="stqa_layout_label"></span><small></small><i class="fa-solid fa-chevron-right"></i>';
+        row.querySelector('.stqa_layout_label').textContent = folder.name;
+        row.querySelector('small').textContent = members.length;
+        row.addEventListener('click', (event) => {
+            if (!event.target.closest('.stqa_layout_handle')) {
+                openView(folder.id);
+            }
+        });
+        return row;
+    };
+
     const renderList = (list) => {
-        const all = orderedPresetNames();
-        const shown = view === ALL ? all : all.filter(name => folderOf(name)?.id === view);
-        if (!shown.length) {
-            list.innerHTML = `<div class="stqa_hint">${view === ALL ? '프롬프트가 없습니다.' : '이 폴더는 비어 있습니다. "전체"에서 프롬프트를 체크한 뒤 이 폴더로 옮깁니다.'}</div>`;
+        const entries = presetEntries();
+        if (view === ALL) {
+            if (!entries.length) {
+                list.innerHTML = '<div class="stqa_hint">프롬프트가 없습니다.</div>';
+                return;
+            }
+            list.append(...entries.map(entry => (entry.folder ? folderRow(entry) : promptRow(entry.name))));
+            enableDragging(list, (keys) => {
+                const byKey = new Map(entries.map(entry => [entry.key, entry]));
+                saveOrder(sequenceOf(keys.map(key => byKey.get(key))));
+            });
             return;
         }
-        for (const name of shown) {
-            const row = document.createElement('div');
-            row.className = `stqa_layout_row stqa_manage_row${picked.has(name) ? ' stqa_picked' : ''}`;
-            row.dataset.key = name;
-            row.innerHTML = '<div class="stqa_layout_handle fa-solid fa-grip-lines" title="끌어서 순서 바꾸기"></div><i class="fa-regular stqa_manage_check"></i><span class="stqa_layout_label"></span><small class="stqa_folder_item_owner"></small>';
-            row.querySelector('.stqa_manage_check').classList.add(picked.has(name) ? 'fa-square-check' : 'fa-square');
-            row.querySelector('.stqa_layout_label').textContent = name;
-            const owner = folderOf(name);
-            if (owner && view === ALL) {
-                row.querySelector('small').textContent = owner.name;
-            }
-            row.addEventListener('click', (event) => {
-                if (event.target.closest('.stqa_layout_handle')) {
-                    return;
-                }
-                picked.has(name) ? picked.delete(name) : picked.add(name);
-                render();
-            });
-            list.append(row);
+        const shown = entries.find(entry => entry.folder?.id === view)?.members ?? [];
+        if (!shown.length) {
+            list.innerHTML = '<div class="stqa_hint">이 폴더는 비어 있습니다. "전체"에서 프롬프트를 체크한 뒤 이 폴더로 옮깁니다.</div>';
+            return;
         }
+        list.append(...shown.map(promptRow));
         enableDragging(list, (keys) => {
-            // The shown prompts take the places they had among all, in the new order
+            // The folder's prompts take the places they had, in the new order
             const queue = [...keys];
             const set = new Set(keys);
-            saveOrder(orderedPresetNames().map(name => (set.has(name) ? queue.shift() : name)));
+            saveOrder(sequenceOf(presetEntries()).map(key => (set.has(key) ? queue.shift() : key)));
         });
+    };
+
+    // Ticks are for the prompts in sight: another view starts with none
+    const openView = (id) => {
+        view = id;
+        picked.clear();
+        render();
     };
 
     const render = () => {
@@ -224,7 +284,7 @@ export async function openPresetManager() {
         }
         content.innerHTML = `
             <h3>프롬프트 관리</h3>
-            <div class="stqa_hint">바꾸는 즉시 적용됩니다. ≡ 를 끌어서 순서를 바꾸고, 항목을 눌러 체크한 뒤 아래에서 폴더로 옮기거나 삭제합니다.</div>
+            <div class="stqa_hint">바꾸는 즉시 적용됩니다. ≡ 를 끌어서 순서를 바꿉니다. 폴더도 같은 방법으로 옮기며, 폴더를 누르면 그 안의 프롬프트가 보입니다. 프롬프트를 눌러 체크한 뒤 위 줄에서 폴더로 옮기거나 삭제합니다.</div>
             <div class="stqa_folder_tabs"></div>
             <div class="stqa_manage_folderbar"></div>
             <div class="stqa_manage_actions"></div>

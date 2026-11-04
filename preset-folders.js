@@ -1,11 +1,11 @@
 // Folders where the lists are. The prompt (preset) dropdown stays as it is; when it opens, a list
-// like its own unfolds right under it: folders on top (tap the arrow row to unfold its prompts
-// below it), then the prompts in no folder, in the order set in 프롬프트 관리 (the last row,
+// like its own unfolds right under it: folders (tap the arrow row to unfold its prompts below
+// it) and the prompts in no folder, in the order set in 프롬프트 관리 (the last row,
 // preset-manage.js). The regex panel gets a folder button.
 import { isOn } from './settings.js';
 import { FOLDER_AREAS, getFolders } from './folders.js';
 import { openFolderEditor } from './folder-editor.js';
-import { openPresetManager, orderedPresetNames } from './preset-manage.js';
+import { openPresetManager, presetEntries } from './preset-manage.js';
 
 const PRESET_SELECT = '#settings_preset_openai';
 const LIST_ID = 'stqa_preset_list';
@@ -57,13 +57,13 @@ function itemRow(select, name, current, nested) {
 }
 
 function renderList(select) {
-    const names = orderedPresetNames();
     const current = select.selectedOptions[0] ? nameOf(select.selectedOptions[0]) : '';
-    const folders = getFolders('presets');
-    const filed = new Set(folders.flatMap(folder => folder.keys));
     const rows = [];
-    for (const folder of folders) {
-        const members = names.filter(name => folder.keys.includes(name));
+    for (const { name, folder, members } of presetEntries()) {
+        if (!folder) {
+            rows.push(itemRow(select, name, current, false));
+            continue;
+        }
         if (!members.length) {
             continue;
         }
@@ -82,7 +82,6 @@ function renderList(select) {
             rows.push(...members.map(name => itemRow(select, name, current, true)));
         }
     }
-    rows.push(...names.filter(name => !filed.has(name)).map(name => itemRow(select, name, current, false)));
     const edit = document.createElement('div');
     edit.className = 'stqa_preset_edit';
     edit.innerHTML = '<i class="fa-solid fa-list-check"></i><span>프롬프트 관리</span>';

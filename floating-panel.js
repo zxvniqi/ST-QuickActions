@@ -23,6 +23,13 @@ export const FLOATING_BUTTONS = Object.freeze([
     { key: 'names', icon: 'fa-id-badge', label: '이름 바꾸기' },
 ]);
 
+/** The buttons in the order set in the settings (long-press a chip there to move it). */
+export function orderedFloatingButtons() {
+    const order = getSettings().floatingOrder ?? [];
+    const rank = key => (order.includes(key) ? order.indexOf(key) : order.length);
+    return [...FLOATING_BUTTONS].sort((a, b) => rank(a.key) - rank(b.key));
+}
+
 export const FLOATING_LAYOUTS = Object.freeze([
     { value: 'input', label: '입력창 위에 펼치기 (⋯ 버튼)' },
     { value: 'fixed', label: '입력창 위에 항상 보이기' },
@@ -349,9 +356,11 @@ export function applyFloatingSettings() {
     if (!panel) {
         build();
     }
-    for (const button of panel.querySelectorAll('[data-key]:not([data-key="toggle"])')) {
+    for (const { key } of orderedFloatingButtons()) {
+        const button = panel.querySelector(`:scope > [data-key="${key}"]`);
         // Buttons added in later versions start switched on
-        button.hidden = settings.floatingButtons?.[button.dataset.key] === false;
+        button.hidden = settings.floatingButtons?.[key] === false;
+        panel.append(button);
     }
     const layout = FLOATING_LAYOUTS.some(({ value }) => value === settings.floatingLayout) ? settings.floatingLayout : 'input';
     // Leaving "always shown" starts the new layout folded

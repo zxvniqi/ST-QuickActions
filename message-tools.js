@@ -1,11 +1,18 @@
 // Buttons on each message:
-//  - a row at the bottom left of the message: previous / next reply (the swipe arrows as
+//  - a row under the message (left, middle or right, as set): previous / next reply (the swipe arrows as
 //    plain buttons; "next" on the newest reply generates a new one) and "to the top of it"
 //  - in the message menu: "to the bottom of this message"
 // ST clones #message_template for every new message, so patching the template covers all
 // future messages; already-rendered messages are patched once. Which buttons show is set by
 // classes on <body>, so switching them costs nothing per message.
-import { MODULE, isOn } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
+
+/** Where ‹ 1/3 › and ↑ sit under the message. */
+export const FOOTER_POSITIONS = Object.freeze([
+    { value: 'left', label: '위치: 왼쪽' },
+    { value: 'center', label: '위치: 가운데' },
+    { value: 'right', label: '위치: 오른쪽' },
+]);
 
 const FOOTER_CLASS = 'stqa_mes_footer';
 const TO_BOTTOM_CLASS = 'stqa_mes_to_bottom';
@@ -22,12 +29,16 @@ function injectFooter(block) {
     }
     const footer = document.createElement('div');
     footer.className = FOOTER_CLASS;
+    // ‹ 1/3 › sit in one box
+    const swipes = document.createElement('div');
+    swipes.className = 'stqa_footer_swipe';
+    footer.append(swipes);
     for (const { action, icon, title, swipe } of FOOTER_BUTTONS) {
         const button = document.createElement('div');
-        button.className = action === 'count' ? 'stqa_footer_count stqa_footer_swipe' : `stqa_footer_button fa-solid ${icon}${swipe ? ' stqa_footer_swipe' : ''}`;
+        button.className = action === 'count' ? 'stqa_footer_count' : `stqa_footer_button fa-solid ${icon}`;
         button.dataset.stqaAction = action;
         button.title = title;
-        footer.append(button);
+        (swipe ? swipes : footer).append(button);
     }
     block.append(footer);
 }
@@ -105,8 +116,13 @@ function onChatClick(event) {
 }
 
 export function applyMessageToolSettings() {
+    const settings = getSettings();
     document.body.classList.toggle('stqa_footer_swipe_on', isOn('footerSwipe'));
     document.body.classList.toggle('stqa_footer_top_on', isOn('footerTop'));
+    for (const [name, value] of [['swipe', settings.footerSwipePos], ['top', settings.footerTopPos]]) {
+        const position = FOOTER_POSITIONS.some(option => option.value === value) ? value : 'left';
+        FOOTER_POSITIONS.forEach(option => document.body.classList.toggle(`stqa_${name}_at_${option.value}`, option.value === position));
+    }
     document.body.classList.toggle('stqa_to_bottom_on', isOn('menuToBottom'));
     updateCount();
 }

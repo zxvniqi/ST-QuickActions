@@ -1,5 +1,5 @@
 // Quick Reply input helpers: the input popups a QR opens (/input) get 삭제 / 복사 / 기록 buttons
-// at the top right of the input box (clear what is typed, copy it, the last few answers typed
+// in the bottom left corner (clear what is typed, copy it, the last few answers typed
 // in any QR), and the last QR can be run again with the same answers, e.g. when the AI failed
 // to reply.
 import { MODULE, getSettings, isOn } from './settings.js';
@@ -91,7 +91,7 @@ function renderHistory(list, input) {
     }
 }
 
-/** 삭제 / 복사 / 기록 (icons) beside the popup's OK / Cancel buttons. */
+/** 삭제 / 복사 / 기록 (small icons) in the bottom left corner, out of the way of OK / Cancel. */
 function addTools(input) {
     const tools = document.createElement('div');
     tools.className = 'stqa_qr_tools';
@@ -116,7 +116,7 @@ function addTools(input) {
         }
         tools.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
     });
-    // Next to OK / Cancel; the history opens right above them
+    // In the OK / Cancel row's corner (CSS); the history opens right above the row
     const controls = input.closest('dialog')?.querySelector('.popup-controls');
     if (controls) {
         controls.prepend(tools);
