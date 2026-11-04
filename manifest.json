@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "2.8.0",
+    "version": "2.9.0",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -31,6 +31,7 @@
         "folders.js",
         "folder-editor.js",
         "preset-folders.js",
+        "preset-manage.js",
         "prompt-toggle-sets.js",
         "range-delete.js",
         "mutations.js",

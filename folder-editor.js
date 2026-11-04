@@ -32,7 +32,8 @@ export async function openFolderEditor(area) {
     // Work on a copy; saved when the editor closes with 저장
     const folders = structuredClone(getFolders(area));
     const items = uniqueItems(area);
-    let current = folders[0] ?? null;
+    // No folder is picked at first: the list shows where everything is
+    let current = null;
 
     const content = document.createElement('div');
     content.className = 'stqa_folder_editor';
@@ -77,7 +78,7 @@ export async function openFolderEditor(area) {
         box.querySelector('.stqa_folder_delete').addEventListener('click', () => {
             // Only the folder goes; its items stay where they are in the list
             folders.splice(folders.indexOf(current), 1);
-            current = folders[0] ?? null;
+            current = null;
             render();
         });
     };
@@ -90,14 +91,18 @@ export async function openFolderEditor(area) {
         for (const item of items) {
             const owner = folders.find(folder => folder.keys.includes(item.key));
             const row = document.createElement('div');
-            row.className = `stqa_folder_item${owner && owner === current ? ' stqa_in' : ''}`;
+            const inCurrent = Boolean(current) && owner === current;
+            row.className = `stqa_folder_item${inCurrent ? ' stqa_in' : ''}${current ? '' : ' stqa_readonly'}`;
             row.innerHTML = '<i class="fa-solid stqa_folder_check"></i><span class="stqa_folder_item_label"></span><small class="stqa_folder_item_owner"></small>';
-            row.querySelector('.stqa_folder_check').classList.add(owner === current ? 'fa-square-check' : 'fa-square');
+            row.querySelector('.stqa_folder_check').classList.add(inCurrent ? 'fa-square-check' : 'fa-square');
             row.querySelector('.stqa_folder_item_label').textContent = item.label;
             if (owner && owner !== current) {
                 row.querySelector('.stqa_folder_item_owner').textContent = owner.name;
             }
             row.addEventListener('click', () => {
+                if (!current) {
+                    return;
+                }
                 // An item is in one folder at most: picking it here takes it out of any other
                 folders.forEach(folder => (folder.keys = folder.keys.filter(key => key !== item.key)));
                 if (owner !== current) {
@@ -119,14 +124,15 @@ export async function openFolderEditor(area) {
             <div class="stqa_folder_items"></div>`;
         renderTabs(content.querySelector('.stqa_folder_tabs'));
         const help = content.querySelector('.stqa_folder_help');
-        if (!current) {
+        if (current) {
+            renderCurrent(content.querySelector('.stqa_folder_current'));
+            help.textContent = `항목을 누르면 "${current.name}" 폴더에 넣거나 뺍니다. 오른쪽에 이름이 적힌 항목은 다른 폴더에 들어 있습니다.`;
+        } else {
             content.querySelector('.stqa_folder_current').remove();
-            content.querySelector('.stqa_folder_items').remove();
-            help.textContent = '폴더가 없습니다. "새 폴더"를 눌러 먼저 폴더를 만듭니다.';
-            return;
+            help.textContent = folders.length
+                ? '위에서 폴더를 고르면 항목을 넣거나 뺄 수 있습니다. 오른쪽 이름은 그 항목이 든 폴더입니다.'
+                : '폴더가 없습니다. "새 폴더"를 눌러 먼저 폴더를 만듭니다.';
         }
-        renderCurrent(content.querySelector('.stqa_folder_current'));
-        help.textContent = `항목을 누르면 "${current.name}" 폴더에 넣거나 뺍니다. 오른쪽에 이름이 적힌 항목은 다른 폴더에 들어 있습니다.`;
         renderItems(content.querySelector('.stqa_folder_items'));
         const scroller = content.closest('.popup-content');
         if (scroller) {

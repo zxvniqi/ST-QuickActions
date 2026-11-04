@@ -51,7 +51,7 @@ function renderList(listElement, items) {
 }
 
 /** Pointer-based drag (works with touch): the row follows the finger, others make room. */
-function enableDragging(listElement, onReorder) {
+export function enableDragging(listElement, onReorder) {
     listElement.addEventListener('pointerdown', (event) => {
         const handle = event.target.closest('.stqa_layout_handle');
         if (!handle) {

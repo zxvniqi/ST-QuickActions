@@ -41,6 +41,8 @@ const defaultSettings = Object.freeze({
     // Last answers typed into QR input popups, any QR, newest first
     qrRecentInputs: [],
     // Folders: { area: [{ id, name, keys: string[] }] }; which ones are open is not kept
+    // Prompt (preset) names in the order the prompt list shows them
+    presetOrder: [],
     folders: {},
     // Saved toggle combinations per prompt preset: { preset: [{ name, states: { identifier: on } }] }
     toggleSets: {},

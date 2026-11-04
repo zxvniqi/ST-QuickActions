@@ -361,12 +361,18 @@ export function applyFloatingSettings() {
     for (const { value } of FLOATING_LAYOUTS) {
         panel.classList.toggle(`stqa_layout_${value}`, value === layout);
     }
-    // In the input bar the row goes right above the input, in the flow; floating, on the page
+    // In the input bar the row goes in the flow, under the Quick Reply bar and right above the
+    // input (Quick Reply puts a redrawn bar first in the form, so it stays above); floating, on the page
     const inFlow = IN_FLOW.includes(layout);
     panel.classList.toggle('stqa_in_flow', inFlow);
     const form = document.getElementById('send_form');
     if (inFlow && form) {
-        form.before(panel);
+        const qrBar = form.querySelector(':scope > #qr--bar');
+        if (qrBar) {
+            qrBar.nextElementSibling !== panel && qrBar.after(panel);
+        } else if (panel.parentElement !== form) {
+            form.prepend(panel);
+        }
         panel.style.left = panel.style.top = '';
     } else if (panel.parentElement !== document.body) {
         document.body.append(panel);

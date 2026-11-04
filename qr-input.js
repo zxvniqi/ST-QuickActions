@@ -91,7 +91,7 @@ function renderHistory(list, input) {
     }
 }
 
-/** 삭제 / 복사 / 기록 (icons) at the top right of the popup, above its text. */
+/** 삭제 / 복사 / 기록 (icons) beside the popup's OK / Cancel buttons. */
 function addTools(input) {
     const tools = document.createElement('div');
     tools.className = 'stqa_qr_tools';
@@ -116,8 +116,14 @@ function addTools(input) {
         }
         tools.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
     });
-    const body = input.closest('.popup-body') ?? input.parentElement;
-    body.prepend(tools, list);
+    // Next to OK / Cancel; the history opens right above them
+    const controls = input.closest('dialog')?.querySelector('.popup-controls');
+    if (controls) {
+        controls.prepend(tools);
+        controls.before(list);
+    } else {
+        input.after(tools, list);
+    }
 }
 
 /** An input popup opened during a QR run: show the history, record the answer, or answer it by itself when replaying. */
