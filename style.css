@@ -682,15 +682,17 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     background: var(--white30a, rgba(127, 127, 127, 0.15));
 }
 
-/* Floating and folded: a small see-through button at the screen edge */
+/* Floating and folded: one small button at the screen edge, still easy to spot */
 #stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) {
-    opacity: 0.5;
+    opacity: 0.9;
+    border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 35%, transparent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 #stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) .stqa_floating_toggle {
-    width: 28px;
-    height: 28px;
-    font-size: 13px;
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
 }
 
 /* In the input bar: a row in the page flow right above the input, covering nothing */
@@ -700,8 +702,13 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     justify-content: center;
     gap: 4px;
     margin: 4px 0 0;
-    padding: 4px;
+    padding: 4px 0;
+    border: none;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 0;
+    background: transparent;
     box-shadow: none;
+    backdrop-filter: none;
 }
 
 #stqa_floating_panel.stqa_layout_input .stqa_floating_button {
@@ -710,7 +717,7 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     height: 32px;
 }
 
-/* Quick Reply bar in the Cinema Note look. The doubled id outweighs any theme's own rules. */
+/* Quick Reply bar: one line per set, scrolling sideways. The doubled id outweighs any theme's own rules. */
 body.stqa_qrc #qr--bar#qr--bar {
     position: relative;
     display: flex !important;
@@ -720,84 +727,58 @@ body.stqa_qrc #qr--bar#qr--bar {
     height: auto !important;
     max-height: none !important;
     margin-top: 5px;
-    padding: 0 10px 6px !important;
+    padding: 6px 8px !important;
     border-radius: 12px;
-    overflow: hidden !important;
+    overflow: visible !important;
     opacity: 1 !important;
-    cursor: pointer;
+    transition: none !important;
 }
 
-/* The handle: tap it (or the bar around the buttons) to unfold / fold */
+/* The theme's own handle line is not used (the thin bar shape draws its own) */
 body.stqa_qrc #qr--bar#qr--bar::before {
-    content: '' !important;
-    display: block !important;
-    flex: none;
-    width: 30px;
-    height: 3px;
-    margin: 9px auto 4px !important;
-    border-radius: 10px;
-    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemeBorderColor));
-    opacity: 0.5;
-    transition: width 0.3s, opacity 0.3s;
-}
-
-body.stqa_qrc.stqa_qrc_unfolded #qr--bar#qr--bar::before {
-    width: 50px;
-    opacity: 0.8;
-}
-
-body.stqa_qrc.stqa_qrc_open #qr--bar#qr--bar {
-    padding-top: 6px !important;
-    cursor: default;
-}
-
-body.stqa_qrc.stqa_qrc_open #qr--bar#qr--bar::before {
     display: none !important;
 }
 
-body.stqa_qrc #qr--bar#qr--bar > .qr--buttons {
+body.stqa_qrc #qr--bar#qr--bar > .qr--buttons,
+body.stqa_qrc #qr--bar#qr--bar > .stqa_qr_setnames {
     display: flex !important;
+    flex-direction: row !important;
     flex-wrap: nowrap !important;
-    justify-content: safe center !important;
+    justify-content: flex-start !important;
     gap: 5px !important;
-    width: auto !important;
-    min-width: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
     padding: 1px 0 !important;
-    overflow: auto hidden !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     opacity: 1 !important;
     visibility: visible !important;
+    transform: none !important;
     order: 0 !important;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
-    cursor: default;
+    -webkit-overflow-scrolling: touch;
 }
 
-body.stqa_qrc #qr--bar#qr--bar > .qr--buttons::-webkit-scrollbar {
+body.stqa_qrc #qr--bar#qr--bar > .qr--buttons::-webkit-scrollbar,
+body.stqa_qrc #qr--bar#qr--bar > .stqa_qr_setnames::-webkit-scrollbar {
     display: none;
-}
-
-/* Folded: no sets, or only the first one (above the handle, as in the theme) */
-body.stqa_qrc:not(.stqa_qrc_open):not(.stqa_qrc_unfolded) #qr--bar#qr--bar > .qr--buttons {
-    display: none !important;
-}
-
-body.stqa_qrc.stqa_qrc_lock1 #qr--bar#qr--bar > .qr--buttons:first-child {
-    display: flex !important;
-    order: -1 !important;
-}
-
-body.stqa_qrc.stqa_qrc_lock1 #qr--bar#qr--bar {
-    padding-top: 6px !important;
 }
 
 body.stqa_qrc #qr--bar#qr--bar .qr--button {
     display: flex !important;
     align-items: center;
     flex: 0 0 auto !important;
+    width: auto !important;
     height: 30px !important;
     min-height: 0 !important;
     margin: 0 !important;
-    padding: 0 10px !important;
+    padding: 0 12px !important;
     border: 1px solid var(--black30a) !important;
     border-radius: 20px !important;
     background-color: var(--SmartThemeBlurTintColor) !important;
@@ -805,9 +786,82 @@ body.stqa_qrc #qr--bar#qr--bar .qr--button {
     transition: border 0.3s, box-shadow 0.3s;
 }
 
-body.stqa_qrc #qr--bar#qr--bar .qr--button:hover {
+body.stqa_qrc #qr--bar#qr--bar .qr--button:hover,
+body.stqa_qrc #qr--bar#qr--bar .stqa_qr_setname.stqa_active {
     border-color: var(--SmartThemeUnderlineColor, var(--SmartThemeQuoteColor)) !important;
     box-shadow: rgba(0, 0, 0, 0.1) 0 0 5px !important;
+}
+
+/* Arrow shape: ▲ / ▼ in the input bar shows / hides the whole bar */
+body.stqa_qrc_arrow:not(.stqa_qrc_unfolded) #qr--bar#qr--bar {
+    display: none !important;
+}
+
+/* Thin bar shape: only the bar shows until it is tapped */
+body.stqa_qrc_handle #qr--bar#qr--bar {
+    padding-top: 0 !important;
+    cursor: pointer;
+}
+
+body.stqa_qrc_handle #qr--bar#qr--bar::before {
+    content: '' !important;
+    display: block !important;
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 4px !important;
+    border-radius: 10px;
+    background-color: var(--SmartThemeUnderlineColor, var(--SmartThemeBorderColor));
+    opacity: 0.6;
+    transition: width 0.3s, opacity 0.3s;
+}
+
+body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar {
+    padding-bottom: 4px !important;
+}
+
+body.stqa_qrc_handle.stqa_qrc_unfolded #qr--bar#qr--bar::before {
+    width: 56px;
+    opacity: 0.9;
+}
+
+body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar > .qr--buttons {
+    display: none !important;
+}
+
+body.stqa_qrc_handle #qr--bar#qr--bar > .qr--buttons {
+    cursor: default;
+}
+
+/* Set names shape: one line of names; the open set lists its buttons above it */
+body.stqa_qrc_sets #qr--bar#qr--bar > .qr--buttons:not(.stqa_qr_set_open) {
+    display: none !important;
+}
+
+body.stqa_qrc_sets #qr--bar#qr--bar > .stqa_qr_setnames {
+    order: 1 !important;
+}
+
+body.stqa_qrc_sets #qr--bar#qr--bar > .qr--buttons.stqa_qr_set_open {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    max-height: 40vh !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    touch-action: pan-y;
+}
+
+body.stqa_qrc_sets #qr--bar#qr--bar > .qr--buttons.stqa_qr_set_open .qr--button {
+    justify-content: flex-start !important;
+    height: 34px !important;
+    border-radius: 10px !important;
+}
+
+#stqa_qr_arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
 }
 
 /* Folders (wand menu, regex scripts, prompts) */
@@ -854,13 +908,26 @@ div.stqa_folder_header:not(.list-group-item) {
     display: none !important;
 }
 
+/* Items in a folder: indented, tinted and lined on the left, so they stand apart from the rest */
 .stqa_folder_body > *,
 [data-stqa-folder] {
-    border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
+    box-shadow: inset 3px 0 0 var(--SmartThemeQuoteColor) !important;
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, transparent) !important;
 }
 
 .stqa_folder_body > * {
     padding-left: 14px !important;
+}
+
+[data-stqa-folder] {
+    margin-left: 14px !important;
+}
+
+/* An open folder row reads as the head of its items */
+li.stqa_folder_header:not(.stqa_folded),
+div.stqa_folder_header:not(.list-group-item):not(.stqa_folded) {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
 }
 
 /* Folder editor: folders as tabs, the items of the list below */
@@ -1183,7 +1250,39 @@ details.stqa_section[open] > summary {
 }
 
 .stqa_feature_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_feature_head .checkbox_label {
+    flex: 1;
+    min-width: 0;
     font-weight: 600;
+}
+
+.stqa_desc_toggle {
+    flex: none;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    opacity: 0.55;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.stqa_desc_toggle:hover {
+    opacity: 0.9;
+}
+
+.stqa_desc_open .stqa_desc_toggle {
+    transform: rotate(180deg);
+    opacity: 0.9;
+}
+
+.stqa_desc[hidden] {
+    display: none;
 }
 
 .stqa_desc {
@@ -1301,11 +1400,14 @@ body.stqa_footer_swipe_on #chat .mes .swipeRightBlock {
     display: none !important;
 }
 
-/* Extensions menu as a grid of icons */
-body.stqa_wand_grid #extensionsMenu {
+/* Extensions menu as a grid of icons. Only while open: ST closes it with an inline display: none. */
+body.stqa_wand_grid #extensionsMenu:not([style*="display: none"]) {
     display: grid !important;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 52px);
+    grid-auto-rows: 48px;
     gap: 4px;
+    padding: 6px !important;
+    width: max-content !important;
 }
 
 body.stqa_wand_grid #extensionsMenu > div:not(.list-group-item):not(.stqa_folder) {
@@ -1313,12 +1415,18 @@ body.stqa_wand_grid #extensionsMenu > div:not(.list-group-item):not(.stqa_folder
 }
 
 body.stqa_wand_grid #extensionsMenu .list-group-item {
+    display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 48px;
-    padding: 8px 0 !important;
+    width: 52px;
+    height: 48px;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 10px;
     font-size: 0 !important;
+    gap: 0 !important;
 }
 
 body.stqa_wand_grid #extensionsMenu .list-group-item > span {
@@ -1326,11 +1434,21 @@ body.stqa_wand_grid #extensionsMenu .list-group-item > span {
 }
 
 body.stqa_wand_grid #extensionsMenu .list-group-item [class*="fa-"],
-body.stqa_wand_grid #extensionsMenu .list-group-item svg {
-    font-size: 22px !important;
-    width: auto;
-    height: 22px;
+body.stqa_wand_grid #extensionsMenu .list-group-item svg,
+body.stqa_wand_grid #extensionsMenu .list-group-item img {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 24px !important;
+    height: 24px !important;
     margin: 0 !important;
+    padding: 0 !important;
+    font-size: 20px !important;
+    line-height: 24px !important;
+}
+
+body.stqa_wand_grid #extensionsMenu .list-group-item:not(.stqa_folder_header) > :not([class*="fa-"]):not(svg):not(img):not(:has([class*="fa-"], svg, img)) {
+    display: none !important;
 }
 
 body.stqa_wand_grid #extensionsMenu .stqa_folder {
@@ -1339,8 +1457,20 @@ body.stqa_wand_grid #extensionsMenu .stqa_folder {
 
 body.stqa_wand_grid #extensionsMenu .stqa_folder_body {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, 52px);
+    grid-auto-rows: 48px;
     gap: 4px;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder.stqa_folded > .stqa_folder_body {
+    display: none !important;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder_header.list-group-item {
+    width: auto;
+    height: 40px;
+    padding: 0 10px !important;
+    justify-content: flex-start;
 }
 
 body.stqa_wand_grid #extensionsMenu .stqa_folder_header {
@@ -1355,4 +1485,76 @@ body.stqa_wand_grid #extensionsMenu .stqa_folder_header > span {
 /* Start screen: recent chats only */
 body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
     display: none;
+}
+/* Prompt picker: a box in place of the dropdown */
+body.stqa_preset_picker_on #settings_preset_openai {
+    display: none !important;
+}
+
+#stqa_preset_display {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+body.stqa_preset_picker_on #stqa_preset_display {
+    display: flex;
+}
+
+#stqa_preset_display span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#stqa_preset_display i {
+    flex: none;
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+.stqa_picker_edit {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+    width: auto;
+    margin: 0;
+    padding: 4px 10px;
+    white-space: nowrap;
+    flex: none;
+}
+/* Quick switch menu (edit mode) */
+.stqa_set_menu {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stqa_set_menu h3 {
+    margin: 0 0 4px;
+    text-align: center;
+}
+
+.stqa_set_menu .menu_button {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 8px 12px;
+}
+
+.stqa_set_menu .stqa_danger {
+    color: var(--warning, #e5534b);
+}
+
+.stqa_toggle_sets.stqa_editing .stqa_variant_chip:not(.stqa_variant_add) {
+    border-style: dashed;
 }

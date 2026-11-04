@@ -38,9 +38,40 @@ async function jumpTo(messageId) {
     await SillyTavern.getContext().executeSlashCommandsWithOptions(`/chat-jump ${messageId}`);
 }
 
-function scrollToBottom() {
+/**
+ * Moves the chat to its top or bottom end and keeps it there while messages and pictures are
+ * still being drawn (a smooth scroll stops halfway when the chat grows under it).
+ */
+function settleAtEnd(top) {
     const chat = document.getElementById('chat');
-    chat?.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
+    if (!chat) {
+        return;
+    }
+    let frame = 0;
+    let steady = 0;
+    let last = null;
+    let height = null;
+    const step = () => {
+        chat.scrollTo({ top: top ? 0 : chat.scrollHeight, behavior: 'instant' });
+        steady = chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
+        last = chat.scrollTop;
+        height = chat.scrollHeight;
+        // Until nothing has moved for a while (about half a second), at most about 3 seconds
+        if (steady < 30 && ++frame < 180) {
+            requestAnimationFrame(step);
+        }
+    };
+    step();
+}
+
+async function scrollToTop() {
+    // Older messages that aren't drawn yet are loaded first
+    await jumpTo(0);
+    settleAtEnd(true);
+}
+
+function scrollToBottom() {
+    settleAtEnd(false);
 }
 
 async function deleteLastMessage() {
@@ -123,7 +154,7 @@ function syncNamesButton() {
 const ACTIONS = {
     deleteLast: deleteLastMessage,
     names: editNames,
-    top: () => jumpTo(0),
+    top: scrollToTop,
     jump: askAndJump,
     bottom: scrollToBottom,
     qrRerun: rerunLastQr,

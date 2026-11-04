@@ -6,11 +6,10 @@ import { initNameOverride, applyNameSettings } from './name-override.js';
 import { initSelectionTools } from './selection-tools.js';
 import { initLayoutManager, applyLayoutSettings } from './layout-manager.js';
 import { openLayoutEditor } from './layout-editor.js';
-import { openFolderEditor } from './folder-editor.js';
 import { createInlineSelect } from './inline-select.js';
 import { initMessageTools, applyMessageToolSettings } from './message-tools.js';
 import { FLOATING_BUTTONS, FLOATING_LAYOUTS, initFloatingPanel, applyFloatingSettings } from './floating-panel.js';
-import { QR_PRESETS, initQrBar, applyQrPreset } from './qr-bar.js';
+import { QR_MODES, initQrBar, applyQrPreset } from './qr-bar.js';
 import { initQrInput } from './qr-input.js';
 import { initStatusGuard } from './status-guard.js';
 import { initDisplayTweaks, applyDisplayTweaks } from './display-tweaks.js';
@@ -25,8 +24,6 @@ const TOOLBAR_POSITIONS = [
     { value: 'below', label: '버튼 위치: 선택한 글자 아래' },
 ];
 
-// Folder kinds with their own editor button in the settings window
-const FOLDER_EDITORS = Object.freeze({ wandFolders: 'wand', regexFolders: 'regex', presetFolders: 'presets' });
 
 /**
  * The settings window, one tab per place in ST a feature belongs to. Each feature:
@@ -42,7 +39,7 @@ const TABS = Object.freeze([
             ['footerSwipe', '답변 넘기기 버튼', '마지막 답변 아래에 ‹ 1/3 › 버튼을 표시합니다. ‹ 는 이전 답변, › 는 다음 답변이며, 마지막 답변에서 › 를 누르면 새 답변을 생성합니다. 켜면 ST 기본 스와이프 화살표와 답변 번호는 숨겨집니다.'],
             ['footerTop', '메시지 처음으로 이동', '메시지 왼쪽 아래에 ↑ 버튼을 표시합니다. 누르면 그 메시지의 첫 줄로 올라갑니다.'],
             ['selectionTools', '드래그로 수정·삭제', '메시지 글자를 드래그해 선택하면 수정·삭제 버튼이 나타납니다. 번역된 메시지라면 원문에서 같은 부분도 함께 고치거나 지웁니다.'],
-            ['keepStatusPanels', '상태창 깨짐 복구', '상태창(HTML)이 그려지지 않고 코드 그대로 보이면 그 메시지를 자동으로 다시 그립니다. 번역은 그대로 유지됩니다.'],
+            ['keepStatusPanels', '렌더링 픽스', '상태창 같은 HTML이 그려지지 않고 코드 그대로 보이면, 그 메시지를 자동으로 다시 그립니다. 번역은 그대로 유지됩니다.'],
         ],
     },
     {
@@ -57,7 +54,7 @@ const TABS = Object.freeze([
     {
         title: '입력창',
         features: [
-            ['qrBar', 'QR바 모양', '입력창 위 QR 버튼 줄을 시네마노트 스타일(둥근 버튼, 세트마다 한 줄)로 바꿉니다. 위쪽 손잡이를 누르면 펼치고 접습니다. "테마 그대로"를 고르면 지금 테마 모양을 그대로 씁니다.'],
+            ['qrBar', 'QR바 정리', '입력창 위 QR 버튼을 세트마다 한 줄로 정리하고, 줄마다 옆으로 밀어서 넘길 수 있게 합니다. 아래에서 여는 방식을 고릅니다. ▲▼ 버튼은 입력창의 마법봉 옆에 생기고, 얇은 바는 입력창 바로 위에 생깁니다. 세트 이름 방식은 세트 이름만 한 줄로 보여 주고, 이름을 누르면 그 세트의 QR이 목록으로 펼쳐집니다.'],
             ['qrHistory', 'QR 입력창 도구', 'QR이 띄우는 입력창 오른쪽 위에 삭제·복사·기록 버튼을 추가합니다. 삭제는 지금 쓴 내용을 지우고, 복사는 지금 쓴 내용을 복사합니다. 기록은 최근 입력 3개를 보여 주며, 어느 QR에서 입력했든 함께 나옵니다.'],
             ['hideInputPlaceholder', '입력창 안내 문구 숨기기', '입력창에 흐리게 보이는 "Type a message…" 안내 문구를 숨깁니다.'],
         ],
@@ -73,10 +70,10 @@ const TABS = Object.freeze([
         features: [
             ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정의 항목을 숨기거나 순서를 바꿉니다. 끄면 원래 배치로 돌아갑니다.'],
             ['wandGrid', '확장 메뉴 아이콘 보기', '확장 메뉴(입력창 왼쪽 마법봉 버튼)를 글자 없이 아이콘만, 한 줄에 3개씩 보여 줍니다.'],
-            ['wandFolders', '확장 메뉴 폴더', '확장 메뉴 항목을 폴더로 묶습니다. 메뉴에서 폴더를 누르면 안의 항목이 펼쳐집니다.'],
-            ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접고 펼칩니다. 정규식 실행 순서는 바뀌지 않습니다. 정규식 창의 "폴더" 버튼으로도 편집할 수 있습니다.'],
-            ['presetFolders', '프리셋 폴더', '프롬프트 프리셋을 폴더로 묶습니다. 프리셋 선택 칸 옆 폴더 버튼을 누르면 폴더별로 보고 고를 수 있습니다.'],
-            ['toggleSetChips', '프롬프트 토글 조합', '프롬프트 목록 위에 버튼을 추가합니다. 지금 켜고 끈 프롬프트 상태를 이름을 붙여 저장해 두고, 누르면 그 상태로 한 번에 바뀝니다. 프리셋마다 따로 저장됩니다.'],
+            ['wandFolders', '확장 메뉴 폴더', '확장 메뉴 항목을 폴더로 묶습니다. 메뉴에서 폴더를 누르면 안의 항목이 펼쳐집니다. 폴더 편집은 메뉴 정리 창의 "폴더 편집" 버튼에서 합니다.'],
+            ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접고 펼칩니다. 정규식 실행 순서는 바뀌지 않습니다. 폴더 편집은 정규식 창의 "폴더" 버튼에서 합니다.'],
+            ['presetFolders', '프롬프트 폴더', '프롬프트를 폴더로 묶습니다. 프롬프트 선택 칸을 누르면 폴더별로 접고 펼쳐서 고를 수 있습니다. 폴더 편집은 그 선택 창의 "폴더 편집" 버튼에서 합니다.'],
+            ['toggleSetChips', '프롬프트 빠른 전환', '프롬프트 항목 목록 위에 버튼을 추가합니다. 지금 켜고 끈 항목 상태를 이름을 붙여 저장해 두면, 그 버튼을 눌러 한 번에 그 상태로 바꿀 수 있습니다. ✎ 를 누르면 저장한 버튼을 지금 상태로 덮어쓰거나, 이름을 바꾸거나, 지울 수 있습니다. 프롬프트마다 따로 저장됩니다.'],
         ],
     },
 ]);
@@ -104,12 +101,21 @@ function featureRow(key, label, description) {
     const row = document.createElement('div');
     row.className = 'stqa_feature';
     row.innerHTML = `
-        <label class="checkbox_label stqa_feature_head"><input type="checkbox" data-setting="${key}"><span></span></label>
-        <div class="stqa_desc"></div>
+        <div class="stqa_feature_head">
+            <label class="checkbox_label"><input type="checkbox" data-setting="${key}"><span></span></label>
+            <div class="stqa_desc_toggle fa-solid fa-chevron-down" title="설명 보기"></div>
+        </div>
+        <div class="stqa_desc" hidden></div>
         <div class="stqa_feature_extra"></div>`;
     row.querySelector('span').textContent = label;
     row.querySelector('.stqa_desc').textContent = description;
     row.querySelector('input').checked = getSettings()[key] !== false;
+    // The description folds out under the name
+    row.querySelector('.stqa_desc_toggle').addEventListener('click', () => {
+        const desc = row.querySelector('.stqa_desc');
+        desc.hidden = !desc.hidden;
+        row.classList.toggle('stqa_desc_open', !desc.hidden);
+    });
     return row;
 }
 
@@ -133,8 +139,8 @@ function extrasFor(key) {
             saveSettings();
         });
     } else if (key === 'qrBar') {
-        select(QR_PRESETS.map(({ value, label }) => ({ value, label })), settings.qrPreset, (value) => {
-            settings.qrPreset = value;
+        select(QR_MODES, settings.qrMode, (value) => {
+            settings.qrMode = value;
             saveSettings();
             applyQrPreset();
         });
@@ -152,8 +158,6 @@ function extrasFor(key) {
         extra.append(chips);
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
-    } else if (FOLDER_EDITORS[key]) {
-        extra.append(panelButton('fa-folder-tree', '폴더 편집', () => openFolderEditor(FOLDER_EDITORS[key])));
     }
     return extra;
 }

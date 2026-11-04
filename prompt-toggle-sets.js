@@ -1,5 +1,6 @@
-// Saved toggle combinations of a prompt preset ("한국어", "짧게", ...), shown as chips above the
-// prompt list: tap one to switch the prompts on / off as saved. Kept per preset name.
+// Quick switches of a prompt (preset): saved on / off states of its items ("한국어", "짧게", ...),
+// shown as chips above the item list. Tap one to switch the items as saved; in edit mode (✎) a
+// tap opens its menu: overwrite with the current states, rename, or remove. Kept per preset name.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
 
@@ -15,7 +16,7 @@ try {
     console.warn(`[${MODULE}] Prompt manager not available; toggle sets are off`, error);
 }
 
-// Showing the × buttons (remove a set) right now
+// Edit mode: a tap on a chip opens its menu instead of applying it
 let editing = false;
 
 const manager = () => openai?.promptManager ?? null;
@@ -51,26 +52,60 @@ async function applySet(set) {
     // The same as switching them by hand
     await pm.saveServiceSettings();
     pm.render();
-    toastr.success(`'${set.name}' 조합 적용`, TITLE);
+    toastr.success(`'${set.name}' 적용했습니다.`, TITLE);
 }
+
+const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));
 
 async function saveCurrent(preset) {
     const { Popup } = SillyTavern.getContext();
-    const name = String(await Popup.show.input('지금 토글 조합 저장', '이름 (같은 이름이면 덮어쓰기)', '') || '').trim();
+    const name = String(await Popup.show.input('빠른 전환 추가', '지금 켜고 끈 항목 상태를 이 이름으로 저장합니다.', '') || '').trim();
     if (!name) {
         return;
     }
-    const states = Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));
-    saveSets(preset, [...setsOf(preset).filter(set => set.name !== name), { name, states }]);
+    saveSets(preset, [...setsOf(preset).filter(set => set.name !== name), { name, states: currentStates() }]);
     drawBar();
 }
 
-async function removeSet(preset, set) {
-    const { Popup } = SillyTavern.getContext();
-    if (await Popup.show.confirm(`'${set.name}' 조합 삭제`, '토글 상태는 그대로')) {
-        saveSets(preset, setsOf(preset).filter(item => item !== set));
-        drawBar();
+/** Edit mode: what to do with one saved switch. */
+async function editSet(preset, set) {
+    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
+    const content = document.createElement('div');
+    content.className = 'stqa_set_menu';
+    content.innerHTML = `
+        <h3></h3>
+        <div class="menu_button" data-do="overwrite"><i class="fa-solid fa-floppy-disk"></i><span>지금 상태로 덮어쓰기</span></div>
+        <div class="menu_button" data-do="rename"><i class="fa-solid fa-pen"></i><span>이름 바꾸기</span></div>
+        <div class="menu_button stqa_danger" data-do="remove"><i class="fa-solid fa-trash-can"></i><span>삭제</span></div>`;
+    content.querySelector('h3').textContent = set.name;
+    let action = null;
+    const popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
+    content.addEventListener('click', (event) => {
+        action = event.target.closest('[data-do]')?.dataset.do ?? null;
+        if (action) {
+            popup.completeAffirmative();
+        }
+    });
+    await popup.show();
+    const sets = setsOf(preset);
+    if (action === 'overwrite') {
+        set.states = currentStates();
+        toastr.success(`'${set.name}'을(를) 지금 상태로 덮어썼습니다.`, TITLE);
+    } else if (action === 'rename') {
+        const name = String(await Popup.show.input('이름 바꾸기', '', set.name) || '').trim();
+        if (!name || name === set.name) {
+            return;
+        }
+        // A switch already called that is replaced
+        sets.splice(0, sets.length, ...sets.filter(item => item === set || item.name !== name));
+        set.name = name;
+    } else if (action === 'remove') {
+        sets.splice(sets.indexOf(set), 1);
+    } else {
+        return;
     }
+    saveSets(preset, sets);
+    drawBar();
 }
 
 function chip(className, html, title, onClick) {
@@ -100,20 +135,16 @@ function drawBar() {
     const order = promptOrder();
     const bar = document.createElement('div');
     bar.className = `${BAR_CLASS} stqa_variant_chips`;
-    bar.title = '토글 조합';
+    bar.title = '빠른 전환';
+    bar.classList.toggle('stqa_editing', editing);
     for (const set of sets) {
-        const element = chip(isCurrent(set, order) ? 'stqa_active' : '', '', '이 조합으로 바꾸기', (event) => {
-            return event.target.closest('.stqa_variant_remove') ? removeSet(preset, set) : applySet(set);
-        });
+        const element = chip(isCurrent(set, order) ? 'stqa_active' : '', '', editing ? '편집' : '이 상태로 바꾸기', () => (editing ? editSet(preset, set) : applySet(set)));
         element.textContent = set.name;
-        if (editing) {
-            element.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-xmark stqa_variant_remove" title="이 조합 지우기"></i>');
-        }
         bar.append(element);
     }
-    bar.append(chip('stqa_variant_add', `<i class="fa-solid fa-plus"></i>${sets.length ? '' : ' 지금 토글 조합 저장'}`, '지금 토글 조합 저장', () => saveCurrent(preset)));
+    bar.append(chip('stqa_variant_add', `<i class="fa-solid fa-plus"></i>${sets.length ? '' : ' 빠른 전환 추가'}`, '지금 상태를 새 빠른 전환으로 저장', () => saveCurrent(preset)));
     if (sets.length) {
-        bar.append(chip(`stqa_variant_add${editing ? ' stqa_active' : ''}`, '<i class="fa-solid fa-pen"></i>', '조합 지우기 모드', () => {
+        bar.append(chip(`stqa_variant_add${editing ? ' stqa_active' : ''}`, `<i class="fa-solid fa-pen"></i>${editing ? ' 편집 끝내기' : ''}`, '편집: 버튼을 누르면 덮어쓰기·이름 바꾸기·삭제', () => {
             editing = !editing;
             drawBar();
         }));

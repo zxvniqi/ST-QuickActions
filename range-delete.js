@@ -129,6 +129,10 @@ export function initRangeDelete() {
     item.id = OPTION_ID;
     item.innerHTML = '<i class="fa-lg fa-solid fa-eraser"></i><span>메시지 범위 삭제</span>';
     item.addEventListener('click', () => {
+        // Close the Options menu the way its own button does, so it is out of the way
+        if (document.getElementById('options')?.style.display !== 'none') {
+            document.getElementById('options_button')?.click();
+        }
         Promise.resolve(start()).catch(error => console.error(`[${MODULE}] Range delete failed`, error));
     });
     // Next to ST's own "Delete messages"

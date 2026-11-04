@@ -36,8 +36,9 @@ const defaultSettings = Object.freeze({
     // input (a row above the input bar) | vertical | horizontal (floating)
     floatingLayout: 'input',
     floatingCollapsed: true,
-    // Quick Reply bar shape
-    qrPreset: 'theme',
+    // Quick Reply bar: arrow | handle | sets (how it opens); folded by the arrow
+    qrMode: 'arrow',
+    qrCollapsed: false,
     // Last answers typed into QR input popups, any QR, newest first
     qrRecentInputs: [],
     // Folders: { area: [{ id, name, keys: string[] }] }; which ones are open is not kept

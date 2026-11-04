@@ -28,7 +28,7 @@ export const FOLDER_AREAS = Object.freeze({
         describe: item => ({ key: item.id, label: item.querySelector('.regex_script_name')?.textContent.trim() || item.id }),
     },
     presets: {
-        title: '프롬프트 프리셋',
+        title: '프롬프트',
         containers: ['#settings_preset_openai'],
         groups: true,
         // Options come and go as presets are saved or deleted

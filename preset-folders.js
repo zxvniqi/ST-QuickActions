@@ -1,11 +1,13 @@
-// Folder buttons where the lists are: a picker for prompt presets (folders fold, tap a preset to
-// use it) next to the preset dropdown, and a folder button in the regex panel.
+// Folders where the lists are: the prompt (preset) dropdown itself opens a picker where folders
+// fold (tap a prompt to use it; folders are edited from there), and the regex panel gets a
+// folder button.
 import { isOn } from './settings.js';
 import { FOLDER_AREAS, getFolders, listAreaItems } from './folders.js';
 import { openFolderEditor } from './folder-editor.js';
 
 const PRESET_SELECT = '#settings_preset_openai';
-const PICKER_BUTTON_ID = 'stqa_preset_folders';
+const DISPLAY_ID = 'stqa_preset_display';
+const PICKER_ON_CLASS = 'stqa_preset_picker_on';
 const REGEX_BUTTON_ID = 'stqa_regex_folders';
 
 function presetRow(name, current, onPick) {
@@ -59,7 +61,7 @@ async function openPresetPicker() {
         content.replaceChildren();
         const head = document.createElement('div');
         head.className = 'stqa_picker_head';
-        head.innerHTML = '<h3>프리셋 고르기</h3><div class="menu_button stqa_picker_edit"><i class="fa-solid fa-folder-tree"></i> 폴더 정리</div>';
+        head.innerHTML = '<h3>프롬프트 고르기</h3><div class="menu_button stqa_picker_edit"><i class="fa-solid fa-folder-tree"></i><span>폴더 편집</span></div>';
         head.querySelector('.stqa_picker_edit').addEventListener('click', async () => {
             await openFolderEditor('presets');
             render();
@@ -92,17 +94,40 @@ function addButton(id, parent, build, first) {
     first ? parent.prepend(button) : parent.append(button);
 }
 
+/** The box shown in place of the prompt dropdown: the prompt in use; tap it to pick another. */
+function syncDisplay() {
+    const select = document.querySelector(PRESET_SELECT);
+    const display = document.getElementById(DISPLAY_ID);
+    if (select && display) {
+        display.querySelector('span').textContent = select.selectedOptions[0]?.textContent.trim() ?? '';
+    }
+}
+
+function addDisplay() {
+    const select = document.querySelector(PRESET_SELECT);
+    if (!select || document.getElementById(DISPLAY_ID)) {
+        return;
+    }
+    const display = document.createElement('div');
+    display.id = DISPLAY_ID;
+    display.className = 'text_pole flex1 interactable';
+    display.tabIndex = 0;
+    display.innerHTML = '<span></span><i class="fa-solid fa-chevron-down"></i>';
+    display.addEventListener('click', () => openPresetPicker().then(syncDisplay));
+    select.after(display);
+    // ST changes the prompt through jQuery, which native listeners don't hear
+    $(select).on('change', syncDisplay);
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    eventSource.on(eventTypes.SETTINGS_UPDATED, syncDisplay);
+    if (eventTypes.OAI_PRESET_CHANGED_AFTER) {
+        eventSource.on(eventTypes.OAI_PRESET_CHANGED_AFTER, syncDisplay);
+    }
+    syncDisplay();
+}
+
 /** Puts the buttons in place; the panels may be built after this extension loads. */
 export function addFolderButtons() {
-    const presetTools = document.querySelector(PRESET_SELECT)?.parentElement?.querySelector(':scope > .flex-container');
-    addButton(PICKER_BUTTON_ID, presetTools, () => {
-        const button = document.createElement('div');
-        button.className = 'menu_button fa-solid fa-folder-tree interactable';
-        button.title = '폴더로 보고 고르기';
-        button.tabIndex = 0;
-        button.addEventListener('click', openPresetPicker);
-        return button;
-    }, true);
+    addDisplay();
     const regexTools = document.getElementById('open_regex_editor')?.parentElement;
     addButton(REGEX_BUTTON_ID, regexTools, () => {
         const button = document.createElement('div');
@@ -118,11 +143,9 @@ export function addFolderButtons() {
 
 /** Shows the buttons of the folder kinds switched on. */
 export function applyFolderButtons() {
-    const preset = document.getElementById(PICKER_BUTTON_ID);
     const regex = document.getElementById(REGEX_BUTTON_ID);
-    if (preset) {
-        preset.hidden = !isOn('presetFolders');
-    }
+    document.body.classList.toggle(PICKER_ON_CLASS, isOn('presetFolders'));
+    syncDisplay();
     if (regex) {
         regex.hidden = !isOn('regexFolders');
     }
