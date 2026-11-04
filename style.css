@@ -540,7 +540,7 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
 }
 
 #stqa_floating_panel.stqa_layout_horizontal,
-#stqa_floating_panel.stqa_layout_input {
+#stqa_floating_panel.stqa_in_flow {
     flex-direction: row;
 }
 
@@ -549,7 +549,7 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     display: none;
 }
 
-#stqa_floating_panel.stqa_layout_input .stqa_floating_toggle {
+#stqa_floating_panel.stqa_in_flow .stqa_floating_toggle {
     display: none;
 }
 
@@ -684,20 +684,20 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
 }
 
 /* Floating and folded: one small button at the screen edge, still easy to spot */
-#stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) {
+#stqa_floating_panel:not(.stqa_in_flow):not(.stqa_open) {
     opacity: 0.9;
     border-color: color-mix(in srgb, var(--SmartThemeBodyColor) 35%, transparent);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-#stqa_floating_panel:not(.stqa_layout_input):not(.stqa_open) .stqa_floating_toggle {
+#stqa_floating_panel:not(.stqa_in_flow):not(.stqa_open) .stqa_floating_toggle {
     width: 34px;
     height: 34px;
     font-size: 15px;
 }
 
 /* In the input bar: a row in the page flow right above the input, covering nothing */
-#stqa_floating_panel.stqa_layout_input {
+#stqa_floating_panel.stqa_in_flow {
     position: static;
     flex-wrap: wrap;
     justify-content: center;
@@ -712,7 +712,7 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     backdrop-filter: none;
 }
 
-#stqa_floating_panel.stqa_layout_input .stqa_floating_button {
+#stqa_floating_panel.stqa_in_flow .stqa_floating_button {
     flex: 1 1 0;
     max-width: 52px;
     height: 32px;
@@ -756,9 +756,10 @@ body.stqa_qrc #qr--bar#qr--bar > .stqa_qr_setnames {
     padding: 1px 0 !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
-    opacity: 1 !important;
+    /* Not !important, so the thin bar's fade can still animate them (two ids outweigh the theme) */
+    opacity: 1;
     visibility: visible !important;
-    transform: none !important;
+    transform: none;
     transition: none !important;
     order: 0 !important;
     touch-action: pan-x;
@@ -809,9 +810,9 @@ body.stqa_qrc_handle #qr--bar#qr--bar::before {
     content: '' !important;
     display: block !important;
     flex: none;
-    width: 36px;
-    height: 4px;
-    margin: 8px auto 4px !important;
+    width: 30px;
+    height: 3px;
+    margin: 5px auto 2px !important;
     border-radius: 10px;
     background-color: var(--SmartThemeUnderlineColor, var(--SmartThemeBorderColor));
     opacity: 0.6;
@@ -819,12 +820,37 @@ body.stqa_qrc_handle #qr--bar#qr--bar::before {
 }
 
 body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar {
-    padding-bottom: 4px !important;
+    margin-top: 2px;
+    padding-bottom: 3px !important;
 }
 
-body.stqa_qrc_handle.stqa_qrc_unfolded #qr--bar#qr--bar::before {
-    width: 56px;
+body.stqa_qrc_handle.stqa_qrc_unfolded:not(.stqa_qrc_closing) #qr--bar#qr--bar::before {
+    width: 48px;
     opacity: 0.9;
+}
+
+/* The sets centred, fading in as they open and out as they close */
+body.stqa_qrc_handle #qr--bar#qr--bar > .qr--buttons {
+    justify-content: safe center !important;
+}
+
+body.stqa_qrc_handle.stqa_qrc_unfolded #qr--bar#qr--bar > .qr--buttons {
+    animation: stqa_qr_fade_in 140ms ease-out;
+}
+
+body.stqa_qrc_handle.stqa_qrc_closing #qr--bar#qr--bar > .qr--buttons {
+    animation: stqa_qr_fade_out 140ms ease-in forwards;
+    pointer-events: none;
+}
+
+@keyframes stqa_qr_fade_in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes stqa_qr_fade_out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(4px); }
 }
 
 body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar > .qr--buttons {
@@ -1464,14 +1490,14 @@ body.stqa_footer_swipe_on #chat .mes .swipeRightBlock {
 /* Extensions menu as a grid of icons. Only while open: ST closes it with an inline display: none. */
 body.stqa_wand_grid #extensionsMenu:not([style*="display: none"]) {
     display: grid !important;
-    grid-template-columns: repeat(3, 44px);
+    grid-template-columns: repeat(2, 44px);
     grid-auto-rows: 40px;
     gap: 4px;
     padding: 6px !important;
     width: max-content !important;
 }
 
-body.stqa_wand_grid #extensionsMenu > div:not(.list-group-item):not(.stqa_folder) {
+body.stqa_wand_grid #extensionsMenu > div:not(.list-group-item) {
     display: contents;
 }
 
@@ -1512,41 +1538,15 @@ body.stqa_wand_grid #extensionsMenu .list-group-item img {
     line-height: 20px !important;
 }
 
-body.stqa_wand_grid #extensionsMenu .list-group-item:not(.stqa_folder_header) > :not([class*="fa-"]):not(svg):not(img):not(:has([class*="fa-"], svg, img)) {
+body.stqa_wand_grid #extensionsMenu .list-group-item > :not([class*="fa-"]):not(svg):not(img):not(:has([class*="fa-"], svg, img)) {
     display: none !important;
 }
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder {
-    grid-column: 1 / -1;
-}
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder_body {
-    display: grid;
-    grid-template-columns: repeat(3, 44px);
-    grid-auto-rows: 40px;
-    gap: 4px;
-}
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder.stqa_folded > .stqa_folder_body {
-    display: none !important;
-}
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder_header.list-group-item {
-    width: auto;
-    height: 36px;
-    line-height: normal !important;
-    padding: 0 10px !important;
-    justify-content: flex-start;
-}
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder_header {
-    flex-direction: row;
-    font-size: 14px !important;
-}
 
-body.stqa_wand_grid #extensionsMenu .stqa_folder_header > span {
-    display: inline;
-}
 
 /* Start screen: recent chats only */
 body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {

@@ -118,6 +118,8 @@ function openList(select) {
     getFolders('presets').filter(folder => folder.keys.includes(current)).forEach(folder => unfoldedFolders.add(folder.id));
     list = document.createElement('div');
     list.id = LIST_ID;
+    // ST closes its side panels on a tap outside them, except on a few kinds of lists; this is one
+    list.className = 'select2-results';
     document.body.append(list);
     renderList(select);
     placeList(select);

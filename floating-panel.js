@@ -24,7 +24,8 @@ export const FLOATING_BUTTONS = Object.freeze([
 ]);
 
 export const FLOATING_LAYOUTS = Object.freeze([
-    { value: 'input', label: '입력창 위에 펼치기' },
+    { value: 'input', label: '입력창 위에 펼치기 (⋯ 버튼)' },
+    { value: 'fixed', label: '입력창 위에 항상 보이기' },
     { value: 'vertical', label: '떠 있는 버튼 (세로로 펼치기)' },
     { value: 'horizontal', label: '떠 있는 버튼 (가로로 펼치기)' },
 ]);
@@ -188,7 +189,9 @@ function runAction(key) {
         .catch(error => console.error(`[${MODULE}] Shortcut failed`, error));
 }
 
-const inInputBar = () => panel?.classList.contains('stqa_layout_input');
+// Input bar layouts: a row in the page flow right above the input
+const IN_FLOW = Object.freeze(['input', 'fixed']);
+const inInputBar = () => panel?.classList.contains('stqa_in_flow');
 
 function place(x, y) {
     const box = panel.getBoundingClientRect();
@@ -314,16 +317,8 @@ function build() {
     }
     document.body.append(panel);
     enableMoving();
+    // Open stays open (scrolling the chat doesn't fold it) until ⋯ is tapped again
     window.addEventListener('resize', () => panel.isConnected && !panel.hidden && restorePosition());
-    // Floating, scrolling elsewhere by hand (finger or wheel) folds it; scrolls the buttons do
-    // themselves don't. The input bar row covers nothing, so it stays until ⋯ is tapped again.
-    const foldOnScroll = (event) => {
-        if (open && !inInputBar() && !panel.contains(event.target)) {
-            setOpen(false);
-        }
-    };
-    document.addEventListener('touchmove', foldOnScroll, { passive: true, capture: true });
-    document.addEventListener('wheel', foldOnScroll, { passive: true, capture: true });
 }
 
 /** The input bar button that opens the shortcuts (input bar layout only). */
@@ -359,21 +354,31 @@ export function applyFloatingSettings() {
         button.hidden = settings.floatingButtons?.[button.dataset.key] === false;
     }
     const layout = FLOATING_LAYOUTS.some(({ value }) => value === settings.floatingLayout) ? settings.floatingLayout : 'input';
+    // Leaving "always shown" starts the new layout folded
+    if (panel.classList.contains('stqa_layout_fixed') && layout !== 'fixed') {
+        open = false;
+    }
     for (const { value } of FLOATING_LAYOUTS) {
         panel.classList.toggle(`stqa_layout_${value}`, value === layout);
     }
     // In the input bar the row goes right above the input, in the flow; floating, on the page
+    const inFlow = IN_FLOW.includes(layout);
+    panel.classList.toggle('stqa_in_flow', inFlow);
     const form = document.getElementById('send_form');
-    if (layout === 'input' && form) {
+    if (inFlow && form) {
         form.before(panel);
         panel.style.left = panel.style.top = '';
     } else if (panel.parentElement !== document.body) {
         document.body.append(panel);
     }
     const enabled = isOn('floatingPanel') && shownButtons() > 0;
+    // Always shown: open for good, with no ⋯ to fold it
+    if (layout === 'fixed') {
+        open = true;
+    }
     syncNamesButton();
     syncInputToggle(enabled && layout === 'input');
-    panel.hidden = !enabled || (layout === 'input' && !open);
+    panel.hidden = !enabled || (inFlow && !open);
     setOpen(enabled && open);
 }
 

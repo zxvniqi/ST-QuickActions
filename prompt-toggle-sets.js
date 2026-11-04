@@ -44,15 +44,23 @@ function isCurrent(set, order) {
 
 async function applySet(set) {
     const pm = manager();
+    const counts = pm.tokenHandler?.getCounts?.();
+    let changed = false;
     for (const entry of promptOrder()) {
-        if (entry.identifier in set.states) {
+        if (entry.identifier in set.states && entry.enabled !== set.states[entry.identifier]) {
             entry.enabled = set.states[entry.identifier];
+            if (counts) {
+                counts[entry.identifier] = null;
+            }
+            changed = true;
         }
     }
-    // The same as switching them by hand
-    await pm.saveServiceSettings();
+    if (!changed) {
+        return;
+    }
+    // The same as switching them by hand: one redraw, saved alongside
     pm.render();
-    toastr.success(`'${set.name}' 적용했습니다.`, TITLE);
+    await pm.saveServiceSettings();
 }
 
 const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));
@@ -120,20 +128,30 @@ function chip(className, html, title, onClick) {
     return element;
 }
 
-/** The chip bar right above the prompt list. */
+/**
+ * The chip bar right above the prompt list. Drawn again only when something it shows changed,
+ * so switching prompts doesn't make it jump.
+ */
 function drawBar() {
     const list = document.getElementById(`${PREFIX}prompt_manager_list`);
     if (!manager() || !list) {
         return;
     }
-    list.parentElement.querySelector(`:scope > .${BAR_CLASS}`)?.remove();
+    const old = list.parentElement.querySelector(`:scope > .${BAR_CLASS}`);
     if (!isOn('toggleSetChips')) {
+        old?.remove();
         return;
     }
     const preset = presetName();
     const sets = setsOf(preset);
     const order = promptOrder();
+    const signature = JSON.stringify([preset, editing, sets.map(set => [set.name, isCurrent(set, order)])]);
+    if (old && old.dataset.signature === signature && old.nextElementSibling === list) {
+        return;
+    }
+    old?.remove();
     const bar = document.createElement('div');
+    bar.dataset.signature = signature;
     bar.className = `${BAR_CLASS} stqa_variant_chips`;
     bar.title = '빠른 전환';
     bar.classList.toggle('stqa_editing', editing);
@@ -162,13 +180,19 @@ export function initToggleSets() {
         return;
     }
     let timer = null;
-    // The manager builds itself anew on every change (a toggle switched by hand included)
+    // The manager builds itself anew on every change (a toggle switched by hand included). When
+    // that took the bar away it is put back at once, before the screen is drawn; otherwise only
+    // which chip is lit may have changed, which can wait a moment.
     new MutationObserver((records) => {
         if (onlyOwnChanges(records)) {
             return;
         }
         clearTimeout(timer);
-        timer = setTimeout(drawBar, 50);
+        if (!root.querySelector(`.${BAR_CLASS}`)) {
+            drawBar();
+        } else {
+            timer = setTimeout(drawBar, 50);
+        }
     }).observe(root, { childList: true, subtree: true });
     drawBar();
 }

@@ -6,7 +6,6 @@ const defaultSettings = Object.freeze({
     layoutManager: true,
     qrBar: true,
     qrHistory: true,
-    wandFolders: true,
     regexFolders: true,
     presetFolders: true,
     toggleSetChips: true,

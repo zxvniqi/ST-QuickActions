@@ -32,8 +32,24 @@ let openSet = null;
 const mode = () => (QR_MODES.some(({ value }) => value === getSettings().qrMode) ? getSettings().qrMode : 'arrow');
 const styled = () => document.body.classList.contains(STYLE_CLASS);
 
+const CLOSING_CLASS = 'stqa_qrc_closing';
+// Length of the thin bar's fade (style.css)
+const FADE_MS = 140;
+let closingTimer = null;
+
 function setOpen(value) {
-    document.body.classList.toggle(OPEN_CLASS, value);
+    const body = document.body;
+    clearTimeout(closingTimer);
+    // The thin bar fades its sets out before they go
+    if (!value && mode() === 'handle' && body.classList.contains(OPEN_CLASS) && styled()) {
+        body.classList.add(CLOSING_CLASS);
+        closingTimer = setTimeout(() => {
+            body.classList.remove(CLOSING_CLASS, OPEN_CLASS);
+        }, FADE_MS);
+    } else {
+        body.classList.remove(CLOSING_CLASS);
+        body.classList.toggle(OPEN_CLASS, value);
+    }
     syncArrow();
 }
 
@@ -137,7 +153,7 @@ function onClick(event) {
     }
     const bar = document.getElementById('qr--bar');
     if (event.target === bar) {
-        const open = !document.body.classList.contains(OPEN_CLASS);
+        const open = !document.body.classList.contains(OPEN_CLASS) || document.body.classList.contains(CLOSING_CLASS);
         openedAt = open ? Date.now() : 0;
         setOpen(open);
     } else if (bar?.contains(event.target) && Date.now() - openedAt < OPEN_GUARD_MS) {
