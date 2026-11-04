@@ -21,7 +21,7 @@ export async function openFolderEditor(area) {
     const render = () => {
         content.innerHTML = `
             <h3>${config.title} 폴더</h3>
-            <small class="stqa_hint">폴더를 만들고, 아래에서 항목마다 넣을 폴더를 고르세요. 폴더는 접힌 채로 보이고, 누르면 펼쳐져요.</small>
+            <small class="stqa_hint">폴더를 만들고 항목마다 폴더 선택</small>
             <div class="stqa_folder_list"></div>
             <div class="stqa_folder_new">
                 <input class="text_pole" type="text" placeholder="새 폴더 이름">
@@ -56,7 +56,7 @@ export async function openFolderEditor(area) {
 
         const itemBox = content.querySelector('.stqa_folder_items');
         if (items.length === 0) {
-            itemBox.innerHTML = '<small class="stqa_hint">항목이 없어요. 그 목록을 한 번 열어둔 다음 다시 시도해 주세요.</small>';
+            itemBox.innerHTML = '<small class="stqa_hint">항목 없음. 그 목록을 한 번 연 뒤 다시 시도</small>';
         }
         const seen = new Set();
         for (const item of items) {

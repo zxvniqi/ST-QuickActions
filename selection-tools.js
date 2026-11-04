@@ -1,5 +1,5 @@
 // Edit / delete buttons that appear when text inside a message is selected.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 import { countOccurrences, locateInSource, expandOverWrappers, removeRange, mapToMatchingPart, wordAt } from './text-locate.js';
 import { maskHidden, messageInfo } from './hidden-text.js';
 import { rememberTranslation } from './translator-cache.js';
@@ -167,7 +167,7 @@ function onSelectionChange() {
         if (isBusy) {
             return;
         }
-        const info = getSettings().selectionTools ? readSelection() : null;
+        const info = isOn('selectionTools') ? readSelection() : null;
         info ? showToolbar(info) : hideToolbar();
     }, SELECTION_DEBOUNCE_MS);
 }
@@ -278,7 +278,7 @@ function resolvePending() {
     const source = getSourceText(message, field);
     const range = locateInSource(source, info.selected, info.occurrence);
     if (!range) {
-        toastr.warning('원문에서 이 부분을 찾지 못했어요. 연필 버튼으로 직접 고쳐주세요.', TITLE);
+        toastr.warning('원문에서 위치를 찾지 못함. 연필 버튼으로 수정', TITLE);
         return null;
     }
     return { ...info, field, source, range };
@@ -299,7 +299,7 @@ async function runAction(action) {
         await action(target);
     } catch (error) {
         console.error(`[${MODULE}] Selection action failed`, error);
-        toastr.error('적용하지 못했어요.', TITLE);
+        toastr.error('적용 실패', TITLE);
     } finally {
         isBusy = false;
     }
@@ -398,30 +398,19 @@ async function editSelection({ messageId, field, source, range }) {
     }
 }
 
-/** The "번역 그대로 두기" option shared by the edit and delete windows. */
+/** The "번역 유지" option shared by the edit and delete windows (original changed quietly). */
 function buildKeepTranslationOption(settings) {
     const box = document.createElement('div');
     box.className = 'stqa_keep_translation';
-    box.innerHTML = `
-        <label class="checkbox_label"><input type="checkbox"><span>번역 그대로 두기 (번역 확장이 다시 번역하지 않게)</span></label>
-        <small class="stqa_hint stqa_keep_hint"></small>`;
+    box.innerHTML = '<label class="checkbox_label" title="원문만 바꾸고 번역 확장에 알리지 않음"><input type="checkbox"><span>번역 유지</span></label>';
     const input = box.querySelector('input');
-    const hint = box.querySelector('.stqa_keep_hint');
-    const updateHint = () => {
-        hint.textContent = input.checked
-            ? '원문만 고치고 다른 확장에는 알리지 않아요. 대부분의 번역 확장은 다시 번역하지 않지만, 확장에 따라 다를 수 있어요.'
-            : '⚠️ 원문을 고치면 번역 확장이 다시 번역하면서 지금 번역문이 바뀌거나 사라질 수 있어요.';
-    };
     input.checked = settings.keepTranslation;
     input.addEventListener('change', () => {
         settings.keepTranslation = input.checked;
         SillyTavern.getContext().saveSettingsDebounced();
-        updateHint();
     });
-    updateHint();
     return box;
 }
-
 // A matched original part much longer than the selection means the match wasn't found precisely
 const UNSURE_MATCH_MIN = 400;
 const UNSURE_MATCH_RATIO = 4;
@@ -515,8 +504,8 @@ async function confirmDelete(targets) {
     root.innerHTML = `
         <h3>선택한 부분 삭제</h3>
         <div class="stqa_compare"></div>
-        <small class="stqa_hint">형광펜 부분이 지워져요. 바꾸려면 칸에서 첫 단어, 끝 단어를 차례로 톡톡 눌러요. (일본어는 한 글자씩)</small>
-        <small class="stqa_hint stqa_unsure" hidden>⚠️ 원문에서 정확한 위치를 못 찾아서 넓게 잡혔어요. 원문 삭제는 꺼뒀어요.</small>`;
+        <small class="stqa_hint">형광펜 부분 삭제. 범위 변경: 첫 단어, 끝 단어 차례로 탭</small>
+        <small class="stqa_hint stqa_unsure" hidden></small>`;
     const compare = root.querySelector('.stqa_compare');
     const checks = targets.map((target) => {
         const side = document.createElement('div');
@@ -537,7 +526,7 @@ async function confirmDelete(targets) {
         checks[1].checked = !unsure;
         const unsureNote = root.querySelector('.stqa_unsure');
         unsureNote.hidden = !unsure;
-        unsureNote.textContent = `⚠️ ${matched.label}에서 정확한 위치를 못 찾아서 넓게 잡혔어요. ${matched.label} 삭제는 꺼뒀어요.`;
+        unsureNote.textContent = `⚠️ ${matched.label} 위치가 넓게 잡혀서 ${matched.label} 삭제는 꺼 둠`;
 
         const keepBox = buildKeepTranslationOption(getSettings());
         root.append(keepBox);
@@ -604,7 +593,7 @@ async function deleteSelection({ messageId, field, source, range }) {
     if (snapshot.displayText && !original && !chat[messageId].extra?.display_text) {
         await applySourceText(messageId, 'display_text', snapshot.displayText);
     }
-    toastr.success('선택한 부분을 지웠어요. 이 알림을 누르면 되돌려요.', TITLE, {
+    toastr.success('삭제됨. 이 알림을 누르면 되돌리기', TITLE, {
         timeOut: 6000,
         onclick: () => restoreMessage(messageId, snapshot),
     });
@@ -633,39 +622,8 @@ function createToolbar() {
     document.body.append(toolbar);
 }
 
-/**
- * ST's own edit (pencil) of a translated message: with "번역 그대로 두기" the translation stays
- * instead of being dropped. Runs before the update event that translators react to.
- */
-async function keepTranslationOnEdit(messageId) {
-    const message = SillyTavern.getContext().chat[messageId];
-    if (!getSettings().keepTranslation || !message?.extra?.display_text) {
-        return;
-    }
-    if (typeof message.extra[BACKUP_FIELD] === 'string' && message.extra.display_text !== message.extra[BACKUP_FIELD]) {
-        // The original was on screen (the translator's copy, now outdated): show the edited one
-        message.extra.display_text = comparableOriginal(message);
-    }
-    keepTranslationFor(message);
-    await rememberCurrentTranslation(message);
-    keptOnEdit.add(Number(messageId));
-}
-
-// Messages whose translation an edit kept: ST draws the edited original, so they're drawn again
-const keptOnEdit = new Set();
-
-function redrawKeptTranslation(messageId) {
-    const context = SillyTavern.getContext();
-    if (keptOnEdit.delete(Number(messageId)) && context.chat[messageId]) {
-        context.updateMessageBlock(Number(messageId), context.chat[messageId]);
-    }
-}
-
 export function initSelectionTools() {
     createToolbar();
     document.addEventListener('selectionchange', onSelectionChange);
     document.getElementById('chat')?.addEventListener('scroll', hideToolbar, { passive: true });
-    const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.MESSAGE_EDITED, keepTranslationOnEdit);
-    eventSource.on(eventTypes.MESSAGE_UPDATED, redrawKeptTranslation);
 }

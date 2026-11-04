@@ -1,7 +1,7 @@
 // Shapes for the Quick Reply bar above the chat input, for any theme: one scrolling line,
 // smaller buttons, a fold button in the input bar. Everything is CSS switched by classes on
 // <body>, so it keeps applying when the Quick Reply extension redraws its bar.
-import { getSettings } from './settings.js';
+import { getSettings, isOn } from './settings.js';
 
 const TOGGLE_ID = 'stqa_qr_toggle';
 
@@ -57,7 +57,8 @@ function onWheel(event) {
 }
 
 export function applyQrPreset() {
-    const preset = QR_PRESETS.find(item => item.value === getSettings().qrPreset) ?? QR_PRESETS[0];
+    // Switched off as a whole: the theme's own bar
+    const preset = (isOn('qrBar') && QR_PRESETS.find(item => item.value === getSettings().qrPreset)) || QR_PRESETS[0];
     for (const cls of ALL_CLASSES) {
         document.body.classList.toggle(cls, preset.classes.includes(cls));
     }

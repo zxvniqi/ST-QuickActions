@@ -139,7 +139,7 @@ export async function importChats(character, files) {
     for (const file of files) {
         const format = file.name.match(/\.(\w+)$/)?.[1]?.toLowerCase();
         if (!['json', 'jsonl'].includes(format)) {
-            toastr.warning(`${file.name}: JSON / JSONL 파일만 불러올 수 있어요.`, '편의성 모음');
+            toastr.warning(`${file.name}: JSON / JSONL 파일만 가능`, '편의성 모음');
             continue;
         }
         const form = new FormData();

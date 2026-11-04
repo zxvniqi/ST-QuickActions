@@ -7,7 +7,7 @@
 //  - Single containers (menus, bars, panel): rebuilt when items are added or removed.
 //  - Message buttons exist once per message, keyed by each button's class, so the same rules
 //    cover every current and future message at no cost.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 
 const KEY_ATTR = 'data-stqa-key';
 const STYLE_ID = 'stqa_layout_style';
@@ -37,7 +37,7 @@ const spotMembers = key => [key, ...Object.keys(SAME_SPOT).filter(other => SAME_
 /** Containers that can be arranged, grouped the way they appear in the settings window. */
 export const LAYOUT_AREAS = Object.freeze([
     {
-        title: '마법봉 메뉴',
+        title: 'Extensions 메뉴',
         containers: [{ selector: '#extensionsMenu', label: '' }],
         // Its items can also be put in folders (folders.js)
         folderArea: 'wand',
@@ -45,17 +45,18 @@ export const LAYOUT_AREAS = Object.freeze([
         locked: [`${MODULE}_menu`],
     },
     {
-        title: '햄버거 메뉴',
+        title: 'Options 메뉴',
         containers: [{ selector: '#options .options-content', label: '' }],
         locked: [],
     },
     {
-        title: '상단바',
+        title: 'Top Bar',
+        fillRow: true,
         containers: [{ selector: '#top-settings-holder', label: '' }],
         locked: [],
     },
     {
-        title: '입력창 버튼',
+        title: '입력창 (Send Form)',
         containers: [
             { selector: '#leftSendForm', label: '왼쪽' },
             { selector: '#rightSendForm', label: '오른쪽' },
@@ -65,13 +66,13 @@ export const LAYOUT_AREAS = Object.freeze([
         locked: ['options_button', 'extensionsMenuButton', 'send_but'],
     },
     {
-        title: '메시지 메뉴',
+        title: 'Message Actions',
         containers: [{ selector: MESSAGE_ROW, label: '', perMessage: true }],
         // The "…" toggle (in themes that have it) and the edit button keep every action reachable
         locked: ['extraMesButtonsHint', 'mes_edit'],
     },
     {
-        title: '확장 패널',
+        title: 'Extensions 패널',
         containers: [
             { selector: '#extensions_settings', label: '왼쪽 열' },
             { selector: '#extensions_settings2', label: '오른쪽 열' },
@@ -110,6 +111,15 @@ const KNOWN_LABELS = Object.freeze({
 
 function findContainer(selector) {
     return CONTAINERS.find(container => container.selector === selector);
+}
+
+function findArea(selector) {
+    return LAYOUT_AREAS.find(area => area.containers.some(container => container.selector === selector));
+}
+
+/** Re-applies (or, switched off, removes) every arrangement. */
+export function applyLayoutSettings() {
+    writeStyles();
 }
 
 /** For per-message buttons: the first class that names this button specifically. */
@@ -209,7 +219,8 @@ function writeStyles() {
         style.id = STYLE_ID;
         document.head.append(style);
     }
-    const text = [messageRules, ...containerRules.values()].filter(Boolean).join('\n');
+    // Switched off: the page's own layout
+    const text = isOn('layoutManager') ? [messageRules, ...containerRules.values()].filter(Boolean).join('\n') : '';
     if (style.textContent !== text) {
         style.textContent = text;
     }
@@ -270,6 +281,11 @@ function applyContainer(selector) {
         if (!lockedKeys.has(key)) {
             rules.push(`${spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`).join(', ')} { display: none !important; }`);
         }
+    }
+    // A row of buttons that fills the screen width (Top Bar on phones): the ones left share the
+    // room, so hiding some leaves no gap at one end
+    if (hidden.length > 0 && findArea(selector)?.fillRow) {
+        rules.push(`@media (max-width: 1000px) { ${selector} > * { flex: 1 1 0 !important; } }`);
     }
     containerRules.set(selector, rules.join('\n'));
     writeStyles();

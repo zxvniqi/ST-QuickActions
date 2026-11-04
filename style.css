@@ -983,3 +983,166 @@ details.stqa_section[open] > summary {
     font-weight: 600;
     color: var(--SmartThemeQuoteColor);
 }
+/* Settings window: master switch, tabs, features with folding descriptions */
+.stqa_panel_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_panel_head h3 {
+    margin: 0;
+}
+
+.stqa_tab_body.stqa_off {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.stqa_tab_page {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stqa_tab_page[hidden] {
+    display: none;
+}
+
+.stqa_feature {
+    padding: 6px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+}
+
+.stqa_feature_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_info {
+    padding: 4px 6px;
+    opacity: 0.45;
+    cursor: pointer;
+}
+
+.stqa_info:hover {
+    opacity: 0.9;
+}
+
+.stqa_desc {
+    display: block;
+    margin: 2px 0 0 26px;
+    opacity: 0.7;
+}
+
+.stqa_desc[hidden] {
+    display: none;
+}
+
+.stqa_feature_extra:not(:empty) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 0 26px;
+}
+
+/* Reply number between the footer arrows */
+.stqa_footer_count {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.4em;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.stqa_floating_button.stqa_on {
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 35%, transparent);
+}
+
+/* Range delete: pick the first and last message */
+#stqa_range_banner {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    background: var(--SmartThemeBlurTintColor);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+body.stqa_range_mode #chat .mes {
+    cursor: pointer;
+}
+
+#chat .mes.stqa_range_picked {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+/* Extensions menu as a grid of icons */
+body.stqa_wand_grid #extensionsMenu {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+}
+
+body.stqa_wand_grid #extensionsMenu > div:not(.list-group-item):not(.stqa_folder) {
+    display: contents;
+}
+
+body.stqa_wand_grid #extensionsMenu .list-group-item {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 48px;
+    padding: 8px 0 !important;
+    font-size: 0 !important;
+}
+
+body.stqa_wand_grid #extensionsMenu .list-group-item > span {
+    display: none;
+}
+
+body.stqa_wand_grid #extensionsMenu .list-group-item [class*="fa-"],
+body.stqa_wand_grid #extensionsMenu .list-group-item svg {
+    font-size: 22px !important;
+    width: auto;
+    height: 22px;
+    margin: 0 !important;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder {
+    grid-column: 1 / -1;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder_body {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder_header {
+    flex-direction: row;
+    font-size: 14px !important;
+}
+
+body.stqa_wand_grid #extensionsMenu .stqa_folder_header > span {
+    display: inline;
+}
+
+/* Start screen: recent chats only */
+body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
+    display: none;
+}

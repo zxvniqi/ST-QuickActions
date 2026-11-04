@@ -1,5 +1,6 @@
 // Folder buttons where the lists are: a picker for prompt presets (folders fold, tap a preset to
 // use it) next to the preset dropdown, and a folder button in the regex panel.
+import { isOn } from './settings.js';
 import { FOLDER_AREAS, getFolders, listAreaItems } from './folders.js';
 import { openFolderEditor } from './folder-editor.js';
 
@@ -112,6 +113,19 @@ export function addFolderButtons() {
         button.addEventListener('click', () => openFolderEditor('regex'));
         return button;
     });
+    applyFolderButtons();
+}
+
+/** Shows the buttons of the folder kinds switched on. */
+export function applyFolderButtons() {
+    const preset = document.getElementById(PICKER_BUTTON_ID);
+    const regex = document.getElementById(REGEX_BUTTON_ID);
+    if (preset) {
+        preset.hidden = !isOn('presetFolders');
+    }
+    if (regex) {
+        regex.hidden = !isOn('regexFolders');
+    }
 }
 
 export function initPresetFolders() {

@@ -1,6 +1,6 @@
 // Selecting a character shows its chat list (with rename / export / delete / import)
 // instead of opening the latest chat.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 import { listChats, setActiveChat, renameChat, deleteChat, exportChat, importChats } from './chat-api.js';
 
 const CHARACTER_LIST_ID = 'rm_print_characters_block';
@@ -65,7 +65,7 @@ function renderChatList(listElement, chats, activeChat, highlight = []) {
     if (chats.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'stqa_chat_empty';
-        empty.textContent = '채팅이 없어요.';
+        empty.textContent = '채팅 없음';
         fragment.append(empty);
     }
 
@@ -81,7 +81,7 @@ async function askRename(character, name) {
     }
     const existing = await listChats(character.avatar);
     if (existing?.some(chat => chat.name.toLowerCase() === newName.toLowerCase())) {
-        toastr.warning('같은 이름의 채팅이 이미 있어요.', TITLE);
+        toastr.warning('같은 이름의 채팅이 이미 있음', TITLE);
         return null;
     }
     return renameChat(character, name, newName);
@@ -94,7 +94,7 @@ function escapeHtml(text) {
 async function askDelete(character, name) {
     const { Popup, POPUP_RESULT } = SillyTavern.getContext();
     // The popup renders HTML, and chat names are user-defined
-    const answer = await Popup.show.confirm('채팅 삭제', `"${escapeHtml(name)}" 채팅을 삭제할까요? 되돌릴 수 없어요.`, { okButton: '삭제', cancelButton: '취소' });
+    const answer = await Popup.show.confirm('채팅 삭제', `"${escapeHtml(name)}" 채팅 삭제. 되돌릴 수 없음`, { okButton: '삭제', cancelButton: '취소' });
     if (answer !== POPUP_RESULT.AFFIRMATIVE) {
         return false;
     }
@@ -162,7 +162,7 @@ async function showChatPicker(character, initialChats) {
             }
         } catch (error) {
             console.error(`[${MODULE}] Chat action failed`, error);
-            toastr.error('작업을 하지 못했어요.', TITLE);
+            toastr.error('실패', TITLE);
         }
     };
 
@@ -188,7 +188,7 @@ async function showChatPicker(character, initialChats) {
         }
         const imported = await importChats(character, files);
         if (imported.length > 0) {
-            toastr.success(`채팅 ${imported.length}개를 불러왔어요.`, TITLE);
+            toastr.success(`채팅 ${imported.length}개 불러옴`, TITLE);
             await refresh(imported);
         }
     });
@@ -229,7 +229,7 @@ async function openChatPicker(characterId) {
         }
     } catch (error) {
         console.error(`[${MODULE}] Chat picker failed`, error);
-        toastr.error('채팅 목록을 열지 못했습니다.', TITLE);
+        toastr.error('채팅 목록 열기 실패', TITLE);
     } finally {
         isPickerOpen = false;
     }
@@ -240,7 +240,7 @@ async function openChatPicker(characterId) {
  * Only clicks that would switch to a different character are taken over.
  */
 function onCharacterClickCapture(event) {
-    if (!getSettings().chatPicker) {
+    if (!isOn('chatPicker')) {
         return;
     }
     const block = event.target.closest(`#${CHARACTER_LIST_ID} .character_select`);

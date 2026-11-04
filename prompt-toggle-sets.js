@@ -1,6 +1,6 @@
 // Saved toggle combinations of a prompt preset ("한국어", "짧게", ...), shown as chips above the
 // prompt list: tap one to switch the prompts on / off as saved. Kept per preset name.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
 
 const PREFIX = 'completion_';
@@ -51,12 +51,12 @@ async function applySet(set) {
     // The same as switching them by hand
     await pm.saveServiceSettings();
     pm.render();
-    toastr.success(`'${set.name}' 조합으로 바꿨어요.`, TITLE);
+    toastr.success(`'${set.name}' 조합 적용`, TITLE);
 }
 
 async function saveCurrent(preset) {
     const { Popup } = SillyTavern.getContext();
-    const name = String(await Popup.show.input('지금 토글 조합 저장', '이름 (예: 한국어, 짧게). 같은 이름이면 덮어써요.', '') || '').trim();
+    const name = String(await Popup.show.input('지금 토글 조합 저장', '이름 (같은 이름이면 덮어쓰기)', '') || '').trim();
     if (!name) {
         return;
     }
@@ -67,7 +67,7 @@ async function saveCurrent(preset) {
 
 async function removeSet(preset, set) {
     const { Popup } = SillyTavern.getContext();
-    if (await Popup.show.confirm(`'${set.name}' 조합을 지울까요?`, '토글 상태는 그대로예요.')) {
+    if (await Popup.show.confirm(`'${set.name}' 조합 삭제`, '토글 상태는 그대로')) {
         saveSets(preset, setsOf(preset).filter(item => item !== set));
         drawBar();
     }
@@ -92,6 +92,9 @@ function drawBar() {
         return;
     }
     list.parentElement.querySelector(`:scope > .${BAR_CLASS}`)?.remove();
+    if (!isOn('toggleSetChips')) {
+        return;
+    }
     const preset = presetName();
     const sets = setsOf(preset);
     const order = promptOrder();
@@ -116,6 +119,10 @@ function drawBar() {
         }));
     }
     list.before(bar);
+}
+
+export function applyToggleSets() {
+    drawBar();
 }
 
 export function initToggleSets() {

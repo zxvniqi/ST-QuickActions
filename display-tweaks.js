@@ -1,6 +1,7 @@
-// Small display options: sharp avatars (the full picture instead of the small thumbnail) and
-// hiding the input bar's placeholder text.
-import { getSettings } from './settings.js';
+// Small display options: sharp avatars (the full picture instead of the small thumbnail), no
+// placeholder text in the input bar, the wand menu as a grid of icons, and a start screen that
+// lists recent chats instead of the assistant.
+import { isOn } from './settings.js';
 
 // Thumbnail address -> full picture address, per kind of picture
 const FULL_PICTURE = { avatar: file => `/characters/${file}`, persona: file => `/User Avatars/${file}` };
@@ -29,7 +30,7 @@ function sharpen(img) {
  * swapped only once it scrolls into view.
  */
 function onImage(img) {
-    if (!getSettings().hdAvatars || !fullPictureOf(img.getAttribute('src'))) {
+    if (!isOn('hdAvatars') || !fullPictureOf(img.getAttribute('src'))) {
         return;
     }
     if (img.closest('#chat')) {
@@ -40,7 +41,7 @@ function onImage(img) {
         for (const entry of entries) {
             if (entry.isIntersecting) {
                 listWatcher.unobserve(entry.target);
-                getSettings().hdAvatars && sharpen(entry.target);
+                isOn('hdAvatars') && sharpen(entry.target);
             }
         }
     });
@@ -71,15 +72,59 @@ function watchAvatars() {
     }
 }
 
+// The placeholder ST puts in the input bar (kept to give back when the option is off)
+let placeholder = null;
+
+/** Themes may colour the placeholder with !important, so the text itself is taken out. */
+function syncPlaceholder() {
+    const input = document.getElementById('send_textarea');
+    if (!input) {
+        return;
+    }
+    if (isOn('hideInputPlaceholder')) {
+        if (input.getAttribute('placeholder')) {
+            placeholder = input.getAttribute('placeholder');
+            input.setAttribute('placeholder', '');
+        }
+    } else if (placeholder !== null && !input.getAttribute('placeholder')) {
+        input.setAttribute('placeholder', placeholder);
+        placeholder = null;
+    }
+}
+
+/** Start screen: the recent chats list opened in full (the assistant is hidden by CSS). */
+function expandRecentChats() {
+    if (!isOn('welcomeRecent')) {
+        return;
+    }
+    const more = document.querySelector('#chat > .welcomePanel button.showMoreChats:not(.rotated)');
+    more?.click();
+}
+
 export function applyDisplayTweaks() {
-    const settings = getSettings();
-    document.body.classList.toggle('stqa_hide_placeholder', settings.hideInputPlaceholder);
-    if (settings.hdAvatars) {
+    document.body.classList.toggle('stqa_wand_grid', isOn('wandGrid'));
+    if (isOn('wandGrid')) {
+        // Icons only: the name stays as the tooltip
+        document.querySelectorAll('#extensionsMenu .list-group-item:not([title])').forEach(item => (item.title = item.textContent.trim()));
+    }
+    document.body.classList.toggle('stqa_welcome_recent', isOn('welcomeRecent'));
+    syncPlaceholder();
+    expandRecentChats();
+    if (isOn('hdAvatars')) {
         document.querySelectorAll(AVATAR_SCOPES).forEach(scan);
     }
 }
 
 export function initDisplayTweaks() {
     watchAvatars();
+    // ST sets the placeholder again (language, chat changes); the start screen is drawn into the chat
+    const input = document.getElementById('send_textarea');
+    if (input) {
+        new MutationObserver(syncPlaceholder).observe(input, { attributes: true, attributeFilter: ['placeholder'] });
+    }
+    const chat = document.getElementById('chat');
+    if (chat) {
+        new MutationObserver(expandRecentChats).observe(chat, { childList: true });
+    }
     applyDisplayTweaks();
 }

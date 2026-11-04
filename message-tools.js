@@ -5,12 +5,13 @@
 // ST clones #message_template for every new message, so patching the template covers all
 // future messages; already-rendered messages are patched once. Which buttons show is set by
 // classes on <body>, so switching them costs nothing per message.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, isOn } from './settings.js';
 
 const FOOTER_CLASS = 'stqa_mes_footer';
 const TO_BOTTOM_CLASS = 'stqa_mes_to_bottom';
 const FOOTER_BUTTONS = Object.freeze([
     { action: 'prev', icon: 'fa-chevron-left', title: '이전 답변', swipe: true },
+    { action: 'count', title: '답변 번호', swipe: true },
     { action: 'next', icon: 'fa-chevron-right', title: '다음 답변 (마지막이면 새로 생성)', swipe: true },
     { action: 'top', icon: 'fa-arrow-up', title: '이 메시지 맨 위로' },
 ]);
@@ -23,7 +24,7 @@ function injectFooter(block) {
     footer.className = FOOTER_CLASS;
     for (const { action, icon, title, swipe } of FOOTER_BUTTONS) {
         const button = document.createElement('div');
-        button.className = `stqa_footer_button fa-solid ${icon}${swipe ? ' stqa_footer_swipe' : ''}`;
+        button.className = action === 'count' ? 'stqa_footer_count stqa_footer_swipe' : `stqa_footer_button fa-solid ${icon}${swipe ? ' stqa_footer_swipe' : ''}`;
         button.dataset.stqaAction = action;
         button.title = title;
         footer.append(button);
@@ -46,19 +47,43 @@ function patchMessages(root = document) {
     root.querySelectorAll('#message_template .extraMesButtons, #chat .mes .extraMesButtons').forEach(injectToBottom);
 }
 
-/** Scrolls the chat so the message's top (or bottom) edge is in view. */
+/**
+ * Scrolls the chat (only the chat: scrollIntoView would also move the page and push the top
+ * bar out of view) so the message's top or bottom edge is at the edge of the chat.
+ */
 function scrollToMessageEdge(message, edge) {
-    message.scrollIntoView({ block: edge === 'top' ? 'start' : 'end', behavior: 'smooth' });
+    const chat = document.getElementById('chat');
+    const box = message.getBoundingClientRect();
+    const view = chat.getBoundingClientRect();
+    const offset = edge === 'top' ? box.top - view.top : box.bottom - view.bottom;
+    chat.scrollBy({ top: offset, behavior: 'smooth' });
 }
 
-/** Runs ST's own swipe through its arrow on that message, so all its rules and events apply. */
-function swipe(message, direction) {
-    const arrow = message.querySelector(direction === 'prev' ? '.swipe_left' : '.swipe_right');
-    if (!arrow) {
-        toastr.info('이 메시지는 다른 답변으로 넘길 수 없어요.', '편의성 모음');
+/**
+ * ST's own swipe, so all its rules and events apply. Started as from a slash command: that
+ * works even with ST's swipe arrows / gestures switched off (the point of these buttons).
+ */
+async function swipe(message, direction) {
+    const context = SillyTavern.getContext();
+    const target = context.chat[Number(message.getAttribute('mesid'))];
+    const to = context.swipe?.to;
+    if (typeof to === 'function') {
+        await to(null, direction === 'prev' ? 'left' : 'right', { source: 'slash_command', message: target });
         return;
     }
-    arrow.click();
+    message.querySelector(direction === 'prev' ? '.swipe_left' : '.swipe_right')?.click();
+}
+
+/** "2/3" between the arrows, for the newest reply (the only one the arrows show on). */
+function updateCount() {
+    const { chat } = SillyTavern.getContext();
+    const last = chat.length - 1;
+    const message = chat[last];
+    const count = document.querySelector(`#chat .mes[mesid="${last}"] .stqa_footer_count`);
+    if (count && message) {
+        const total = Math.max(1, message.swipes?.length ?? 1);
+        count.textContent = `${Math.min((message.swipe_id ?? 0) + 1, total)}/${total}`;
+    }
 }
 
 function onChatClick(event) {
@@ -70,8 +95,8 @@ function onChatClick(event) {
     const action = button.classList.contains(TO_BOTTOM_CLASS) ? 'bottom' : button.dataset.stqaAction;
     try {
         if (action === 'prev' || action === 'next') {
-            swipe(message, action);
-        } else {
+            swipe(message, action).catch(error => console.error(`[${MODULE}] Swipe failed`, error));
+        } else if (action !== 'count') {
             scrollToMessageEdge(message, action);
         }
     } catch (error) {
@@ -80,14 +105,18 @@ function onChatClick(event) {
 }
 
 export function applyMessageToolSettings() {
-    const settings = getSettings();
-    document.body.classList.toggle('stqa_footer_swipe_on', settings.footerSwipe);
-    document.body.classList.toggle('stqa_footer_top_on', settings.footerTop);
-    document.body.classList.toggle('stqa_to_bottom_on', settings.menuToBottom);
+    document.body.classList.toggle('stqa_footer_swipe_on', isOn('footerSwipe'));
+    document.body.classList.toggle('stqa_footer_top_on', isOn('footerTop'));
+    document.body.classList.toggle('stqa_to_bottom_on', isOn('menuToBottom'));
+    updateCount();
 }
 
 export function initMessageTools() {
     patchMessages();
     applyMessageToolSettings();
     document.getElementById('chat')?.addEventListener('click', onChatClick);
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED, eventTypes.MESSAGE_UPDATED, eventTypes.MESSAGE_DELETED, eventTypes.CHAT_CHANGED]) {
+        eventSource.on(event, () => setTimeout(updateCount));
+    }
 }

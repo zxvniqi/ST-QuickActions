@@ -35,7 +35,7 @@ function renderList(listElement, items) {
         const eye = row.querySelector('.stqa_layout_eye');
         if (item.locked) {
             eye.className = 'stqa_layout_eye stqa_locked fa-solid fa-lock';
-            eye.title = '숨기면 쓸 수 없게 돼서 숨길 수 없어요';
+            eye.title = '숨길 수 없는 항목';
         } else {
             eye.className = `stqa_layout_eye fa-solid ${item.hidden ? 'fa-eye-slash' : 'fa-eye'}`;
             eye.title = item.hidden ? '숨김 (눌러서 보이기)' : '보임 (눌러서 숨기기)';
@@ -45,7 +45,7 @@ function renderList(listElement, items) {
     if (items.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'stqa_hint';
-        empty.textContent = '항목이 없어요.';
+        empty.textContent = '항목 없음';
         fragment.append(empty);
     }
     listElement.replaceChildren(fragment);
@@ -121,7 +121,7 @@ export async function openLayoutEditor() {
     root.className = 'stqa_panel stqa_layout_editor';
     root.innerHTML = `
         <h3>메뉴 정리</h3>
-        <small class="stqa_hint">≡ 를 끌어서 순서를 바꾸고, 눈 아이콘으로 숨기거나 보이게 해요. 🔒는 숨길 수 없는 항목이에요. 저장을 눌러야 적용돼요.</small>
+        <small class="stqa_hint">≡ 끌어서 순서 변경 · 눈 아이콘으로 숨기기 · 🔒 숨길 수 없음</small>
         <div class="stqa_tabs"></div>
         <div class="stqa_tab_body"></div>
         <div class="stqa_layout_actions">
@@ -174,5 +174,5 @@ export async function openLayoutEditor() {
         });
     }
     SillyTavern.getContext().saveSettingsDebounced();
-    toastr.success('메뉴 정리를 저장했어요.', '편의성 모음');
+    toastr.success('메뉴 정리 저장됨', '편의성 모음');
 }

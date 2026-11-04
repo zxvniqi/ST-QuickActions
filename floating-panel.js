@@ -1,8 +1,9 @@
 // Chat shortcuts behind one small button: tap it to open the shortcuts, tap again to fold them.
 // Floating (in a column or a row; long-press to move it) or as a button in the input bar.
 // The floating position is kept as a share of the window, so it stays put after a rotation.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 import { rerunLastQr } from './qr-input.js';
+import { NAME_KINDS, getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 
 const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
@@ -14,11 +15,12 @@ const TITLE = '편의성 모음';
 /** The buttons, in panel order; each can be switched off in the settings. */
 export const FLOATING_BUTTONS = Object.freeze([
     { key: 'deleteLast', icon: 'fa-trash-can', label: '최근 메시지 삭제' },
-    { key: 'deleteRange', icon: 'fa-eraser', label: '번호 범위 삭제' },
     { key: 'top', icon: 'fa-angles-up', label: '채팅 맨 위로 (#0)' },
     { key: 'jump', icon: 'fa-hashtag', label: '번호로 이동' },
     { key: 'bottom', icon: 'fa-angles-down', label: '채팅 맨 아래로' },
     { key: 'qrRerun', icon: 'fa-rotate-right', label: '마지막 QR 같은 입력으로 다시' },
+    { key: 'names', icon: 'fa-id-badge', label: '이름 치환' },
+    { key: 'swap', icon: 'fa-right-left', label: '{{char}} ⇄ {{user}} 교환 켜기/끄기' },
 ]);
 
 export const FLOATING_LAYOUTS = Object.freeze([
@@ -44,77 +46,77 @@ function scrollToBottom() {
 async function deleteLastMessage() {
     const context = SillyTavern.getContext();
     if (!context.chat.length) {
-        toastr.info('지울 메시지가 없어요.', TITLE);
+        toastr.info('메시지 없음', TITLE);
         return;
     }
-    const confirmed = await context.Popup.show.confirm('최근 메시지를 삭제할까요?', '되돌릴 수 없어요.');
+    const confirmed = await context.Popup.show.confirm('최근 메시지 삭제', '되돌릴 수 없음');
     if (confirmed) {
         await context.deleteLastMessage();
     }
-}
-
-/** Asks for a first and last message number (both deleted, and everything between). */
-async function deleteRange() {
-    const context = SillyTavern.getContext();
-    const last = context.chat.length - 1;
-    if (last < 0) {
-        toastr.info('지울 메시지가 없어요.', TITLE);
-        return;
-    }
-    const content = document.createElement('div');
-    content.className = 'stqa_range_form';
-    content.innerHTML = `
-        <h3>몇 번부터 몇 번까지 지울까요?</h3>
-        <div class="stqa_range_fields">
-            <label>#<input type="number" class="text_pole" min="0" max="${last}" inputmode="numeric" data-edge="from"></label>
-            <span>부터</span>
-            <label>#<input type="number" class="text_pole" min="0" max="${last}" inputmode="numeric" data-edge="to"></label>
-            <span>까지</span>
-        </div>
-        <small class="stqa_range_note">#0 ~ #${last} 사이. 되돌릴 수 없어요.</small>`;
-    const [fromInput, toInput] = content.querySelectorAll('input');
-    const note = content.querySelector('.stqa_range_note');
-    const read = () => [Number(fromInput.value), Number(toInput.value)];
-    const valid = ([from, to]) => fromInput.value !== '' && toInput.value !== '' && Number.isInteger(from) && Number.isInteger(to) && from >= 0 && to <= last && from <= to;
-    content.addEventListener('input', () => {
-        const range = read();
-        note.textContent = valid(range) ? `#${range[0]} ~ #${range[1]}, ${range[1] - range[0] + 1}개가 지워져요. 되돌릴 수 없어요.` : `#0 ~ #${last} 사이. 되돌릴 수 없어요.`;
-    });
-    const confirmed = await new context.Popup(content, context.POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소' }).show();
-    if (!confirmed) {
-        return;
-    }
-    const range = read();
-    if (!valid(range)) {
-        await context.Popup.show.text('범위가 맞지 않아요', `#0 ~ #${last} 사이에서, 앞 번호가 뒤 번호보다 작거나 같게 적어주세요.`);
-        return;
-    }
-    await context.executeSlashCommandsWithOptions(`/cut ${range[0]}-${range[1]}`);
-    toastr.success(`#${range[0]} ~ #${range[1]} 메시지를 지웠어요.`, TITLE);
 }
 
 async function askAndJump() {
     const context = SillyTavern.getContext();
     const last = context.chat.length - 1;
     if (last < 0) {
-        toastr.info('메시지가 없어요.', TITLE);
+        toastr.info('메시지 없음', TITLE);
         return;
     }
-    const answer = await context.Popup.show.input('몇 번 메시지로 갈까요?', `0 ~ ${last} 사이 번호를 적어주세요.`, '');
+    const answer = await context.Popup.show.input('이동할 메시지 번호', `0 ~ ${last}`, '');
     if (answer === null || answer === false || String(answer).trim() === '') {
         return;
     }
     const number = Number(String(answer).trim().replace(/^#/, ''));
     if (!Number.isInteger(number) || number < 0 || number > last) {
-        await context.Popup.show.text('그 번호의 메시지가 없어요', `#0 ~ #${last} 사이에서 골라주세요.`);
+        await context.Popup.show.text('없는 번호', `#0 ~ #${last}`);
         return;
     }
     await jumpTo(number);
 }
 
+/** Name replacement: on / off, the names for {{char}} / {{user}}, and the status panel option. */
+async function editNames() {
+    const context = SillyTavern.getContext();
+    const settings = getSettings();
+    const content = document.createElement('div');
+    content.className = 'stqa_names_form';
+    content.innerHTML = `
+        <h3>이름 치환</h3>
+        <label class="checkbox_label"><input type="checkbox" data-name="on"><span>켜기</span></label>
+        ${NAME_KINDS.map(kind => `<label class="stqa_name_field"><span>{{${kind}}}</span><input class="text_pole" type="text" data-kind="${kind}"></label>`).join('')}
+        <label class="checkbox_label"><input type="checkbox" data-name="status"><span>상태창에는 원래 이름</span></label>
+        <small class="stqa_hint">비우면 원래 이름</small>`;
+    const on = content.querySelector('[data-name="on"]');
+    const status = content.querySelector('[data-name="status"]');
+    on.checked = settings.nameOverride;
+    status.checked = settings.statusRealName;
+    for (const input of content.querySelectorAll('[data-kind]')) {
+        input.value = getStoredName(input.dataset.kind);
+        input.placeholder = (input.dataset.kind === 'char' ? context.name2 : context.name1) || '';
+    }
+    if (!await new context.Popup(content, context.POPUP_TYPE.CONFIRM, '', { okButton: '저장', cancelButton: '취소' }).show()) {
+        return;
+    }
+    content.querySelectorAll('[data-kind]').forEach(input => setOverride(input.dataset.kind, input.value));
+    setOverrideEnabled(on.checked);
+    setStatusRealName(status.checked);
+}
+
+function toggleSwap() {
+    const on = !getSettings().nameSwap;
+    setNameSwap(on);
+    syncSwapButton();
+    toastr.info(on ? '{{char}} ⇄ {{user}} 교환 켬' : '{{char}} ⇄ {{user}} 교환 끔', TITLE);
+}
+
+function syncSwapButton() {
+    panel?.querySelector('[data-key="swap"]')?.classList.toggle('stqa_on', getSettings().nameSwap === true);
+}
+
 const ACTIONS = {
     deleteLast: deleteLastMessage,
-    deleteRange,
+    names: editNames,
+    swap: toggleSwap,
     top: () => jumpTo(0),
     jump: askAndJump,
     bottom: scrollToBottom,
@@ -305,7 +307,8 @@ export function applyFloatingSettings() {
     for (const { value } of FLOATING_LAYOUTS) {
         panel.classList.toggle(`stqa_layout_${value}`, value === layout);
     }
-    const enabled = settings.floatingPanel && shownButtons() > 0;
+    const enabled = isOn('floatingPanel') && shownButtons() > 0;
+    syncSwapButton();
     syncInputToggle(enabled && layout === 'input');
     panel.hidden = !enabled || (layout === 'input' && !open);
     setOpen(enabled && open);

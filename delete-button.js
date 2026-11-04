@@ -1,5 +1,5 @@
 // A delete button next to the message edit button (no need to enter edit mode).
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 
 const DELETE_BTN_CLASS = 'stqa_mes_delete';
 const DELETE_ON_CLASS = 'stqa_delete_on';
@@ -25,11 +25,11 @@ function injectDeleteButton(mesButtons) {
 async function deleteMessageAt(messageId) {
     const context = SillyTavern.getContext();
     if (typeof context.deleteMessage !== 'function') {
-        toastr.warning('이 SillyTavern 버전은 지원되지 않습니다. 업데이트해 주세요.', '편의성 모음');
+        toastr.warning('지원하지 않는 SillyTavern 버전', '편의성 모음');
         return;
     }
     if (document.querySelector('#chat .edit_textarea')) {
-        toastr.info('편집 중인 메시지를 먼저 닫아주세요.', '편의성 모음');
+        toastr.info('편집 중인 메시지를 먼저 닫기', '편의성 모음');
         return;
     }
 
@@ -65,14 +65,14 @@ async function onChatClick(event) {
         await deleteMessageAt(messageId);
     } catch (error) {
         console.error(`[${MODULE}] Delete failed`, error);
-        toastr.error('메시지를 삭제하지 못했습니다.', '편의성 모음');
+        toastr.error('메시지 삭제 실패', '편의성 모음');
     } finally {
         isDeleting = false;
     }
 }
 
 export function applyDeleteButtonSetting() {
-    document.body.classList.toggle(DELETE_ON_CLASS, getSettings().deleteButton);
+    document.body.classList.toggle(DELETE_ON_CLASS, isOn('deleteButton'));
 }
 
 export function initDeleteButton() {

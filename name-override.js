@@ -2,7 +2,7 @@
 // Works with both macro engines:
 //  - experimental engine: an official MacroEnvBuilder provider rewrites env.names
 //  - legacy engine: a registered macro shadows the built-in value, only while an override is set
-import { getSettings } from './settings.js';
+import { getSettings, isOn } from './settings.js';
 
 export const NAME_KINDS = Object.freeze(['char', 'user']);
 const SETTING_KEYS = Object.freeze({ char: 'charName', user: 'userName' });
@@ -10,6 +10,8 @@ const PROVIDER_ORDER_LATE = 90;
 
 // Hot-path cache: macro substitution runs many times per generation, so avoid getContext() there.
 const overrides = { char: '', user: '' };
+// {{char}} and {{user}} trade places (after the overrides) while on
+let swapped = false;
 let isGroupChat = false;
 let realNameOnDisplayRegex = true;
 const legacyRegistered = { char: false, user: false };
@@ -29,27 +31,38 @@ function isForDisplayRegex() {
     return stack.includes('runRegexScript') && stack.includes('messageFormatting');
 }
 
+const isActive = () => Boolean(overrides.char || overrides.user || swapped);
+
+/** The names {{char}} / {{user}} stand for, from the real ones: overrides first, then the swap. */
+function effectiveNames(real) {
+    const names = { char: overrides.char || real.char, user: overrides.user || real.user };
+    return swapped ? { char: names.user, user: names.char } : names;
+}
+
 function applyToEnv(env) {
-    if ((overrides.char || overrides.user) && realNameOnDisplayRegex && isForDisplayRegex()) {
+    if (!isActive() || (realNameOnDisplayRegex && isForDisplayRegex())) {
         return;
     }
-    if (overrides.user) {
-        env.names.user = overrides.user;
-    }
-    if (overrides.char) {
-        env.names.char = overrides.char;
-    }
+    const names = effectiveNames(env.names);
+    env.names.char = names.char;
+    env.names.user = names.user;
     // In 1:1 chats these names are derived from char/user, so keep them consistent.
-    if (!isGroupChat && (overrides.char || overrides.user)) {
+    if (!isGroupChat) {
         env.names.group = env.names.groupNotMuted = env.names.char;
         env.names.notChar = env.names.user;
     }
 }
 
+function legacyName(kind) {
+    const context = SillyTavern.getContext();
+    const real = { char: context.name2, user: context.name1 };
+    return realNameOnDisplayRegex && isForDisplayRegex() ? real[kind] : effectiveNames(real)[kind];
+}
+
 // Fallbacks only matter if an override was cleared after the macro engine switched mode.
 const legacyHandlers = {
-    char: () => (overrides.char && !(realNameOnDisplayRegex && isForDisplayRegex()) ? overrides.char : SillyTavern.getContext().name2),
-    user: () => (overrides.user && !(realNameOnDisplayRegex && isForDisplayRegex()) ? overrides.user : SillyTavern.getContext().name1),
+    char: () => legacyName('char'),
+    user: () => legacyName('user'),
 };
 
 function syncLegacyMacros() {
@@ -60,7 +73,7 @@ function syncLegacyMacros() {
         return;
     }
     for (const kind of NAME_KINDS) {
-        const wanted = Boolean(overrides[kind]);
+        const wanted = Boolean(overrides[kind]) || swapped;
         if (wanted === legacyRegistered[kind]) {
             continue;
         }
@@ -74,8 +87,9 @@ function syncLegacyMacros() {
 function refreshOverrides() {
     const settings = getSettings();
     for (const kind of NAME_KINDS) {
-        overrides[kind] = settings.nameOverride ? String(settings[SETTING_KEYS[kind]] ?? '').trim() : '';
+        overrides[kind] = isOn('nameOverride') ? String(settings[SETTING_KEYS[kind]] ?? '').trim() : '';
     }
+    swapped = isOn('nameSwap') && settings.nameSwap === true;
     realNameOnDisplayRegex = settings.statusRealName;
     syncLegacyMacros();
 }
@@ -87,22 +101,16 @@ export function setStatusRealName(enabled) {
     SillyTavern.getContext().saveSettingsDebounced();
 }
 
-/**
- * Swaps what {{char}} and {{user}} resolve to. Empty fields stand for the original names, so
- * swapping with nothing typed in makes {{char}} the persona and {{user}} the character.
- * @returns {{ char: string, user: string }} the stored values after the swap
- */
-export function swapNames() {
-    const context = SillyTavern.getContext();
-    const settings = getSettings();
-    const original = { char: context.name2 ?? '', user: context.name1 ?? '' };
-    const current = { char: settings.charName || original.char, user: settings.userName || original.user };
-    // A name equal to the original is stored empty, so it keeps following the chat
-    settings.charName = current.user === original.char ? '' : current.user;
-    settings.userName = current.char === original.user ? '' : current.char;
+/** Switches the {{char}} ⇄ {{user}} swap on / off. */
+export function setNameSwap(enabled) {
+    getSettings().nameSwap = enabled;
     refreshOverrides();
-    context.saveSettingsDebounced();
-    return { char: settings.charName, user: settings.userName };
+    SillyTavern.getContext().saveSettingsDebounced();
+}
+
+/** Re-reads the settings (after the extension or the feature was switched on / off). */
+export function applyNameSettings() {
+    refreshOverrides();
 }
 
 export function getStoredName(kind) {

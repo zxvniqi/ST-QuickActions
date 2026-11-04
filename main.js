@@ -2,9 +2,9 @@
 import { MODULE, getSettings } from './settings.js';
 import { initDeleteButton, applyDeleteButtonSetting } from './delete-button.js';
 import { initChatPicker } from './chat-picker.js';
-import { NAME_KINDS, initNameOverride, getStoredName, setOverride, setOverrideEnabled, setStatusRealName, swapNames } from './name-override.js';
+import { initNameOverride, applyNameSettings } from './name-override.js';
 import { initSelectionTools } from './selection-tools.js';
-import { initLayoutManager } from './layout-manager.js';
+import { initLayoutManager, applyLayoutSettings } from './layout-manager.js';
 import { openLayoutEditor } from './layout-editor.js';
 import { createInlineSelect } from './inline-select.js';
 import { initMessageTools, applyMessageToolSettings } from './message-tools.js';
@@ -13,202 +13,198 @@ import { QR_PRESETS, initQrBar, applyQrPreset } from './qr-bar.js';
 import { initQrInput } from './qr-input.js';
 import { initStatusGuard } from './status-guard.js';
 import { initDisplayTweaks, applyDisplayTweaks } from './display-tweaks.js';
-import { initFolders } from './folders.js';
-import { initPresetFolders } from './preset-folders.js';
-import { initToggleSets } from './prompt-toggle-sets.js';
+import { FOLDER_AREAS, initFolders, applyFolders } from './folders.js';
+import { initPresetFolders, applyFolderButtons } from './preset-folders.js';
+import { initToggleSets, applyToggleSets } from './prompt-toggle-sets.js';
+import { initRangeDelete, applyRangeDelete } from './range-delete.js';
 
 const TOOLBAR_POSITIONS = [
-    { value: 'dock', label: '화면 아래 (입력창 위)' },
-    { value: 'above', label: '선택한 글자 위' },
-    { value: 'below', label: '선택한 글자 아래' },
+    { value: 'dock', label: '화면 아래' },
+    { value: 'above', label: '글자 위' },
+    { value: 'below', label: '글자 아래' },
 ];
 
-// Top-level on/off settings shown as checkboxes: [key, label, what to re-apply]
-const TOGGLES = {
-    deleteButton: ['메시지 메뉴에 삭제 버튼', applyDeleteButtonSetting],
-    chatPicker: ['캐릭터 고르면 채팅 목록'],
-    selectionTools: ['글자 고르면 수정/삭제 버튼'],
-    keepTranslation: ['원문 고쳐도 번역 유지 (연필 수정 포함)'],
-    footerSwipe: ['‹ › 이전·다음 답변 (마지막 답변 아래)', applyMessageToolSettings],
-    footerTop: ['↑ 그 메시지 맨 위로 (메시지 아래)', applyMessageToolSettings],
-    menuToBottom: ['↓ 그 메시지 맨 아래로 (메시지 메뉴)', applyMessageToolSettings],
-    floatingPanel: ['쓰기 (떠 있을 땐 꾹 눌러 옮기기)', applyFloatingSettings],
-    keepStatusPanels: ['상태창이 코드로 보이면 다시 그리기'],
-    hdAvatars: ['프로필 사진 고화질', applyDisplayTweaks],
-    hideInputPlaceholder: ['입력창 안내 문구 숨기기', applyDisplayTweaks],
-};
+/**
+ * The settings window, one tab per place in ST a feature belongs to. Each feature:
+ * [setting key, label, short description]. Extra controls (selects, buttons) go after the
+ * feature they belong to, by key.
+ */
+const TABS = Object.freeze([
+    {
+        title: '메시지',
+        features: [
+            ['deleteButton', '삭제 버튼', 'Message Actions에 휴지통 버튼. 그 메시지 삭제'],
+            ['menuToBottom', '↓ 버튼', 'Message Actions에 ↓ 버튼. 그 메시지 끝으로 스크롤'],
+            ['footerSwipe', '‹ 1/3 › 버튼', '마지막 답변 왼쪽 아래. 이전·다음 답변, 끝에서 › 는 새 답변. ST 스와이프를 꺼도 동작'],
+            ['footerTop', '↑ 버튼', '메시지 왼쪽 아래. 그 메시지 첫머리로 스크롤'],
+            ['selectionTools', '드래그 수정/삭제', '메시지 글자를 드래그하면 수정·삭제 버튼. 번역문이면 원문의 같은 부분도 함께'],
+            ['keepStatusPanels', '상태창 다시 그리기', '상태창(HTML)이 코드 그대로 보이면 그 메시지를 다시 그림. 번역은 유지'],
+        ],
+    },
+    {
+        title: '채팅',
+        features: [
+            ['chatPicker', '채팅 목록 먼저', '캐릭터를 고르면 채팅 목록 창부터 열림'],
+            ['rangeDelete', '메시지 범위 삭제', 'Options 메뉴 항목. 첫 메시지와 끝 메시지를 눌러 그 사이 삭제'],
+            ['welcomeRecent', '시작 화면 최근 채팅', '시작 화면에서 어시스턴트를 숨기고 최근 채팅을 모두 펼침'],
+            ['hdAvatars', '프로필 사진 고화질', '채팅·캐릭터 목록 사진을 썸네일 대신 원본으로'],
+        ],
+    },
+    {
+        title: '입력창',
+        features: [
+            ['qrBar', 'QR바 모양', '접기형은 입력창 왼쪽 ⚡ 버튼으로 접기'],
+            ['qrHistory', 'QR 입력 기록', 'QR 입력 창에 최근 입력 3개. 눌러서 넣기·복사'],
+            ['hideInputPlaceholder', '안내 문구 숨기기', '입력창의 "Type a message…" 문구 숨김'],
+        ],
+    },
+    {
+        title: '바로가기',
+        features: [
+            ['floatingPanel', '바로가기 버튼', '⋯ 버튼을 누르면 펼쳐짐. 떠 있을 땐 꾹 눌러 이동, 바깥 스크롤 시 접힘'],
+        ],
+    },
+    {
+        title: '메뉴·폴더',
+        features: [
+            ['layoutManager', '메뉴 정리', '숨기기·순서 변경 적용. 끄면 원래 배치'],
+            ['wandGrid', 'Extensions 메뉴 아이콘 격자', '아이콘만, 한 줄에 3개'],
+            ['wandFolders', 'Extensions 메뉴 폴더', '메뉴 정리 창의 폴더 버튼으로 만들기'],
+            ['regexFolders', '정규식 폴더', '정규식 창의 폴더 버튼'],
+            ['presetFolders', '프리셋 폴더', '프리셋 칸 옆 📁 버튼'],
+            ['toggleSetChips', '프롬프트 토글 조합', '프롬프트 목록 위 칩. 토글 조합 저장·적용'],
+        ],
+    },
+]);
 
 function saveSettings() {
     SillyTavern.getContext().saveSettingsDebounced();
 }
 
-const toggle = key => `
-    <label class="checkbox_label">
-        <input type="checkbox" data-setting="${key}">
-        <span>${TOGGLES[key][0]}</span>
-    </label>`;
+/** Re-applies every feature (after one or the whole extension was switched). */
+function applyAll() {
+    applyDeleteButtonSetting();
+    applyMessageToolSettings();
+    applyFloatingSettings();
+    applyQrPreset();
+    applyDisplayTweaks();
+    applyLayoutSettings();
+    Object.keys(FOLDER_AREAS).forEach(applyFolders);
+    applyFolderButtons();
+    applyToggleSets();
+    applyRangeDelete();
+    applyNameSettings();
+}
+
+function featureRow(key, label, description) {
+    const row = document.createElement('div');
+    row.className = 'stqa_feature';
+    row.innerHTML = `
+        <div class="stqa_feature_head">
+            <label class="checkbox_label"><input type="checkbox" data-setting="${key}"><span></span></label>
+            <i class="fa-solid fa-circle-info stqa_info" title="설명"></i>
+        </div>
+        <small class="stqa_desc" hidden></small>
+        <div class="stqa_feature_extra"></div>`;
+    row.querySelector('span').textContent = label;
+    row.querySelector('.stqa_desc').textContent = description;
+    row.querySelector('input').checked = getSettings()[key] !== false;
+    row.querySelector('.stqa_info').addEventListener('click', () => {
+        const desc = row.querySelector('.stqa_desc');
+        desc.hidden = !desc.hidden;
+    });
+    return row;
+}
+
+/** Controls that belong to a feature: shown under it. */
+function extrasFor(key) {
+    const settings = getSettings();
+    const extra = document.createDocumentFragment();
+    const select = (options, value, onChange) => extra.append(createInlineSelect({ options, value, onChange }));
+    if (key === 'selectionTools') {
+        select(TOOLBAR_POSITIONS, settings.selectionToolbarPosition, (value) => {
+            settings.selectionToolbarPosition = value;
+            saveSettings();
+        });
+    } else if (key === 'qrBar') {
+        select(QR_PRESETS.map(({ value, label }) => ({ value, label })), settings.qrPreset, (value) => {
+            settings.qrPreset = value;
+            saveSettings();
+            applyQrPreset();
+        });
+    } else if (key === 'floatingPanel') {
+        select(FLOATING_LAYOUTS, settings.floatingLayout, (value) => {
+            settings.floatingLayout = value;
+            saveSettings();
+            applyFloatingSettings();
+        });
+        const chips = document.createElement('div');
+        chips.className = 'stqa_chips';
+        chips.innerHTML = FLOATING_BUTTONS.map(({ key: button, icon, label }) => `
+            <label class="stqa_chip" title="${label}"><input type="checkbox" data-floating-button="${button}"><i class="fa-solid ${icon}"></i><span>${label}</span></label>`).join('');
+        chips.querySelectorAll('input').forEach(input => (input.checked = settings.floatingButtons?.[input.dataset.floatingButton] !== false));
+        extra.append(chips);
+    } else if (key === 'layoutManager') {
+        const button = document.createElement('div');
+        button.className = 'menu_button stqa_panel_button';
+        button.innerHTML = '<i class="fa-solid fa-list-check"></i> 메뉴 정리 열기';
+        button.addEventListener('click', openLayoutEditor);
+        extra.append(button);
+    }
+    return extra;
+}
 
 function buildPanel() {
-    const context = SillyTavern.getContext();
     const settings = getSettings();
     const panel = document.createElement('div');
     panel.className = 'stqa_panel';
     panel.innerHTML = `
-        <h3>편의성 모음</h3>
-        <small class="stqa_hint">눌러서 펼쳐요.</small>
-        <details class="stqa_section">
-            <summary><b>기본</b><small>삭제 버튼 · 채팅 목록 · 글자 수정/삭제</small></summary>
-            ${toggle('deleteButton')}
-            ${toggle('chatPicker')}
-            ${toggle('selectionTools')}
-            ${toggle('keepTranslation')}
-            <div class="stqa_name_field">
-                <span class="stqa_wide_label">수정/삭제 버튼 위치</span>
-                <div class="stqa_toolbar_position"></div>
-            </div>
-        </details>
-        <details class="stqa_section">
-            <summary><b>메시지 버튼</b><small>‹ › · ↑ · ↓</small></summary>
-            ${toggle('footerSwipe')}
-            ${toggle('footerTop')}
-            ${toggle('menuToBottom')}
-        </details>
-        <details class="stqa_section">
-            <summary><b>바로가기</b><small>⋯ 버튼 · 놓는 곳 · 버튼 고르기</small></summary>
-            ${toggle('floatingPanel')}
-            <div class="stqa_name_field">
-                <span class="stqa_wide_label">놓는 곳</span>
-                <div class="stqa_floating_layout"></div>
-            </div>
-            <div class="stqa_chips stqa_floating_chips">
-                ${FLOATING_BUTTONS.map(({ key, icon, label }) => `
-                    <label class="stqa_chip"><input type="checkbox" data-floating-button="${key}"><i class="fa-solid ${icon}"></i><span>${label}</span></label>`).join('')}
-            </div>
-        </details>
-        <details class="stqa_section">
-            <summary><b>QR바</b><small>모양 · 접기(⚡)</small></summary>
-            <div class="stqa_qr_preset"></div>
-        </details>
-        <details class="stqa_section">
-            <summary><b>화면</b><small>상태창 · 고화질 프사 · 안내 문구</small></summary>
-            ${toggle('keepStatusPanels')}
-            ${toggle('hdAvatars')}
-            ${toggle('hideInputPlaceholder')}
-        </details>
-        <details class="stqa_section">
-            <summary><b>이름 치환</b><small>{{char}} · {{user}}</small></summary>
-            <label class="checkbox_label">
-                <input type="checkbox" class="stqa_name_toggle">
-                <span>모든 채팅에 적용 (끄면 잠시 꺼짐)</span>
-            </label>
-            <div class="stqa_name_fields">
-                ${NAME_KINDS.map(kind => `
-                    <label class="stqa_name_field">
-                        <span>{{${kind}}}</span>
-                        <input class="text_pole" type="text" data-name-kind="${kind}" placeholder="">
-                    </label>`).join('')}
-                <div class="menu_button stqa_panel_button stqa_swap_names" title="{{char}}와 {{user}} 이름 서로 바꾸기"><i class="fa-solid fa-right-left"></i> 서로 바꾸기</div>
-                <label class="checkbox_label">
-                    <input type="checkbox" class="stqa_status_real_name">
-                    <span>상태창에는 원래 이름</span>
-                </label>
-            </div>
-        </details>
-        <div class="menu_button stqa_panel_button stqa_layout_button"><i class="fa-solid fa-list-check"></i> 메뉴 정리 (숨기기·순서·마법봉 폴더)</div>
-        <small class="stqa_hint">정규식 폴더는 정규식 창, 프리셋 폴더는 프리셋 칸 옆 <i class="fa-solid fa-folder-tree"></i> 버튼에 있어요.</small>`;
-
-    for (const input of panel.querySelectorAll('input[data-setting]')) {
-        input.checked = settings[input.dataset.setting];
-    }
-    for (const input of panel.querySelectorAll('input[data-floating-button]')) {
-        input.checked = settings.floatingButtons?.[input.dataset.floatingButton] !== false;
-    }
-    const floatingChips = panel.querySelector('.stqa_floating_chips');
-    floatingChips.classList.toggle('stqa_off', !settings.floatingPanel);
-
-    panel.querySelector('.stqa_toolbar_position').append(createInlineSelect({
-        options: TOOLBAR_POSITIONS,
-        value: settings.selectionToolbarPosition,
-        onChange: (value) => {
-            settings.selectionToolbarPosition = value;
-            saveSettings();
-        },
-    }));
-    panel.querySelector('.stqa_floating_layout').append(createInlineSelect({
-        options: FLOATING_LAYOUTS,
-        value: settings.floatingLayout,
-        onChange: (value) => {
-            settings.floatingLayout = value;
-            saveSettings();
-            applyFloatingSettings();
-        },
-    }));
-    panel.querySelector('.stqa_qr_preset').append(createInlineSelect({
-        options: QR_PRESETS.map(({ value, label }) => ({ value, label })),
-        value: settings.qrPreset,
-        onChange: (value) => {
-            settings.qrPreset = value;
-            saveSettings();
-            applyQrPreset();
-        },
-    }));
-
-    const nameInputs = [...panel.querySelectorAll('input[data-name-kind]')];
-    const showNames = () => {
-        for (const input of nameInputs) {
-            const kind = input.dataset.nameKind;
-            input.value = getStoredName(kind);
-            input.placeholder = (kind === 'char' ? context.name2 : context.name1) || '원래 이름';
+        <div class="stqa_panel_head">
+            <h3>편의성 모음</h3>
+            <label class="checkbox_label stqa_master"><input type="checkbox" data-setting="enabled"><span>사용</span></label>
+        </div>
+        <div class="stqa_tabs"></div>
+        <div class="stqa_tab_body"></div>`;
+    panel.querySelector('[data-setting="enabled"]').checked = settings.enabled !== false;
+    const tabs = panel.querySelector('.stqa_tabs');
+    const body = panel.querySelector('.stqa_tab_body');
+    const pages = TABS.map(({ title, features }) => {
+        const page = document.createElement('div');
+        page.className = 'stqa_tab_page';
+        for (const [key, label, description] of features) {
+            const row = featureRow(key, label, description);
+            row.querySelector('.stqa_feature_extra').append(extrasFor(key));
+            page.append(row);
         }
-    };
-    showNames();
-    const nameToggle = panel.querySelector('.stqa_name_toggle');
-    const nameFields = panel.querySelector('.stqa_name_fields');
-    nameToggle.checked = settings.nameOverride;
-    nameFields.classList.toggle('stqa_off', !settings.nameOverride);
-    const statusToggle = panel.querySelector('.stqa_status_real_name');
-    statusToggle.checked = settings.statusRealName;
+        const tab = document.createElement('div');
+        tab.className = 'stqa_tab';
+        tab.textContent = title;
+        tabs.append(tab);
+        body.append(page);
+        return { tab, page };
+    });
+    const show = (index) => pages.forEach(({ tab, page }, i) => {
+        tab.classList.toggle('stqa_tab_active', i === index);
+        page.hidden = i !== index;
+    });
+    pages.forEach(({ tab }, index) => tab.addEventListener('click', () => show(index)));
+    show(0);
+    const syncMaster = () => body.classList.toggle('stqa_off', settings.enabled === false);
+    syncMaster();
 
     panel.addEventListener('change', (event) => {
         const target = event.target;
-        if (target === nameToggle) {
-            setOverrideEnabled(nameToggle.checked);
-            nameFields.classList.toggle('stqa_off', !nameToggle.checked);
-            return;
-        }
-        if (target === statusToggle) {
-            setStatusRealName(statusToggle.checked);
-            return;
-        }
         if (target.dataset?.floatingButton) {
             settings.floatingButtons = { ...settings.floatingButtons, [target.dataset.floatingButton]: target.checked };
-            saveSettings();
-            applyFloatingSettings();
+        } else if (target.dataset?.setting) {
+            settings[target.dataset.setting] = target.checked;
+        } else {
             return;
         }
-        const key = target.dataset?.setting;
-        if (!key) {
-            return;
-        }
-        settings[key] = target.checked;
         saveSettings();
-        TOGGLES[key][1]?.();
-        if (key === 'floatingPanel') {
-            floatingChips.classList.toggle('stqa_off', !target.checked);
-        }
+        syncMaster();
+        applyAll();
     });
-    panel.addEventListener('input', (event) => {
-        const kind = event.target.dataset?.nameKind;
-        if (kind) {
-            setOverride(kind, event.target.value);
-        }
-    });
-    panel.querySelector('.stqa_swap_names').addEventListener('click', () => {
-        swapNames();
-        showNames();
-        toastr.success('{{char}}와 {{user}} 이름을 바꿨어요.', '편의성 모음');
-    });
-    panel.querySelector('.stqa_layout_button').addEventListener('click', openLayoutEditor);
     return panel;
 }
 
@@ -247,4 +243,5 @@ function addMenuButton() {
     initFolders();
     initPresetFolders();
     initToggleSets();
+    initRangeDelete();
 })();

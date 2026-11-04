@@ -1,7 +1,7 @@
 // Quick Reply input helpers: the input popups a QR opens (/input) show what was typed there the
 // last few times (tap to fill in, or copy), and the last QR can be run again with the same
 // answers, e.g. when the AI failed to reply.
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 
 const HISTORY_SIZE = 3;
 // QRs and their input steps remembered at most (oldest dropped)
@@ -90,7 +90,7 @@ function buildHistory(input, key) {
         });
         copy.addEventListener('click', async () => {
             const copied = await copyToClipboard(value);
-            copied ? toastr.success('복사했어요.', TITLE) : toastr.error('복사하지 못했어요.', TITLE);
+            copied ? toastr.success('복사됨', TITLE) : toastr.error('복사 실패', TITLE);
         });
     }
     return row;
@@ -113,7 +113,7 @@ function onInputPopup(dialog) {
         dialog.querySelector(confirmed ? '.popup-button-ok' : '.popup-button-cancel')?.click();
         return;
     }
-    const history = buildHistory(input, key);
+    const history = isOn('qrHistory') ? buildHistory(input, key) : null;
     if (history) {
         input.after(history);
     }
@@ -167,7 +167,7 @@ function watchPopups(on) {
 /** Runs the last QR again; its input popups get the same answers by themselves. */
 export async function rerunLastQr() {
     if (!lastRun) {
-        toastr.info('다시 실행할 QR이 없어요. QR을 한 번 눌러주세요.', TITLE);
+        toastr.info('다시 실행할 QR 없음', TITLE);
         return;
     }
     replay = lastRun.answers.filter(Boolean).map(answer => ({ ...answer }));

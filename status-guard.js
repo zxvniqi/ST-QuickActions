@@ -1,8 +1,8 @@
 // Keeps status panels drawn. Panels made by Tavern Helper (an HTML code block turned into a
-// frame) are drawn when a message is shown or edited; a translation (or reload) that redraws the
-// message text without telling anyone leaves the raw code on screen. Such messages are drawn
-// again (as after an edit), keeping the translation.
-import { MODULE, getSettings } from './settings.js';
+// frame) are drawn when a message is shown or edited; anything that redraws the message text
+// without telling (a translation, a reload, a swipe back, another extension) leaves the raw code
+// on screen. Such messages are drawn again (as after an edit), keeping the translation.
+import { MODULE, isOn } from './settings.js';
 
 const CHECK_DELAY_MS = 600;
 // Code the frame renderer would have turned into a panel
@@ -51,7 +51,7 @@ async function redraw(messageId) {
 
 function check() {
     timer = null;
-    if (!getSettings().keepStatusPanels || !renderer()) {
+    if (!isOn('keepStatusPanels') || !renderer()) {
         return;
     }
     // A reply being written is redrawn by itself when it's done
@@ -76,6 +76,13 @@ export function initStatusGuard() {
         redrawn.clear();
         scheduleCheck();
     });
+    // A reply swiped away and back (or edited) is drawn anew: it may need redrawing again
+    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_EDITED, eventTypes.MESSAGE_DELETED]) {
+        eventSource.on(event, (messageId) => {
+            redrawn.delete(Number(messageId));
+            scheduleCheck();
+        });
+    }
     const chat = document.getElementById('chat');
     if (chat) {
         // Any redraw of messages (translation shown or hidden, more messages loaded, ...)

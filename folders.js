@@ -4,7 +4,7 @@
 // in list order, so they stay where they are: their folder row sits at the first item, and
 // folding hides the items wherever they are. Presets are a dropdown: a folder is a group in it
 // (folding is in the preset picker, preset-folders.js).
-import { MODULE, getSettings } from './settings.js';
+import { MODULE, getSettings, isOn } from './settings.js';
 import { describeItem } from './layout-manager.js';
 import { onlyOwnChanges } from './mutations.js';
 
@@ -44,7 +44,7 @@ const GROUP_CLASS = 'stqa_folder_group';
 /** Presets: each folder is a group (📁 name) at the top of the dropdown; selection and values stay. */
 function applyOptionGroups(area, select) {
     const config = FOLDER_AREAS[area];
-    const folders = getFolders(area);
+    const folders = shownFolders(area);
     const nameOf = option => config.describe(option).key;
     // Groups no longer wanted, and items taken out, go back to the plain list
     for (const group of select.querySelectorAll(`optgroup.${GROUP_CLASS}`)) {
@@ -84,6 +84,14 @@ export function getFolders(area) {
     const folders = getSettings().folders;
     folders[area] ??= [];
     return folders[area];
+}
+
+// The setting that switches each kind of folder on / off
+const AREA_SETTING = Object.freeze({ wand: 'wandFolders', regex: 'regexFolders', presets: 'presetFolders' });
+
+/** The folders to show: none while that kind of folder is switched off (they stay saved). */
+function shownFolders(area) {
+    return isOn(AREA_SETTING[area]) ? getFolders(area) : [];
 }
 
 export function saveFolders(area, list) {
@@ -131,7 +139,7 @@ function folderRow(area, folder, tag) {
 /** Wand menu: each folder is one menu entry holding its items. */
 function applyMovingFolders(area, container) {
     const config = FOLDER_AREAS[area];
-    const folders = getFolders(area);
+    const folders = shownFolders(area);
     const byKey = new Map();
     for (const element of [...config.items(container), ...container.querySelectorAll(`.${FOLDER_CLASS} .stqa_folder_body > *`)]) {
         byKey.set(config.describe(element).key, element);
@@ -180,7 +188,7 @@ function applyMovingFolders(area, container) {
 /** Regex scripts / prompts: a folder row before the first item; folding hides the items. */
 function applyMarkingFolders(area, container) {
     const config = FOLDER_AREAS[area];
-    const folders = getFolders(area);
+    const folders = shownFolders(area);
     const items = config.items(container);
     const folderOf = new Map(folders.flatMap(folder => folder.keys.map(key => [key, folder])));
     container.querySelectorAll(`:scope > .${FOLDER_CLASS}_header`).forEach(row => row.remove());
