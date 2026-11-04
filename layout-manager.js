@@ -39,6 +39,8 @@ export const LAYOUT_AREAS = Object.freeze([
     {
         title: '마법봉 메뉴',
         containers: [{ selector: '#extensionsMenu', label: '' }],
+        // Its items can also be put in folders (folders.js)
+        folderArea: 'wand',
         // Hiding this would lock the user out of these settings
         locked: [`${MODULE}_menu`],
     },

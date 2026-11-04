@@ -1,6 +1,7 @@
 // Settings window for hiding / reordering wand menu items, input bar buttons and extension panels.
 // Changes are kept as a draft and only applied when the user presses 저장 (save).
 import { LAYOUT_AREAS, listItems, saveLayout } from './layout-manager.js';
+import { openFolderEditor } from './folder-editor.js';
 
 const FALLBACK_ICON = 'fa-solid fa-puzzle-piece';
 const AUTO_SCROLL_EDGE = 40;
@@ -123,13 +124,19 @@ export async function openLayoutEditor() {
         <small class="stqa_hint">≡ 를 끌어서 순서를 바꾸고, 눈 아이콘으로 숨기거나 보이게 해요. 🔒는 숨길 수 없는 항목이에요. 저장을 눌러야 적용돼요.</small>
         <div class="stqa_tabs"></div>
         <div class="stqa_tab_body"></div>
-        <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 기본으로</div>`;
+        <div class="stqa_layout_actions">
+            <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 기본으로</div>
+            <div class="menu_button stqa_panel_button stqa_layout_folders"><i class="fa-solid fa-folder-tree"></i> 폴더로 묶기</div>
+        </div>`;
     const tabs = root.querySelector('.stqa_tabs');
     const body = root.querySelector('.stqa_tab_body');
     let activeArea = LAYOUT_AREAS[0];
 
+    const folderButton = root.querySelector('.stqa_layout_folders');
+    folderButton.addEventListener('click', () => activeArea.folderArea && openFolderEditor(activeArea.folderArea));
     const showArea = (area) => {
         activeArea = area;
+        folderButton.hidden = !area.folderArea;
         for (const tab of tabs.children) {
             tab.classList.toggle('stqa_tab_active', tab.dataset.title === area.title);
         }

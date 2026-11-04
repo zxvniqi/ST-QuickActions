@@ -1,8 +1,9 @@
-// Folders for long lists: the wand menu, regex scripts and prompts. A folder shows as one row
-// with its name; tap it to unfold its items below.
-// The wand menu's order means nothing, so its items are moved into the folder. Regex scripts and
-// prompts run in list order, so they stay where they are: their folder row sits at the first
-// item, and folding hides the items wherever they are.
+// Folders for long lists: the wand menu, regex scripts and prompt presets. A folder shows as one
+// row with its name; tap it to unfold its items below.
+// The wand menu's order means nothing, so its items are moved into the folder. Regex scripts run
+// in list order, so they stay where they are: their folder row sits at the first item, and
+// folding hides the items wherever they are. Presets are a dropdown: a folder is a group in it
+// (folding is in the preset picker, preset-folders.js).
 import { MODULE, getSettings } from './settings.js';
 import { describeItem } from './layout-manager.js';
 import { onlyOwnChanges } from './mutations.js';
@@ -26,19 +27,55 @@ export const FOLDER_AREAS = Object.freeze({
         items: container => [...container.querySelectorAll(':scope > .regex-script-label[id]')],
         describe: item => ({ key: item.id, label: item.querySelector('.regex_script_name')?.textContent.trim() || item.id }),
     },
-    prompts: {
-        title: '프롬프트',
-        containers: ['#completion_prompt_manager_list'],
-        // The whole prompt manager (list included) is built anew on every change
-        watch: '#completion_prompt_manager',
-        items: container => [...container.querySelectorAll(':scope > li[data-pm-identifier]')],
-        describe: item => ({
-            key: item.dataset.pmIdentifier,
-            label: item.querySelector('.completion_prompt_manager_prompt_name')?.textContent.trim() || item.dataset.pmIdentifier,
-            on: Boolean(item.querySelector('.prompt-manager-toggle-action.fa-toggle-on')),
-        }),
+    presets: {
+        title: '프롬프트 프리셋',
+        containers: ['#settings_preset_openai'],
+        groups: true,
+        // Options come and go as presets are saved or deleted
+        watchSubtree: true,
+        items: select => [...select.querySelectorAll('option')],
+        // Presets are known by name (the option values are list positions)
+        describe: option => ({ key: option.textContent.trim(), label: option.textContent.trim() }),
     },
 });
+
+const GROUP_CLASS = 'stqa_folder_group';
+
+/** Presets: each folder is a group (📁 name) at the top of the dropdown; selection and values stay. */
+function applyOptionGroups(area, select) {
+    const config = FOLDER_AREAS[area];
+    const folders = getFolders(area);
+    const nameOf = option => config.describe(option).key;
+    // Groups no longer wanted, and items taken out, go back to the plain list
+    for (const group of select.querySelectorAll(`optgroup.${GROUP_CLASS}`)) {
+        const folder = folders.find(item => item.id === group.dataset.folderId);
+        for (const option of [...group.children]) {
+            if (!folder?.keys.includes(nameOf(option))) {
+                select.append(option);
+            }
+        }
+        if (!folder) {
+            group.remove();
+        }
+    }
+    const options = config.items(select);
+    const groups = folders.map((folder) => {
+        let group = select.querySelector(`optgroup.${GROUP_CLASS}[data-folder-id="${CSS.escape(folder.id)}"]`);
+        if (!group) {
+            group = document.createElement('optgroup');
+            group.className = GROUP_CLASS;
+            group.dataset.folderId = folder.id;
+        }
+        group.label = `📁 ${folder.name}`;
+        for (const option of options) {
+            if (folder.keys.includes(nameOf(option)) && option.parentElement !== group) {
+                group.append(option);
+            }
+        }
+        return group;
+    }).filter(group => group.children.length > 0);
+    select.prepend(...groups);
+}
 
 // Folders unfolded right now (not saved: everything starts folded)
 const unfolded = new Set();
@@ -164,12 +201,8 @@ function applyMarkingFolders(area, container) {
         }
         const row = folderRow(area, folder, first.tagName === 'LI' ? 'li' : 'div');
         row.classList.toggle(FOLDED_CLASS, !unfolded.has(folder.id));
-        const members = items.filter(item => folder.keys.includes(config.describe(item).key)).map(config.describe);
-        // A folder of prompt versions tells which one is on
-        const on = members.filter(member => member.on).map(member => member.label);
-        row.querySelector('.stqa_folder_note').textContent = area === 'prompts' && on.length
-            ? `켜짐: ${on.join(', ')}`
-            : `${members.length}개`;
+        const members = items.filter(item => folder.keys.includes(config.describe(item).key));
+        row.querySelector('.stqa_folder_note').textContent = `${members.length}개`;
         first.before(row);
     }
 }
@@ -182,7 +215,12 @@ export function applyFolders(area) {
     try {
         for (const selector of config.containers) {
             const container = document.querySelector(selector);
-            if (container) {
+            if (!container) {
+                continue;
+            }
+            if (config.groups) {
+                applyOptionGroups(area, container);
+            } else {
                 config.moves ? applyMovingFolders(area, container) : applyMarkingFolders(area, container);
             }
         }
@@ -206,11 +244,11 @@ function watch(area) {
         timer = setTimeout(() => applyFolders(area), 50);
     });
     const attach = () => {
-        for (const selector of config.watch ? [config.watch] : config.containers) {
+        for (const selector of config.containers) {
             const root = document.querySelector(selector);
             if (root && !root.hasAttribute(`data-stqa-watch-${area}`)) {
                 root.setAttribute(`data-stqa-watch-${area}`, '');
-                observer.observe(root, { childList: true, subtree: Boolean(config.watch) });
+                observer.observe(root, { childList: true, subtree: Boolean(config.watchSubtree) });
             }
         }
     };

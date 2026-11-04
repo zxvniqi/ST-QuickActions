@@ -13,8 +13,8 @@ import { QR_PRESETS, initQrBar, applyQrPreset } from './qr-bar.js';
 import { initQrInput } from './qr-input.js';
 import { initStatusGuard } from './status-guard.js';
 import { initDisplayTweaks, applyDisplayTweaks } from './display-tweaks.js';
-import { FOLDER_AREAS, initFolders } from './folders.js';
-import { openFolderEditor } from './folder-editor.js';
+import { initFolders } from './folders.js';
+import { initPresetFolders } from './preset-folders.js';
 import { initPromptVariants } from './prompt-variants.js';
 
 const TOOLBAR_POSITIONS = [
@@ -26,15 +26,15 @@ const TOOLBAR_POSITIONS = [
 // Top-level on/off settings shown as checkboxes: [key, label, what to re-apply]
 const TOGGLES = {
     deleteButton: ['메시지 메뉴에 삭제 버튼', applyDeleteButtonSetting],
-    chatPicker: ['캐릭터 고를 때 채팅 목록 띄우기'],
-    selectionTools: ['글자를 고르면 수정/삭제 버튼 띄우기'],
-    keepTranslation: ['원문을 고쳐도 번역 그대로 두기 (연필 수정 포함)'],
-    footerSwipe: ['메시지 아래 < > 버튼 (이전·다음 답변, 마지막 답변에만)', applyMessageToolSettings],
-    footerTop: ['메시지 아래 ↑ 버튼 (그 메시지 맨 위로)', applyMessageToolSettings],
-    menuToBottom: ['메시지 메뉴에 ↓ 버튼 (그 메시지 맨 아래로)', applyMessageToolSettings],
-    floatingPanel: ['바로가기 버튼 쓰기 (떠 있을 땐 꾹 눌러서 옮기기)', applyFloatingSettings],
-    keepStatusPanels: ['번역·새로고침 뒤 상태창이 코드로 보이면 다시 그리기 (번역은 그대로)'],
-    hdAvatars: ['프로필 사진 고화질로 보기', applyDisplayTweaks],
+    chatPicker: ['캐릭터 고르면 채팅 목록'],
+    selectionTools: ['글자 고르면 수정/삭제 버튼'],
+    keepTranslation: ['원문 고쳐도 번역 유지 (연필 수정 포함)'],
+    footerSwipe: ['‹ › 이전·다음 답변 (마지막 답변 아래)', applyMessageToolSettings],
+    footerTop: ['↑ 그 메시지 맨 위로 (메시지 아래)', applyMessageToolSettings],
+    menuToBottom: ['↓ 그 메시지 맨 아래로 (메시지 메뉴)', applyMessageToolSettings],
+    floatingPanel: ['쓰기 (떠 있을 땐 꾹 눌러 옮기기)', applyFloatingSettings],
+    keepStatusPanels: ['상태창이 코드로 보이면 다시 그리기'],
+    hdAvatars: ['프로필 사진 고화질', applyDisplayTweaks],
     hideInputPlaceholder: ['입력창 안내 문구 숨기기', applyDisplayTweaks],
 };
 
@@ -55,8 +55,9 @@ function buildPanel() {
     panel.className = 'stqa_panel';
     panel.innerHTML = `
         <h3>편의성 모음</h3>
-        <section class="stqa_section">
-            <b>기본 기능</b>
+        <small class="stqa_hint">눌러서 펼쳐요.</small>
+        <details class="stqa_section">
+            <summary><b>기본</b><small>삭제 버튼 · 채팅 목록 · 글자 수정/삭제</small></summary>
             ${toggle('deleteButton')}
             ${toggle('chatPicker')}
             ${toggle('selectionTools')}
@@ -65,17 +66,16 @@ function buildPanel() {
                 <span class="stqa_wide_label">수정/삭제 버튼 위치</span>
                 <div class="stqa_toolbar_position"></div>
             </div>
-        </section>
-        <section class="stqa_section">
-            <b>메시지 버튼</b>
+        </details>
+        <details class="stqa_section">
+            <summary><b>메시지 버튼</b><small>‹ › · ↑ · ↓</small></summary>
             ${toggle('footerSwipe')}
             ${toggle('footerTop')}
             ${toggle('menuToBottom')}
-        </section>
-        <section class="stqa_section">
-            <b>바로가기 버튼</b>
+        </details>
+        <details class="stqa_section">
+            <summary><b>바로가기</b><small>⋯ 버튼 · 놓는 곳 · 버튼 고르기</small></summary>
             ${toggle('floatingPanel')}
-            <small class="stqa_hint">평소엔 작은 버튼(⋯)으로 접혀 있고, 누르면 펼쳐져요.</small>
             <div class="stqa_name_field">
                 <span class="stqa_wide_label">놓는 곳</span>
                 <div class="stqa_floating_layout"></div>
@@ -84,51 +84,38 @@ function buildPanel() {
                 ${FLOATING_BUTTONS.map(({ key, icon, label }) => `
                     <label class="stqa_chip"><input type="checkbox" data-floating-button="${key}"><i class="fa-solid ${icon}"></i><span>${label}</span></label>`).join('')}
             </div>
-        </section>
-        <section class="stqa_section">
-            <b>QR바 모양</b>
-            <small class="stqa_hint">어떤 테마에서든 적용돼요. 접기 버튼은 입력창 왼쪽(⚡)에 생겨요. QR 입력창에는 최근 입력 3개가 남아요.</small>
+        </details>
+        <details class="stqa_section">
+            <summary><b>QR바</b><small>모양 · 접기(⚡)</small></summary>
             <div class="stqa_qr_preset"></div>
-        </section>
-        <section class="stqa_section">
-            <b>폴더</b>
-            <small class="stqa_hint">여러 항목을 이름 붙인 폴더 하나로 묶어요. 정규식·프롬프트는 실행 순서가 그대로예요.</small>
-            <div class="stqa_folder_buttons">
-                ${Object.entries(FOLDER_AREAS).map(([area, { title }]) => `
-                    <div class="menu_button stqa_panel_button" data-folder-area="${area}"><i class="fa-solid fa-folder-tree"></i> ${title}</div>`).join('')}
-            </div>
-            <small class="stqa_hint">프롬프트 버전(언어별 등)은 프롬프트 편집 창에서 저장하면, 목록에 칩으로 떠서 눌러 바꿀 수 있어요.</small>
-        </section>
-        <section class="stqa_section">
-            <b>화면</b>
+        </details>
+        <details class="stqa_section">
+            <summary><b>화면</b><small>상태창 · 고화질 프사 · 안내 문구</small></summary>
             ${toggle('keepStatusPanels')}
             ${toggle('hdAvatars')}
             ${toggle('hideInputPlaceholder')}
-        </section>
-        <section class="stqa_section">
-            <b>메뉴 정리</b>
-            <small class="stqa_hint">마법봉·햄버거 메뉴, 상단바, 입력창, 메시지 메뉴, 확장 패널의 버튼을 숨기거나 순서를 바꿔요.</small>
-            <div class="menu_button stqa_panel_button stqa_layout_button"><i class="fa-solid fa-list-check"></i> 메뉴 정리 열기</div>
-        </section>
-        <section class="stqa_section">
+        </details>
+        <details class="stqa_section">
+            <summary><b>이름 치환</b><small>{{char}} · {{user}}</small></summary>
             <label class="checkbox_label">
                 <input type="checkbox" class="stqa_name_toggle">
-                <b>이름 치환 (모든 채팅에 적용)</b>
+                <span>모든 채팅에 적용 (끄면 잠시 꺼짐)</span>
             </label>
-            <small class="stqa_hint">적으면 {{char}} / {{user}}가 그 이름으로 바뀌어요. 비우면 원래 이름. 체크를 끄면 적어둔 이름은 그대로 두고 잠시 꺼져요.</small>
             <div class="stqa_name_fields">
                 ${NAME_KINDS.map(kind => `
                     <label class="stqa_name_field">
                         <span>{{${kind}}}</span>
-                        <input class="text_pole" type="text" data-name-kind="${kind}">
+                        <input class="text_pole" type="text" data-name-kind="${kind}" placeholder="">
                     </label>`).join('')}
-                <div class="menu_button stqa_panel_button stqa_swap_names" title="{{char}}와 {{user}} 이름 서로 바꾸기"><i class="fa-solid fa-right-left"></i> {{char}} ⇄ {{user}} 바꾸기</div>
+                <div class="menu_button stqa_panel_button stqa_swap_names" title="{{char}}와 {{user}} 이름 서로 바꾸기"><i class="fa-solid fa-right-left"></i> 서로 바꾸기</div>
                 <label class="checkbox_label">
                     <input type="checkbox" class="stqa_status_real_name">
-                    <span>상태창에는 원래 이름 쓰기 (화면 표시용 정규식이 만드는 상태창·카드)</span>
+                    <span>상태창에는 원래 이름</span>
                 </label>
             </div>
-        </section>`;
+        </details>
+        <div class="menu_button stqa_panel_button stqa_layout_button"><i class="fa-solid fa-list-check"></i> 메뉴 정리 (숨기기·순서·마법봉 폴더)</div>
+        <small class="stqa_hint">정규식 폴더는 정규식 창, 프리셋 폴더는 프리셋 칸 옆 <i class="fa-solid fa-folder-tree"></i> 버튼에 있어요.</small>`;
 
     for (const input of panel.querySelectorAll('input[data-setting]')) {
         input.checked = settings[input.dataset.setting];
@@ -156,9 +143,6 @@ function buildPanel() {
             applyFloatingSettings();
         },
     }));
-    for (const button of panel.querySelectorAll('[data-folder-area]')) {
-        button.addEventListener('click', () => openFolderEditor(button.dataset.folderArea));
-    }
     panel.querySelector('.stqa_qr_preset').append(createInlineSelect({
         options: QR_PRESETS.map(({ value, label }) => ({ value, label })),
         value: settings.qrPreset,
@@ -261,5 +245,6 @@ function addMenuButton() {
     initStatusGuard();
     initDisplayTweaks();
     initFolders();
+    initPresetFolders();
     initPromptVariants();
 })();

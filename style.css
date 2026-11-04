@@ -870,3 +870,116 @@ div.stqa_folder_header:not(.list-group-item) {
     margin: 6px 0;
     text-align: left;
 }
+/* Settings window: folding sections */
+details.stqa_section > summary {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+}
+
+details.stqa_section > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.stqa_section > summary::after {
+    content: '\f078';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    margin-left: auto;
+    font-size: 0.8em;
+    opacity: 0.6;
+    transition: transform 0.15s;
+}
+
+details.stqa_section[open] > summary::after {
+    transform: rotate(180deg);
+}
+
+details.stqa_section > summary small {
+    opacity: 0.6;
+    font-size: 0.82em;
+    overflow-wrap: anywhere;
+}
+
+details.stqa_section[open] > summary {
+    margin-bottom: 4px;
+}
+
+.stqa_layout_actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* Preset picker */
+.stqa_preset_picker {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+
+.stqa_picker_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_picker_head h3 {
+    margin: 0;
+}
+
+.stqa_picker_header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 18%, transparent);
+    cursor: pointer;
+}
+
+.stqa_picker_header span {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.stqa_picker_header small {
+    opacity: 0.6;
+}
+
+.stqa_picker_group.stqa_folded .stqa_picker_body {
+    display: none;
+}
+
+.stqa_picker_group.stqa_folded .stqa_folder_caret {
+    transform: rotate(-90deg);
+}
+
+.stqa_picker_body {
+    display: flex;
+    flex-direction: column;
+    margin: 2px 0 0 12px;
+    border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
+}
+
+.stqa_picker_item {
+    padding: 7px 10px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.stqa_picker_item:hover {
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 25%, transparent);
+}
+
+.stqa_picker_item.stqa_active {
+    font-weight: 600;
+    color: var(--SmartThemeQuoteColor);
+}

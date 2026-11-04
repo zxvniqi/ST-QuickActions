@@ -647,6 +647,17 @@ async function keepTranslationOnEdit(messageId) {
     }
     keepTranslationFor(message);
     await rememberCurrentTranslation(message);
+    keptOnEdit.add(Number(messageId));
+}
+
+// Messages whose translation an edit kept: ST draws the edited original, so they're drawn again
+const keptOnEdit = new Set();
+
+function redrawKeptTranslation(messageId) {
+    const context = SillyTavern.getContext();
+    if (keptOnEdit.delete(Number(messageId)) && context.chat[messageId]) {
+        context.updateMessageBlock(Number(messageId), context.chat[messageId]);
+    }
 }
 
 export function initSelectionTools() {
@@ -655,4 +666,5 @@ export function initSelectionTools() {
     document.getElementById('chat')?.addEventListener('scroll', hideToolbar, { passive: true });
     const { eventSource, eventTypes } = SillyTavern.getContext();
     eventSource.on(eventTypes.MESSAGE_EDITED, keepTranslationOnEdit);
+    eventSource.on(eventTypes.MESSAGE_UPDATED, redrawKeptTranslation);
 }
