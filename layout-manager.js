@@ -39,8 +39,7 @@ export const LAYOUT_AREAS = Object.freeze([
     {
         title: '확장 메뉴',
         containers: [{ selector: '#extensionsMenu', label: '' }],
-        // Its items can also be put in folders (folders.js)
-        folderArea: 'wand',
+
         // Hiding this would lock the user out of these settings
         locked: [`${MODULE}_menu`],
     },
@@ -326,18 +325,22 @@ function withoutOwnRules(measure) {
  */
 function messageButtons() {
     const rendered = [...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].slice(-RECENT_MESSAGES);
-    const sources = rendered.length > 0 ? rendered : [document.querySelector(`#message_template ${MESSAGE_ROW}`)];
+    const template = document.querySelector(`#message_template ${MESSAGE_ROW}`);
     const buttons = new Map();
-    // Measured without this extension's rules, so buttons hidden here still count as available
-    withoutOwnRules(() => {
-        for (const element of sources.flatMap(rowButtons)) {
-            const key = keyOf(element, true);
-            const own = buttonClassOf(element) === key;
-            // A spot shared by several buttons is shown with its main button when possible
-            if (key && (!buttons.has(key) || (own && !buttons.get(key).own)) && (rendered.length === 0 || isDisplayed(element))) {
-                buttons.set(key, { element, own });
-            }
+    const add = (element, mustShow) => {
+        const key = keyOf(element, true);
+        const own = buttonClassOf(element) === key;
+        // A spot shared by several buttons is shown with its main button when possible
+        if (key && (!buttons.has(key) || (own && !buttons.get(key).own)) && (!mustShow || isDisplayed(element))) {
+            buttons.set(key, { element, own });
         }
+    };
+    // Measured without this extension's rules, so buttons hidden here still count as available.
+    // Drawn messages give what this theme shows; the template adds ST's buttons that show only
+    // now and then (Jump to swipe history with several replies, Unhide on hidden messages...).
+    withoutOwnRules(() => {
+        rendered.flatMap(rowButtons).forEach(element => add(element, true));
+        rowButtons(template).forEach(element => buttons.has(keyOf(element, true)) || add(element, false));
     });
     return [...buttons.entries()].map(([key, { element }]) => ({ key, element }));
 }
@@ -438,10 +441,12 @@ export function listItems(selector, { natural = false } = {}) {
     const { hidden, order } = getLayout(selector);
     let entries;
     if (findContainer(selector)?.perMessage) {
-        const buttons = messageButtons();
-        const full = arrange(order, buttons.map(({ key }) => key));
-        entries = buttons.map(({ key, element }, index) => ({
-            key, element, sortIndex: natural ? index : full.indexOf(key),
+        // The same order the stylesheet gives the messages (applyMessageStyles)
+        const naturalKeys = naturalMessageKeys();
+        const full = arrange(order, naturalKeys);
+        const at = (list, key) => (list.includes(key) ? list.indexOf(key) : list.length);
+        entries = messageButtons().map(({ key, element }) => ({
+            key, element, sortIndex: natural ? at(naturalKeys, key) : at(full, key),
         }));
     } else {
         const children = [...(document.querySelector(selector)?.children ?? [])];
@@ -450,8 +455,10 @@ export function listItems(selector, { natural = false } = {}) {
         // stay out); a shared spot counts when any of its buttons shows, e.g. Stop while generating.
         // Measured without this extension's rules, so items hidden here still count.
         const shown = withoutOwnRules(() => children.map(child => isMeaningful(child) && isDisplayed(child)));
-        const listed = childKeys(document.querySelector(selector)).filter(key => keys.some((other, index) => other === key && shown[index]));
-        const full = arrange(order, listed);
+        const allKeys = childKeys(document.querySelector(selector));
+        const listed = allKeys.filter(key => keys.some((other, index) => other === key && shown[index]));
+        // The same order the stylesheet gives the page (applyContainer)
+        const full = arrange(order, allKeys);
         entries = listed.map((key, index) => {
             // The spot's own button names it (Send rather than Stop), else the copy that shows
             const element = children.find((child, at) => keys[at] === key && child.id === key && shown[at])
@@ -477,7 +484,9 @@ export function listItems(selector, { natural = false } = {}) {
 export function saveLayout(selector, { order, hidden }) {
     const natural = listItems(selector, { natural: true }).map(item => item.key);
     const unchanged = order.length === natural.length && order.every((key, index) => key === natural[index]);
-    getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: hidden.filter(key => !lockedKeys.has(key)) };
+    // Items hidden before that weren't in the list this time (not on the page right now) stay hidden
+    const kept = getLayout(selector).hidden.filter(key => !order.includes(key));
+    getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: unique([...hidden, ...kept]).filter(key => !lockedKeys.has(key)) };
     findContainer(selector)?.perMessage ? applyMessageStyles() : applyContainer(selector);
 }
 

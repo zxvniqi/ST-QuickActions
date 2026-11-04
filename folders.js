@@ -1,11 +1,8 @@
-// Folders for long lists: the wand menu, regex scripts and prompt presets. A folder shows as one
-// row with its name; tap it to unfold its items below.
-// The wand menu's order means nothing, so its items are moved into the folder. Regex scripts run
-// in list order, so they stay where they are: their folder row sits at the first item, and
-// folding hides the items wherever they are (their folder can be dragged as a block). Presets
-// are a dropdown and stay untouched: their folders show in the list it opens (preset-folders.js).
+// Folders for long lists: regex scripts and prompt presets. Regex scripts run in list order: a
+// folder's scripts are kept next to each other, its row sits before the first one, folding hides
+// them, and the row's ≡ drags the folder as a block. Presets are a dropdown and stay untouched:
+// their folders show in the list it opens (preset-folders.js).
 import { MODULE, getSettings, isOn } from './settings.js';
-import { describeItem } from './layout-manager.js';
 import { onlyOwnChanges } from './mutations.js';
 
 const FOLDER_CLASS = 'stqa_folder';
@@ -13,14 +10,7 @@ const MEMBER_ATTR = 'data-stqa-folder';
 const FOLDED_CLASS = 'stqa_folded';
 
 export const FOLDER_AREAS = Object.freeze({
-    wand: {
-        title: '확장 메뉴',
-        containers: ['#extensionsMenu'],
-        moves: true,
-        // Empty slots of extensions that aren't loaded have nothing to put in a folder
-        items: container => [...container.children].filter(item => !item.classList.contains(FOLDER_CLASS) && item.textContent.trim()),
-        describe: describeItem,
-    },
+
     regex: {
         title: '정규식',
         containers: ['#saved_regex_scripts', '#saved_scoped_scripts', '#saved_preset_scripts'],
@@ -48,7 +38,7 @@ export function getFolders(area) {
 }
 
 // The setting that switches each kind of folder on / off
-const AREA_SETTING = Object.freeze({ wand: 'wandFolders', regex: 'regexFolders', presets: 'presetFolders' });
+const AREA_SETTING = Object.freeze({ regex: 'regexFolders', presets: 'presetFolders' });
 
 /** The folders to show: none while that kind of folder is switched off (they stay saved). */
 function shownFolders(area) {
@@ -70,12 +60,7 @@ export function listAreaItems(area) {
         if (!container) {
             continue;
         }
-        const elements = config.items(container);
-        // Items already moved into a folder (wand)
-        if (config.moves) {
-            container.querySelectorAll(`.${FOLDER_CLASS} > .stqa_folder_body > *`).forEach(item => elements.push(item));
-        }
-        for (const element of elements) {
+        for (const element of config.items(container)) {
             items.push({ element, ...config.describe(element) });
         }
     }
@@ -86,11 +71,8 @@ function folderRow(area, folder, tag) {
     const row = document.createElement(tag);
     row.className = `${FOLDER_CLASS}_header`;
     row.dataset.folderId = folder.id;
-    // Regex folders move as a block (like the scripts' own ≡); the wand menu's has an icon instead
-    const lead = FOLDER_AREAS[area].moves
-        ? '<i class="fa-solid fa-folder stqa_folder_icon"></i>'
-        : '<i class="fa-solid fa-bars stqa_folder_drag" title="끌어서 폴더째 순서 바꾸기"></i>';
-    row.innerHTML = `${lead}<span class="stqa_folder_name"></span><small class="stqa_folder_note"></small><i class="fa-solid fa-chevron-down stqa_folder_caret"></i>`;
+    // ≡ moves the folder as a block, like the scripts' own handle
+    row.innerHTML = '<i class="fa-solid fa-bars stqa_folder_drag" title="끌어서 폴더째 순서 바꾸기"></i><span class="stqa_folder_name"></span><small class="stqa_folder_note"></small><i class="fa-solid fa-chevron-down stqa_folder_caret"></i>';
     row.querySelector('.stqa_folder_name').textContent = folder.name;
     row.addEventListener('click', (event) => {
         event.preventDefault();
@@ -104,56 +86,7 @@ function folderRow(area, folder, tag) {
     return row;
 }
 
-/** Wand menu: each folder is one menu entry holding its items. */
-function applyMovingFolders(area, container) {
-    const config = FOLDER_AREAS[area];
-    const folders = shownFolders(area);
-    const byKey = new Map();
-    for (const element of [...config.items(container), ...container.querySelectorAll(`.${FOLDER_CLASS} .stqa_folder_body > *`)]) {
-        byKey.set(config.describe(element).key, element);
-    }
-    const kept = new Set(folders.map(folder => folder.id));
-    // Folders removed in the editor give their items back
-    for (const box of container.querySelectorAll(`:scope > .${FOLDER_CLASS}`)) {
-        if (!kept.has(box.dataset.folderId)) {
-            box.querySelectorAll('.stqa_folder_body > *').forEach(item => container.append(item));
-            box.remove();
-        }
-    }
-    for (const folder of folders) {
-        let box = container.querySelector(`:scope > .${FOLDER_CLASS}[data-folder-id="${CSS.escape(folder.id)}"]`);
-        if (!box) {
-            box = document.createElement('div');
-            box.className = FOLDER_CLASS;
-            box.id = `stqa_folder_${folder.id}`;
-            box.dataset.folderId = folder.id;
-            const header = folderRow(area, folder, 'div');
-            header.classList.add('list-group-item', 'flex-container', 'flexGap5', 'interactable');
-            const body = document.createElement('div');
-            body.className = 'stqa_folder_body';
-            box.append(header, body);
-            container.append(box);
-        }
-        box.querySelector('.stqa_folder_name').textContent = folder.name;
-        const body = box.querySelector('.stqa_folder_body');
-        // Items taken out of the folder go back to the menu
-        for (const item of [...body.children]) {
-            if (!folder.keys.includes(config.describe(item).key)) {
-                container.append(item);
-            }
-        }
-        for (const key of folder.keys) {
-            const item = byKey.get(key);
-            if (item && item.parentElement !== body) {
-                body.append(item);
-            }
-        }
-        box.classList.toggle(FOLDED_CLASS, !unfolded.has(folder.id));
-        box.hidden = body.children.length === 0;
-    }
-}
-
-/** Regex scripts / prompts: a folder row before the first item; folding hides the items. */
+/** Regex scripts: a folder row before the first item; folding hides the items. */
 function applyMarkingFolders(area, container) {
     const config = FOLDER_AREAS[area];
     const folders = shownFolders(area);
@@ -224,7 +157,7 @@ function gatherMembers(area, container) {
 /** Puts the scripts of each regex folder next to each other (their run order changes to match) and saves. */
 export async function gatherFolderItems(area) {
     const config = FOLDER_AREAS[area];
-    if (config.moves || config.listOnly) {
+    if (config.listOnly) {
         return;
     }
     for (const selector of config.containers) {
@@ -318,7 +251,7 @@ export function applyFolders(area) {
                 continue;
             }
             if (!config.listOnly) {
-                config.moves ? applyMovingFolders(area, container) : applyMarkingFolders(area, container);
+                applyMarkingFolders(area, container);
             }
         }
     } catch (error) {
@@ -354,6 +287,9 @@ function watch(area) {
 }
 
 export function initFolders() {
+    // Extensions menu folders of earlier versions
+    delete getSettings().folders.wand;
+    delete getSettings().wandFolders;
     const attachers = Object.keys(FOLDER_AREAS).filter(area => !FOLDER_AREAS[area].listOnly).map(area => watch(area));
     const refresh = () => {
         attachers.forEach(attach => attach());

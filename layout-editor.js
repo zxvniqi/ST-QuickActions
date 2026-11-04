@@ -1,7 +1,6 @@
 // Settings window for hiding / reordering wand menu items, input bar buttons and extension panels.
 // Changes are kept as a draft and only applied when the user presses 저장 (save).
 import { LAYOUT_AREAS, listItems, saveLayout } from './layout-manager.js';
-import { openFolderEditor } from './folder-editor.js';
 
 const FALLBACK_ICON = 'fa-solid fa-puzzle-piece';
 const AUTO_SCROLL_EDGE = 40;
@@ -125,19 +124,14 @@ export async function openLayoutEditor() {
         <div class="stqa_tabs"></div>
         <div class="stqa_layout_actions">
             <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 처음 상태로</div>
-            <div class="menu_button stqa_panel_button stqa_layout_folders"><i class="fa-solid fa-folder-tree"></i> 폴더 편집</div>
         </div>
         <div class="stqa_tab_body"></div>`;
     const tabs = root.querySelector('.stqa_tabs');
     const body = root.querySelector('.stqa_tab_body');
     let activeArea = LAYOUT_AREAS[0];
 
-    const folderButton = root.querySelector('.stqa_layout_folders');
-    folderButton.addEventListener('click', () => activeArea.folderArea && openFolderEditor(activeArea.folderArea));
     const showArea = (area) => {
         activeArea = area;
-        // Only the Extensions menu has folders (menu_button's own display would beat `hidden`)
-        folderButton.style.display = area.folderArea ? '' : 'none';
         for (const tab of tabs.children) {
             tab.classList.toggle('stqa_tab_active', tab.dataset.title === area.title);
         }
