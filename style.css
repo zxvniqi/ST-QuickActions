@@ -673,9 +673,18 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     width: 36px;
     height: 36px;
     border-radius: 8px;
-    color: var(--SmartThemeBodyColor);
+    /* Taken from ST's own input bar buttons in the theme on (floating-panel.js) */
+    color: var(--stqa_shortcut_color, var(--SmartThemeBodyColor));
+    opacity: var(--stqa_shortcut_opacity, 1);
     font-size: 15px;
     cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.stqa_floating_button:hover,
+.stqa_floating_button:active,
+.stqa_floating_button.stqa_on {
+    opacity: 1;
 }
 
 .stqa_floating_button:hover,

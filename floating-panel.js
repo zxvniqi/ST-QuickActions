@@ -225,8 +225,20 @@ function restorePosition() {
     place(x, y);
 }
 
+/** The buttons look like ST's own input bar buttons (color, dimming) in whatever theme is on. */
+function matchTheme() {
+    const reference = document.getElementById('options_button');
+    if (!reference) {
+        return;
+    }
+    const { color, opacity } = getComputedStyle(reference);
+    panel.style.setProperty('--stqa_shortcut_color', color);
+    panel.style.setProperty('--stqa_shortcut_opacity', opacity);
+}
+
 function setOpen(value) {
     open = value;
+    matchTheme();
     panel.classList.toggle('stqa_open', open);
     inputToggle?.classList.toggle('stqa_open', open);
     if (inInputBar()) {
@@ -356,6 +368,7 @@ export function applyFloatingSettings() {
     if (!panel) {
         build();
     }
+    matchTheme();
     for (const { key } of orderedFloatingButtons()) {
         const button = panel.querySelector(`:scope > [data-key="${key}"]`);
         // Buttons added in later versions start switched on
@@ -399,4 +412,7 @@ export function applyFloatingSettings() {
 
 export function initFloatingPanel() {
     applyFloatingSettings();
+    // The theme may still be loading when this extension starts
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    eventSource.on(eventTypes.APP_READY, matchTheme);
 }
