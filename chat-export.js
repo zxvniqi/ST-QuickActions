@@ -232,7 +232,8 @@ function headerButton(id, icon, title, onClick) {
     button.id = id;
     button.className = 'menu_button menu_button_icon';
     button.title = title;
-    button.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+    // The invisible character gives it a line of text, so it is as tall as the worded buttons
+    button.innerHTML = `<i class="fa-solid ${icon}"></i>&#8203;`;
     button.addEventListener('click', onClick);
     return button;
 }

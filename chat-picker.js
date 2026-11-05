@@ -243,7 +243,8 @@ function onCharacterClickCapture(event) {
     if (!isOn('chatPicker')) {
         return;
     }
-    const block = event.target.closest(`#${CHARACTER_LIST_ID} .character_select`);
+    // The character list, and the favorites row above it (HotSwaps: ST makes those character buttons too)
+    const block = event.target.closest(`#${CHARACTER_LIST_ID} .character_select, #right-nav-panel .hotswap .character_select`);
     if (!block) {
         return;
     }
@@ -251,8 +252,8 @@ function onCharacterClickCapture(event) {
     if (BULK_MODE_CLASSES.some(cls => list.classList.contains(cls))) {
         return;
     }
-    // ☆ / tag buttons and picking several characters (char-list-tools.js) aren't openings
-    if (event.target.closest('.stqa_char_tools') || document.body.classList.contains('stqa_char_picking')) {
+    // ☆ / tag buttons (char-list-tools.js) aren't openings
+    if (event.target.closest('.stqa_char_tools')) {
         return;
     }
 

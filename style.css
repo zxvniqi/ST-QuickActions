@@ -1925,10 +1925,10 @@ body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
     display: flex;
 }
 
-/* Themes size the tag pills themselves, so the pills are sized here */
-body.stqa_char_tools_on #rm_print_characters_block .character_select .tags .tag {
-    font-size: 11px !important;
-    padding: 2px 7px !important;
+/* Tags shown smaller under the buttons. Themes size the pills in their own ways (fixed line
+   heights, padding with !important), so the whole row is zoomed: it only ever gets smaller */
+body.stqa_char_tools_on #rm_print_characters_block .character_select .tags {
+    zoom: 0.82;
 }
 
 .stqa_char_tool {
@@ -1950,57 +1950,6 @@ body.stqa_char_tools_on #rm_print_characters_block .character_select .tags .tag 
 
 .stqa_char_tool.stqa_on {
     color: var(--golden, #f5c242);
-}
-
-body.stqa_char_picking #rm_print_characters_block .character_select {
-    cursor: pointer;
-}
-
-#rm_print_characters_block .character_select.stqa_char_picked {
-    outline: 2px solid var(--SmartThemeQuoteColor);
-    outline-offset: -2px;
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
-}
-
-#stqa_char_pick.stqa_active {
-    color: var(--SmartThemeQuoteColor);
-    opacity: 1;
-}
-
-/* Placed by viewport units only: ST can give <html> a transform, which makes % and bottom
-   offsets of fixed elements measure from <html> instead of the screen */
-#stqa_char_pick_bar {
-    position: fixed;
-    top: calc(100dvh - 62px);
-    left: 12px;
-    z-index: 4000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    box-sizing: border-box;
-    width: calc(100vw - 24px);
-    padding: 6px 8px;
-    background: var(--SmartThemeBlurTintColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 12px;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
-}
-
-#stqa_char_pick_bar .menu_button {
-    display: inline-flex;
-    gap: 5px;
-    margin: 0;
-    padding: 5px 10px;
-    white-space: nowrap;
-}
-
-.stqa_char_pick_count {
-    padding: 0 4px;
-    font-size: 0.9em;
-    white-space: nowrap;
 }
 
 /* Tag window */
@@ -2179,7 +2128,8 @@ div.stqa_tr_view.stqa_tr_long {
 }
 
 /* Translating: the button tapped spins */
-.stqa_busy::before {
+.stqa_busy:not(:has(> i))::before,
+.stqa_busy > i::before {
     content: "\f110" !important;
     display: inline-block;
     animation: fa-spin 1s linear infinite;
@@ -2204,7 +2154,7 @@ body.stqa_hide_hints .toggle-description {
     margin: 0;
 }
 /* Description: 文A right beside Ext. Media */
-#stqa_description_translate {
+#stqa_description_tr {
     margin-left: auto;
     margin-right: 4px;
 }
@@ -2227,4 +2177,48 @@ body.stqa_hide_hints .toggle-description {
 
 body:not(.stqa_wi_open) #stqa_wi_tr {
     display: none !important;
+}
+/* Compact themes: ☆ and tag in the card's top right corner instead, out of the layout */
+body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .character_select {
+    position: relative;
+}
+
+body.stqa_char_tools_float #rm_print_characters_block .stqa_char_tools {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: auto;
+    z-index: 1;
+}
+
+body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .character_name_block {
+    box-sizing: border-box;
+    padding-right: 72px;
+}
+
+/* Prompt list column titles: the buttons centred between "Name" and "Tokens", out of the layout */
+.completion_prompt_manager_list_head:has(> #stqa_prompt_tr) {
+    position: relative;
+}
+
+#stqa_prompt_tr {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* QR tools: sized to OK / Cancel by the script; icon in the middle */
+.stqa_qr_btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+/* Themes may give popup buttons a wide minimum width; the tools stay icon-narrow */
+.popup-controls .stqa_qr_btn {
+    min-width: 0 !important;
+    width: auto !important;
+    padding-left: 0.55em !important;
+    padding-right: 0.55em !important;
 }

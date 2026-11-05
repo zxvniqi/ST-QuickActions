@@ -1,6 +1,5 @@
 // Character list: a ★ (favorite) and a tag button on each character, so neither needs the
-// character opened. The tag button at the top of the list picks several characters (tap to
-// tick) and tags them all at once. Tags are ST's own (same list, same filters).
+// character opened. Tags are ST's own (same list, same filters).
 import { isOn } from './settings.js';
 import { addTagsToEntity, removeTagFromEntity, tags, tag_map, TAG_FOLDER_DEFAULT_TYPE } from '../../../tags.js';
 import { DEFAULT_FILTER_STATE } from '../../../filters.js';
@@ -10,12 +9,7 @@ import { onlyOwnChanges } from './mutations.js';
 
 const TITLE = '편의성 모음';
 const LIST = '#rm_print_characters_block';
-const PICK_BUTTON_ID = 'stqa_char_pick';
-const BAR_ID = 'stqa_char_pick_bar';
-
-// Characters ticked in pick mode, by avatar file (ids shift when the list changes)
-const picked = new Set();
-let picking = false;
+const FLOAT_CLASS = 'stqa_char_tools_float';
 
 const characterOf = row => SillyTavern.getContext().characters[Number(row.getAttribute('data-chid'))];
 
@@ -133,7 +127,24 @@ function decorate(row) {
     }
     const fav = isFav(character);
     tools.querySelector('[data-tool="fav"]').className = `stqa_char_tool ${fav ? 'fa-solid stqa_on' : 'fa-regular'} fa-star`;
-    row.classList.toggle('stqa_char_picked', picked.has(character.avatar));
+}
+
+/**
+ * Where the tags were works when the card has room there (a tall picture beside it). In
+ * compact themes it would add a line to every card: the buttons go to the card's top right
+ * corner instead, out of the layout. Measured on a card each time the list is drawn.
+ */
+function placeTools() {
+    const row = document.querySelector(`${LIST} .character_select[data-chid]`);
+    const tools = row?.querySelector('.stqa_char_tools');
+    if (!tools || !row.offsetHeight) {
+        return;
+    }
+    document.body.classList.remove(FLOAT_CLASS);
+    tools.style.display = 'none';
+    const without = row.offsetHeight;
+    tools.style.display = '';
+    document.body.classList.toggle(FLOAT_CLASS, row.offsetHeight > without + 2);
 }
 
 function decorateAll() {
@@ -141,55 +152,10 @@ function decorateAll() {
         return;
     }
     document.querySelectorAll(`${LIST} .character_select[data-chid]`).forEach(decorate);
+    placeTools();
 }
 
-function syncBar() {
-    let bar = document.getElementById(BAR_ID);
-    if (!picking) {
-        bar?.remove();
-        return;
-    }
-    if (!bar) {
-        bar = document.createElement('div');
-        bar.id = BAR_ID;
-        bar.innerHTML = `
-            <span class="stqa_char_pick_count"></span>
-            <div class="menu_button" data-do="tag"><i class="fa-solid fa-tags"></i><span>태그</span></div>
-            <div class="menu_button" data-do="fav"><i class="fa-solid fa-star"></i><span>즐겨찾기</span></div>
-            <div class="menu_button" data-do="done"><span>끝내기</span></div>`;
-        bar.addEventListener('click', async (event) => {
-            const action = event.target.closest('[data-do]')?.dataset.do;
-            const avatars = [...picked];
-            if (action === 'done') {
-                setPicking(false);
-            } else if (!avatars.length) {
-                action && toastr.info('캐릭터를 먼저 누릅니다.', TITLE);
-            } else if (action === 'tag') {
-                await openTagPopup(avatars);
-            } else if (action === 'fav') {
-                // All favorites already: take them off; otherwise make all favorites
-                const chosen = SillyTavern.getContext().characters.filter(character => picked.has(character.avatar));
-                const allFav = chosen.every(isFav);
-                for (const character of chosen.filter(character => isFav(character) === allFav)) {
-                    await toggleFav(character);
-                }
-            }
-        });
-        document.body.append(bar);
-    }
-    bar.querySelector('.stqa_char_pick_count').textContent = `${picked.size}명 선택`;
-}
-
-function setPicking(on) {
-    picking = on;
-    picked.clear();
-    document.body.classList.toggle('stqa_char_picking', on);
-    document.getElementById(PICK_BUTTON_ID)?.classList.toggle('stqa_active', on);
-    syncBar();
-    decorateAll();
-}
-
-/** Taps on the list: the ★ / tag buttons, and in pick mode a tap ticks instead of opening. */
+/** Taps on the ★ / tag buttons (not openings of the character). */
 function onListClick(event) {
     if (!isOn('charListTools')) {
         return;
@@ -200,52 +166,29 @@ function onListClick(event) {
         return;
     }
     const tool = event.target.closest('.stqa_char_tool')?.dataset.tool;
-    if (!tool && !picking) {
+    if (!tool) {
         return;
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    if (tool === 'fav') {
-        toggleFav(character);
-    } else if (tool === 'tag') {
-        openTagPopup([character.avatar]);
-    } else {
-        picked.has(character.avatar) ? picked.delete(character.avatar) : picked.add(character.avatar);
-        decorate(row);
-        syncBar();
-    }
-}
-
-function addPickButton() {
-    const anchor = document.getElementById('bulkEditButton');
-    if (!anchor || document.getElementById(PICK_BUTTON_ID)) {
-        return;
-    }
-    const button = document.createElement('i');
-    button.id = PICK_BUTTON_ID;
-    button.className = 'fa-solid fa-tags menu_button';
-    button.title = '여러 캐릭터 골라서 태그·즐겨찾기';
-    button.addEventListener('click', () => setPicking(!picking));
-    anchor.after(button);
+    tool === 'fav' ? toggleFav(character) : openTagPopup([character.avatar]);
 }
 
 export function applyCharListTools() {
     const on = isOn('charListTools');
     document.body.classList.toggle('stqa_char_tools_on', on);
-    if (!on && picking) {
-        setPicking(false);
-    }
     decorateAll();
 }
 
 export function initCharListTools() {
-    addPickButton();
     // Capture: runs before ST's own handler that opens the character
     document.getElementById('rm_print_characters_block')?.addEventListener('click', onListClick, true);
     // ST redraws the list (pages, filters, search): new rows get the buttons
     const list = document.querySelector(LIST);
     if (list) {
         new MutationObserver(records => !onlyOwnChanges(records) && decorateAll()).observe(list, { childList: true, subtree: true });
+        // Shown, resized or restyled by another theme: the room on a card may differ
+        new ResizeObserver(placeTools).observe(list);
     }
     applyCharListTools();
 }

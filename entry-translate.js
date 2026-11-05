@@ -379,8 +379,8 @@ async function deleteList(list) {
 
 // [action, icon or short word, title]
 const LIST_BUTTONS = [
-    ['names', '이름', '이름만 번역 (보기만 바뀝니다)'],
-    ['contents', '내용', '내용만 번역 (보기만 바뀝니다)'],
+    ['names', 'fa-heading', '이름만 번역 (보기만 바뀝니다)'],
+    ['contents', 'fa-file-lines', '내용만 번역 (보기만 바뀝니다)'],
     ['toggle', 'fa-repeat', '원문 ⇄ 번역 전환'],
     ['delete', 'fa-eraser', '번역 지우기'],
 ];
@@ -389,17 +389,27 @@ const ONE_BUTTONS = [
     ['switch', 'fa-repeat', '이 프롬프트만 원문 ⇄ 번역 전환'],
     ['delete', 'fa-eraser', '이 프롬프트의 번역 지우기'],
 ];
+const DESCRIPTION_BUTTONS = [
+    ['one', 'fa-language', '설명 번역'],
+    ['switch', 'fa-repeat', '설명만 원문 ⇄ 번역 전환'],
+    ['delete', 'fa-eraser', '설명의 번역 지우기'],
+];
 
-/** A group of buttons for a place, made to sit among ST's own toolbar buttons. */
-function buttonGroup(id, list, buttons) {
+/**
+ * A group of buttons for a place, made to sit among ST's own toolbar buttons. `worded`: built
+ * like ST's worded buttons (icon plus an invisible character) to match those beside it.
+ */
+function buttonGroup(id, list, buttons, worded = false) {
     const group = document.createElement('div');
     group.id = id;
     group.className = 'stqa_tr_icons';
     for (const [action, look, title] of buttons) {
         const button = document.createElement('div');
         const isIcon = look.startsWith('fa-');
-        button.className = `menu_button stqa_tr_icon${isIcon ? ` fa-solid ${look}` : ' stqa_tr_word'}${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
-        if (!isIcon) {
+        button.className = `menu_button stqa_tr_icon${isIcon && !worded ? ` fa-solid ${look}` : ''}${worded ? ' menu_button_icon' : ''}${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
+        if (worded) {
+            button.innerHTML = `<i class="fa-solid ${look}"></i>&#8203;`;
+        } else if (!isIcon) {
             button.textContent = look;
         }
         button.dataset.trList = list;
@@ -439,10 +449,10 @@ function addButtons() {
     if (close && !document.getElementById('stqa_prompt_form_tr')) {
         close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
-    // Prompt list: in its header, in the gap between "Prompts" and the token count
-    const header = document.querySelector('.completion_prompt_manager_header');
-    if (header?.firstElementChild && !header.querySelector('.stqa_tr_icons')) {
-        header.firstElementChild.after(buttonGroup('stqa_prompt_tr', 'prompts', LIST_BUTTONS));
+    // Prompt list: in its column titles, in the gap between "Name" and "Tokens"
+    const head = document.querySelector('.completion_prompt_manager_list_head');
+    if (head?.firstElementChild && !document.getElementById('stqa_prompt_tr')) {
+        head.firstElementChild.after(buttonGroup('stqa_prompt_tr', 'prompts', LIST_BUTTONS));
     }
     // World info: at the right end of the ↻ row
     const refreshButton = document.getElementById('world_refresh');
@@ -455,12 +465,10 @@ function addButtons() {
             move.before(oneIcon('stqa_wi_translate', '이 항목 번역 / 원문 전환'));
         }
     }
-    // Character description: next to its Ext. Media button
+    // Character description: translate / switch / delete, next to its Ext. Media button
     const media = document.getElementById('character_open_media_overrides');
-    if (media && !document.getElementById('stqa_description_translate')) {
-        const button = oneIcon('', '설명 번역 / 원문 전환', CHARACTER_FIELDS);
-        button.id = 'stqa_description_translate';
-        media.before(button);
+    if (media && !document.getElementById('stqa_description_tr')) {
+        media.before(buttonGroup('stqa_description_tr', 'character', DESCRIPTION_BUTTONS, true));
     }
     syncToggles();
 }

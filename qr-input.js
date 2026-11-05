@@ -92,18 +92,19 @@ function renderHistory(list, input) {
 }
 
 /**
- * 삭제 / 복사 at the left end of the OK / Cancel row and 기록 at its right end, as big as
- * those buttons; OK / Cancel stay where ST puts them.
+ * 삭제 / 복사 at the left end of the OK / Cancel row and 기록 at its right end; OK / Cancel stay
+ * where ST puts them. Each icon is followed by an invisible character, so the button has a
+ * line of text like OK / Cancel and comes out as tall as they are in any theme.
  */
 function addTools(input) {
     const left = document.createElement('div');
     left.className = 'stqa_qr_tools stqa_qr_tools_left';
     left.innerHTML = `
-        <div class="menu_button stqa_qr_btn" data-tool="clear" title="지금 쓴 내용 지우기"><i class="fa-solid fa-eraser"></i></div>
-        <div class="menu_button stqa_qr_btn" data-tool="copy" title="지금 쓴 내용 복사"><i class="fa-solid fa-copy"></i></div>`;
+        <div class="menu_button stqa_qr_btn" data-tool="clear" title="지금 쓴 내용 지우기"><i class="fa-solid fa-eraser"></i>&#8203;</div>
+        <div class="menu_button stqa_qr_btn" data-tool="copy" title="지금 쓴 내용 복사"><i class="fa-solid fa-copy"></i>&#8203;</div>`;
     const right = document.createElement('div');
     right.className = 'stqa_qr_tools stqa_qr_tools_right';
-    right.innerHTML = `<div class="menu_button stqa_qr_btn" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"><i class="fa-solid fa-clock-rotate-left"></i></div>`;
+    right.innerHTML = `<div class="menu_button stqa_qr_btn" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"><i class="fa-solid fa-clock-rotate-left"></i>&#8203;</div>`;
     const list = document.createElement('div');
     list.className = 'stqa_qr_history';
     list.hidden = true;
