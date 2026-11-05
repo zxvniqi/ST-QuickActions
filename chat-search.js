@@ -302,6 +302,56 @@ function stop() {
     }
 }
 
+/** Which chat is open (a temporary chat has no file name, so the character / group count too). */
+function chatKey() {
+    const context = SillyTavern.getContext();
+    return [context.groupId ?? '', context.characterId ?? '', context.getCurrentChatId() ?? ''].join('|');
+}
+
+// The chat the search was opened in
+let searchedChat = null;
+
+/**
+ * Another chat: the search closes. The same chat drawn again (it finishes loading, or another
+ * extension reloads it): the search stays, and finds its places again in the new drawing, at
+ * the same message and place where it can.
+ */
+function onChatChanged() {
+    if (!bar) {
+        return;
+    }
+    if (chatKey() !== searchedChat) {
+        stop();
+        return;
+    }
+    const word = wordOf();
+    if (!word || timer) {
+        return;
+    }
+    const keepIndex = results[current];
+    const keepPlace = place;
+    setTimeout(() => {
+        if (!bar || word !== wordOf()) {
+            return;
+        }
+        cancelRechecks();
+        searched = word;
+        results = find(word);
+        const position = results.indexOf(keepIndex);
+        clearMarks();
+        if (position === -1) {
+            current = -1;
+            places = [];
+            setCount();
+            results.length && showMessage(0, true, true).catch(error => console.error(`[${MODULE}] Search failed`, error));
+            return;
+        }
+        showMessage(position, true, false)
+            .then(() => places.length && showPlace(Math.min(keepPlace, places.length - 1)))
+            .catch(error => console.error(`[${MODULE}] Search failed`, error));
+    }, 300);
+}
+
 function start() {
     const form = document.getElementById('send_form');
     const chat = document.getElementById('chat');
@@ -364,6 +414,7 @@ function start() {
     formDisplay = form.style.display;
     form.style.display = 'none';
     form.after(bar);
+    searchedChat = chatKey();
     input.focus();
 }
 
@@ -395,5 +446,5 @@ export function initChatSearch() {
     menu.append(item);
     applyChatSearch();
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.CHAT_CHANGED, stop);
+    eventSource.on(eventTypes.CHAT_CHANGED, onChatChanged);
 }
