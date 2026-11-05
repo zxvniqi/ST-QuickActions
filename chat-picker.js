@@ -251,6 +251,10 @@ function onCharacterClickCapture(event) {
     if (BULK_MODE_CLASSES.some(cls => list.classList.contains(cls))) {
         return;
     }
+    // ☆ / tag buttons and picking several characters (char-list-tools.js) aren't openings
+    if (event.target.closest('.stqa_char_tools') || document.body.classList.contains('stqa_char_picking')) {
+        return;
+    }
 
     const context = SillyTavern.getContext();
     const characterId = Number(block.dataset.chid);

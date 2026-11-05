@@ -47,14 +47,11 @@ async function jumpTo(messageId) {
 }
 
 /**
- * Moves the chat to its top or bottom end and keeps it there while messages and pictures are
- * still being drawn (a smooth scroll stops halfway when the chat grows under it).
+ * Moves the chat to a spot and keeps it there while messages and pictures are still being
+ * drawn (a smooth scroll stops halfway when the chat grows under it). `target` gives the
+ * scroll position wanted, asked again each frame as things move.
  */
-function settleAtEnd(top) {
-    const chat = document.getElementById('chat');
-    if (!chat) {
-        return;
-    }
+function settle(chat, target) {
     let frame = 0;
     let steady = 0;
     let last = null;
@@ -68,7 +65,7 @@ function settleAtEnd(top) {
             chat.removeEventListener('wheel', stopNow);
             return;
         }
-        chat.scrollTo({ top: top ? 0 : chat.scrollHeight, behavior: 'instant' });
+        chat.scrollTo({ top: target(), behavior: 'instant' });
         steady = chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
         last = chat.scrollTop;
         height = chat.scrollHeight;
@@ -81,6 +78,19 @@ function settleAtEnd(top) {
         }
     };
     step();
+}
+
+/** The chat's top or bottom end. */
+function settleAtEnd(top) {
+    const chat = document.getElementById('chat');
+    chat && settle(chat, () => (top ? 0 : chat.scrollHeight));
+}
+
+/** The message's top edge at the top of the chat. */
+function settleAtMessage(messageId) {
+    const chat = document.getElementById('chat');
+    const message = chat?.querySelector(`.mes[mesid="${messageId}"]`);
+    message && settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
 }
 
 async function scrollToTop() {
@@ -122,6 +132,8 @@ async function askAndJump() {
         return;
     }
     await jumpTo(number);
+    // ST's smooth scroll stops short when messages above are still growing
+    settleAtMessage(number);
 }
 
 // Fields in the order the user reads them

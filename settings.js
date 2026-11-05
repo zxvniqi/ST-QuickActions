@@ -10,6 +10,11 @@ const defaultSettings = Object.freeze({
     presetFolders: true,
     toggleSetChips: true,
     rangeDelete: true,
+    charListTools: true,
+    chatExportAll: true,
+    chatNamePersona: true,
+    chatReplace: true,
+    entryTranslate: true,
     welcomeRecent: false,
     wandGrid: false,
     // {{char}} and {{user}} names swapped while on

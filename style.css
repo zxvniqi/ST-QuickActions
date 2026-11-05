@@ -1904,3 +1904,192 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
     font-size: 0.8em;
     opacity: 0.5;
 }
+/* Character list: ☆ and tag on each character */
+.stqa_char_tools {
+    display: none;
+    flex-direction: column;
+    align-self: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
+    display: flex;
+}
+
+.stqa_char_tool {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    opacity: 0.55;
+    cursor: pointer;
+}
+
+.stqa_char_tool:hover,
+.stqa_char_tool.stqa_on {
+    opacity: 1;
+}
+
+.stqa_char_tool.stqa_on {
+    color: var(--golden, #f5c242);
+}
+
+body.charListGrid #rm_print_characters_block .stqa_char_tools {
+    flex-direction: row;
+    margin: 0 auto;
+}
+
+body.stqa_char_picking #rm_print_characters_block .character_select {
+    cursor: pointer;
+}
+
+#rm_print_characters_block .character_select.stqa_char_picked {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+}
+
+#stqa_char_pick.stqa_active {
+    color: var(--SmartThemeQuoteColor);
+    opacity: 1;
+}
+
+/* Placed by viewport units only: ST can give <html> a transform, which makes % and bottom
+   offsets of fixed elements measure from <html> instead of the screen */
+#stqa_char_pick_bar {
+    position: fixed;
+    top: calc(100dvh - 62px);
+    left: 12px;
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    box-sizing: border-box;
+    width: calc(100vw - 24px);
+    padding: 6px 8px;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
+}
+
+#stqa_char_pick_bar .menu_button {
+    display: inline-flex;
+    gap: 5px;
+    margin: 0;
+    padding: 5px 10px;
+    white-space: nowrap;
+}
+
+.stqa_char_pick_count {
+    padding: 0 4px;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+/* Tag window */
+.stqa_tag_popup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_tag_popup h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_tag_new {
+    display: flex;
+    gap: 6px;
+}
+
+.stqa_tag_new input {
+    flex: 1;
+    margin: 0;
+}
+
+.stqa_tag_new .menu_button {
+    display: inline-flex;
+    gap: 5px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.stqa_tag_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.stqa_tag_chip {
+    padding: 4px 10px;
+    border: 1px solid var(--stqa_tag_color, var(--SmartThemeBorderColor));
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stqa_tag_chip.stqa_partial {
+    border-style: dashed;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_tag_chip.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
+}
+
+/* Chat word replace and translations */
+.stqa_replace,
+.stqa_translation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_replace h3,
+.stqa_translation h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_replace label:not(.checkbox_label) {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.stqa_replace input.text_pole {
+    margin: 0;
+}
+
+.stqa_replace_count {
+    min-height: 1.2em;
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+.stqa_translation_text {
+    max-height: 40vh;
+    overflow-y: auto;
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    white-space: pre-wrap;
+}
+
+body:not(.stqa_entry_translate_on) .stqa_wi_translate,
+body:not(.stqa_entry_translate_on) .stqa_prompt_translate,
+body:not(.stqa_entry_translate_on) .stqa_translate_names {
+    display: none !important;
+}
