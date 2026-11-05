@@ -1,7 +1,7 @@
 // "채팅에서 찾기" in the Options menu. The search box shows above the chat (under the top bar, or
 // under a chat top bar extension's bar), the ▲ / ▼ / ✕ buttons in place of the input. Typing a word
-// finds the messages that have it, newest first; ▲ goes to the next older one, ▼ back to newer
-// ones. The word is marked where it shows (CSS highlights: the message's own text is never
+// finds the messages that have it, newest first; ▲ goes to the next result (older, up the chat),
+// ▼ back to the previous one. The word is marked where it shows (CSS highlights: the message's own text is never
 // touched). The search runs over the chat's text in memory, so even long chats answer at once;
 // a message whose shown text turns out not to have the word (a regex hides it, it is in a status
 // panel's code) is skipped when it is reached. Messages not drawn yet are loaded the way 번호로
@@ -185,8 +185,8 @@ function start() {
     bar.id = BAR_ID;
     bar.innerHTML = `
         <span class="stqa_search_count"></span>
-        <div class="menu_button fa-solid fa-chevron-up" data-step="up" title="이전(위) 결과"></div>
-        <div class="menu_button fa-solid fa-chevron-down" data-step="down" title="다음(아래) 결과"></div>
+        <div class="menu_button fa-solid fa-chevron-up" data-step="up" title="다음 결과 (위로)"></div>
+        <div class="menu_button fa-solid fa-chevron-down" data-step="down" title="이전 결과 (아래로)"></div>
         <div class="menu_button fa-solid fa-xmark" data-step="close" title="닫기"></div>`;
     const input = top.querySelector('input');
     input.addEventListener('input', () => {
