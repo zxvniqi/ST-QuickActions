@@ -91,18 +91,23 @@ function renderHistory(list, input) {
     }
 }
 
-/** 삭제 / 복사 / 기록 (small icons) in the bottom left corner, out of the way of OK / Cancel. */
+/**
+ * 삭제 / 복사 at the left end of the OK / Cancel row and 기록 at its right end, as big as
+ * those buttons; OK / Cancel stay where ST puts them.
+ */
 function addTools(input) {
-    const tools = document.createElement('div');
-    tools.className = 'stqa_qr_tools';
-    tools.innerHTML = `
-        <div class="stqa_qr_tool fa-solid fa-eraser" data-tool="clear" title="지금 쓴 내용 지우기"></div>
-        <div class="stqa_qr_tool fa-solid fa-copy" data-tool="copy" title="지금 쓴 내용 복사"></div>
-        <div class="stqa_qr_tool fa-solid fa-clock-rotate-left" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"></div>`;
+    const left = document.createElement('div');
+    left.className = 'stqa_qr_tools stqa_qr_tools_left';
+    left.innerHTML = `
+        <div class="menu_button stqa_qr_btn" data-tool="clear" title="지금 쓴 내용 지우기"><i class="fa-solid fa-eraser"></i></div>
+        <div class="menu_button stqa_qr_btn" data-tool="copy" title="지금 쓴 내용 복사"><i class="fa-solid fa-copy"></i></div>`;
+    const right = document.createElement('div');
+    right.className = 'stqa_qr_tools stqa_qr_tools_right';
+    right.innerHTML = `<div class="menu_button stqa_qr_btn" data-tool="history" title="최근 입력 ${HISTORY_SIZE}개"><i class="fa-solid fa-clock-rotate-left"></i></div>`;
     const list = document.createElement('div');
     list.className = 'stqa_qr_history';
     list.hidden = true;
-    tools.addEventListener('click', (event) => {
+    const onTool = (event) => {
         const tool = event.target.closest('[data-tool]')?.dataset.tool;
         if (tool === 'clear') {
             fill(input, '');
@@ -114,15 +119,18 @@ function addTools(input) {
                 renderHistory(list, input);
             }
         }
-        tools.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
-    });
-    // In the OK / Cancel row's corner (CSS); the history opens right above the row
+        right.querySelector('[data-tool="history"]').classList.toggle('stqa_active', !list.hidden);
+    };
+    left.addEventListener('click', onTool);
+    right.addEventListener('click', onTool);
+    // At the two ends of the OK / Cancel row (CSS); the history opens right above the row
     const controls = input.closest('dialog')?.querySelector('.popup-controls');
     if (controls) {
-        controls.prepend(tools);
+        controls.prepend(left);
+        controls.append(right);
         controls.before(list);
     } else {
-        input.after(tools, list);
+        input.after(left, right, list);
     }
 }
 

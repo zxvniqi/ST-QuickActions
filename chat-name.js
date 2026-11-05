@@ -98,7 +98,8 @@ function addButtons() {
     for (const pencil of document.querySelectorAll(`#${LIST_ID} .renameChatButton`)) {
         if (!pencil.nextElementSibling?.classList.contains('stqa_chat_rename')) {
             const button = document.createElement('div');
-            button.className = 'stqa_chat_rename hoverglow opacity50p fa-solid fa-signature fa-sm';
+            // Built like ✎ itself, so it lines up with it
+            button.className = 'stqa_chat_rename hoverglow opacity50p fa-solid fa-user-pen fa-sm';
             button.title = '페르소나·캐릭터 이름으로 바꾸기';
             pencil.after(button);
         }

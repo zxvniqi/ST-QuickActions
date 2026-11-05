@@ -6,6 +6,7 @@ import { isOn } from './settings.js';
 const TITLE = '편의성 모음';
 const BUTTON_ID = 'stqa_export_all_chats';
 const IMPORT_ID = 'stqa_import_all_chats';
+const PAIR_ID = 'stqa_chat_io';
 
 // CRC-32 table for the zip format
 const CRC_TABLE = (() => {
@@ -219,21 +220,19 @@ async function importChats(picked) {
 }
 
 export function applyChatExport() {
-    for (const id of [BUTTON_ID, IMPORT_ID]) {
-        const button = document.getElementById(id);
-        if (button) {
-            // menu_button's own display would beat `hidden`
-            button.style.display = isOn('chatExportAll') ? '' : 'none';
-        }
+    const pair = document.getElementById(PAIR_ID);
+    if (pair) {
+        pair.style.display = isOn('chatExportAll') ? '' : 'none';
     }
 }
 
-/** An icon button like the header's own (no words: the header has no room on phones). */
+/** A button built like the header's own (✚ New Chat...), icon only: phones have no room for words. */
 function headerButton(id, icon, title, onClick) {
     const button = document.createElement('div');
     button.id = id;
-    button.className = `menu_button fa-solid ${icon} stqa_chat_io`;
+    button.className = 'menu_button menu_button_icon';
     button.title = title;
+    button.innerHTML = `<i class="fa-solid ${icon}"></i>`;
     button.addEventListener('click', onClick);
     return button;
 }
@@ -259,7 +258,11 @@ export function initChatExport() {
             toastr.error('내보내지 못했습니다.', TITLE);
         }));
         const importer = headerButton(IMPORT_ID, 'fa-folder-open', '전체 불러오기: 전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
-        anchor.after(exporter, importer, picker);
+        // One pair, so the header spreads them as a single item
+        const pair = document.createElement('div');
+        pair.id = PAIR_ID;
+        pair.append(exporter, importer, picker);
+        anchor.after(pair);
     }
     applyChatExport();
 }

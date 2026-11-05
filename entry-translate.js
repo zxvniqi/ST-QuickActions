@@ -17,6 +17,7 @@ const STORE = 'texts';
 const CHUNK = 3500; // characters per request; long texts go in parts, split at line breaks
 const VIEW_CLASS = 'stqa_tr_view';
 const HIDDEN_CLASS = 'stqa_tr_hidden';
+const LABEL_CLASS = 'stqa_tr_label';
 
 let translator = null;
 let openai = null;
@@ -108,20 +109,29 @@ async function translateText(text) {
     return translation;
 }
 
+// Set by tapping the spinning button: the running job stops before its next text
+let stopAsked = false;
+
 /** Translates the texts not translated yet, with a running count; returns how many failed. */
 async function translateAll(texts) {
     await loadCache();
     const todo = [...new Set(texts)].filter(text => text?.trim() && !isKorean(text) && !cache.has(text));
     if (!todo.length) {
+        toastr.info('새로 번역할 것이 없습니다. 이미 번역했거나 한국어입니다.', TITLE);
         return 0;
     }
-    const toast = toastr.info(`번역하는 중… 0/${todo.length}`, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
+    const toast = toastr.info(`번역하는 중… 0/${todo.length} (돌아가는 버튼을 누르면 멈춥니다)`, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
     let failed = 0;
+    let done = 0;
     try {
-        for (const [index, text] of todo.entries()) {
-            toast.find('.toast-message').text(`번역하는 중… ${index + 1}/${todo.length}`);
+        for (const text of todo) {
+            if (stopAsked) {
+                break;
+            }
+            toast.find('.toast-message').text(`번역하는 중… ${done + failed + 1}/${todo.length} (돌아가는 버튼을 누르면 멈춥니다)`);
             try {
                 await translateText(text);
+                done++;
             } catch (error) {
                 console.error(`[${MODULE}] Translating failed`, error);
                 failed++;
@@ -130,12 +140,15 @@ async function translateAll(texts) {
     } finally {
         toastr.clear(toast);
     }
-    failed
-        ? toastr.warning(`${todo.length - failed}개를 번역했고, ${failed}개는 번역하지 못했습니다. 확장 설정의 번역(Chat Translation) 설정을 확인합니다.`, TITLE)
-        : toastr.success(`${todo.length}개를 번역했습니다.`, TITLE);
+    if (stopAsked) {
+        toastr.info(`멈췄습니다. ${done}개를 번역했습니다.`, TITLE);
+    } else if (failed) {
+        toastr.warning(`${done}개를 번역했고, ${failed}개는 번역하지 못했습니다. 확장 설정의 번역(Chat Translation) 설정을 확인합니다.`, TITLE);
+    } else {
+        toastr.success(`${done}개를 번역했습니다.`, TITLE);
+    }
     return failed;
 }
-
 /* ---------- showing ---------- */
 
 const viewOn = () => isOn('entryTranslate') && getSettings().translationView === true;
@@ -173,6 +186,19 @@ function render() {
     const wanted = new Set();
     for (const { element, text } of targets()) {
         const translation = text && showsTranslation(text) && cache.get(text);
+        if (!element.matches('input, textarea')) {
+            // A label (prompt list name): its own text is swapped, so the row keeps its layout
+            if (translation) {
+                element.dataset.stqaOriginal ??= element.textContent;
+                element.textContent !== translation && (element.textContent = translation);
+                element.classList.add(LABEL_CLASS);
+            } else if (element.dataset.stqaOriginal !== undefined) {
+                element.textContent = element.dataset.stqaOriginal;
+                delete element.dataset.stqaOriginal;
+                element.classList.remove(LABEL_CLASS);
+            }
+            continue;
+        }
         let view = element.nextElementSibling?.classList.contains(VIEW_CLASS) ? element.nextElementSibling : null;
         if (!translation) {
             view?.remove();
@@ -180,9 +206,8 @@ function render() {
             continue;
         }
         if (!view) {
-            const isField = element.matches('input, textarea');
-            view = document.createElement(isField ? 'div' : 'span');
-            view.className = `${VIEW_CLASS}${isField ? ' text_pole' : ''}${element.matches('textarea') ? ' stqa_tr_long' : ''}`;
+            view = document.createElement('div');
+            view.className = `${VIEW_CLASS} text_pole${element.matches('textarea') ? ' stqa_tr_long' : ''}`;
             view.title = '번역문 (누르면 이것만 원문 보기)';
             element.after(view);
         }
@@ -215,7 +240,8 @@ async function setView(on) {
 
 async function promptTexts() {
     openai ??= await import('../../../openai.js');
-    return (openai.promptManager?.serviceSettings?.prompts ?? []).flatMap(prompt => [prompt.name, prompt.content]);
+    const prompts = openai.promptManager?.serviceSettings?.prompts ?? [];
+    return { names: prompts.map(prompt => prompt.name), contents: prompts.map(prompt => prompt.content) };
 }
 
 /** The entries of the world info open in the editor (saved data, so folded entries count too). */
@@ -232,28 +258,44 @@ async function worldEntries() {
 
 async function worldTexts() {
     const entries = await worldEntries();
-    return entries && Object.values(entries).flatMap(entry => [entry.comment, entry.content]);
+    return entries && { names: Object.values(entries).map(entry => entry.comment), contents: Object.values(entries).map(entry => entry.content) };
 }
 
 const fieldTexts = ids => ids.map(id => document.getElementById(id)?.value);
 
+/** What each place holds: { names, contents } (null when there is nothing open). */
 const LISTS = {
     prompts: promptTexts,
     world: worldTexts,
-    character: async () => fieldTexts(CHARACTER_FIELDS),
+    promptForm: async () => {
+        const [name, content] = fieldTexts(PROMPT_FIELDS);
+        return { names: [name], contents: [content] };
+    },
+    character: async () => ({ names: [], contents: fieldTexts(CHARACTER_FIELDS) }),
 };
+
+const allTexts = texts => [...(texts?.names ?? []), ...(texts?.contents ?? [])];
 
 /* ---------- actions (one at a time) ---------- */
 
 let busy = null;
 
-/** Runs a translating job with the button spinning; a second tap meanwhile only says so. */
+/**
+ * Runs a translating job with its button spinning. Tapping that button again stops it; any
+ * other translate button meanwhile only says one is running.
+ */
 async function job(button, task) {
     if (busy) {
-        toastr.info('이미 번역하는 중입니다. 끝난 뒤 다시 누릅니다.', TITLE);
+        if (button === busy) {
+            stopAsked = true;
+            toastr.info('멈추는 중… 지금 번역하는 것까지만 끝냅니다.', TITLE);
+        } else {
+            toastr.info('이미 번역하는 중입니다. 돌아가는 버튼을 누르면 멈춥니다.', TITLE);
+        }
         return;
     }
     busy = button;
+    stopAsked = false;
     button?.classList.add('stqa_busy');
     document.body.classList.add('stqa_translating');
     try {
@@ -263,15 +305,17 @@ async function job(button, task) {
         toastr.error('번역하지 못했습니다.', TITLE);
     } finally {
         busy = null;
+        stopAsked = false;
         button?.classList.remove('stqa_busy');
         document.body.classList.remove('stqa_translating');
     }
 }
 
-async function translateList(list) {
+/** Names or contents of a list translated, then shown translated. */
+async function translatePart(list, part) {
     const texts = await LISTS[list]();
     if (texts) {
-        await translateAll(texts);
+        await translateAll(texts[part]);
         await setView(true);
     }
 }
@@ -293,15 +337,28 @@ async function toggleOne(texts) {
     render();
 }
 
-async function deleteList(list) {
-    const texts = await LISTS[list]();
+/** One item (the open prompt): just switched between original and translation. */
+async function switchOne(texts) {
     await loadCache();
-    const kept = [...new Set(texts ?? [])].filter(text => text && cache.has(text));
+    const present = texts.filter(text => text?.trim() && cache.has(text));
+    if (!present.length) {
+        toastr.info('아직 번역하지 않았습니다. 文A를 먼저 누릅니다.', TITLE);
+        return;
+    }
+    const showing = present.every(showsTranslation);
+    present.forEach(text => itemView.set(text, showing ? 'original' : 'translation'));
+    render();
+}
+
+async function deleteList(list) {
+    const texts = allTexts(await LISTS[list]());
+    await loadCache();
+    const kept = [...new Set(texts)].filter(text => text && cache.has(text));
     if (!kept.length) {
         toastr.info('지울 번역이 없습니다.', TITLE);
         return;
     }
-    if (!await SillyTavern.getContext().Popup.show.confirm(`번역 ${kept.length}개 삭제`, '이 목록의 저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
+    if (!await SillyTavern.getContext().Popup.show.confirm(`번역 ${kept.length}개 삭제`, '저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
         return;
     }
     try {
@@ -310,28 +367,47 @@ async function deleteList(list) {
     } catch {
         // Only this visit kept them
     }
-    kept.forEach(text => cache.delete(text));
+    kept.forEach((text) => {
+        cache.delete(text);
+        itemView.delete(text);
+    });
     render();
     toastr.success(`번역 ${kept.length}개를 지웠습니다.`, TITLE);
 }
 
 /* ---------- buttons ---------- */
 
-/** Icon buttons for a list, made to sit among ST's own toolbar icons. */
-function listIcons(list) {
-    const icons = [
-        ['all', 'fa-language', '전체 번역 (이름과 내용 모두, 보기만 바뀝니다)'],
-        ['toggle', 'fa-repeat', '원문 ⇄ 번역 전환'],
-        ['delete', 'fa-eraser', '이 목록의 번역 지우기'],
-    ];
-    return icons.map(([action, icon, title]) => {
+// [action, icon or short word, title]
+const LIST_BUTTONS = [
+    ['names', '이름', '이름만 번역 (보기만 바뀝니다)'],
+    ['contents', '내용', '내용만 번역 (보기만 바뀝니다)'],
+    ['toggle', 'fa-repeat', '원문 ⇄ 번역 전환'],
+    ['delete', 'fa-eraser', '번역 지우기'],
+];
+const ONE_BUTTONS = [
+    ['one', 'fa-language', '이 프롬프트 번역 (이름과 내용)'],
+    ['switch', 'fa-repeat', '이 프롬프트만 원문 ⇄ 번역 전환'],
+    ['delete', 'fa-eraser', '이 프롬프트의 번역 지우기'],
+];
+
+/** A group of buttons for a place, made to sit among ST's own toolbar buttons. */
+function buttonGroup(id, list, buttons) {
+    const group = document.createElement('div');
+    group.id = id;
+    group.className = 'stqa_tr_icons';
+    for (const [action, look, title] of buttons) {
         const button = document.createElement('div');
-        button.className = `menu_button fa-solid ${icon} stqa_tr_icon${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
+        const isIcon = look.startsWith('fa-');
+        button.className = `menu_button stqa_tr_icon${isIcon ? ` fa-solid ${look}` : ' stqa_tr_word'}${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
+        if (!isIcon) {
+            button.textContent = look;
+        }
         button.dataset.trList = list;
         button.dataset.trDo = action;
         button.title = title;
-        return button;
-    });
+        group.append(button);
+    }
+    return group;
 }
 
 function oneIcon(className, title, fields) {
@@ -350,31 +426,28 @@ function syncToggles() {
         toggle.classList.toggle('stqa_active', on);
         toggle.title = on ? '지금 번역문을 보는 중 (누르면 원문 보기)' : '지금 원문을 보는 중 (누르면 번역 보기)';
     });
+    // World info buttons only while a world info is open
+    document.body.classList.toggle('stqa_wi_open', Boolean(document.getElementById('world_editor_select')?.value));
 }
 
 function addButtons() {
     if (!isOn('entryTranslate')) {
         return;
     }
-    // Prompt edit form: before its ✕
+    // Prompt edit form: in the middle of its bottom row (✕ on the left, ↺ 💾 on the right)
     const close = document.getElementById('completion_prompt_manager_popup_entry_form_close');
-    if (close && !document.getElementById('stqa_prompt_translate')) {
-        const button = oneIcon('', '이 프롬프트 번역 / 원문 전환', PROMPT_FIELDS);
-        button.id = 'stqa_prompt_translate';
-        close.before(button);
+    if (close && !document.getElementById('stqa_prompt_form_tr')) {
+        close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
     // Prompt list: in its header, in the gap between "Prompts" and the token count
     const header = document.querySelector('.completion_prompt_manager_header');
-    if (header?.firstElementChild && !header.querySelector('.stqa_tr_icon')) {
-        const group = document.createElement('div');
-        group.className = 'stqa_tr_icons';
-        group.append(...listIcons('prompts'));
-        header.firstElementChild.after(group);
+    if (header?.firstElementChild && !header.querySelector('.stqa_tr_icons')) {
+        header.firstElementChild.after(buttonGroup('stqa_prompt_tr', 'prompts', LIST_BUTTONS));
     }
-    // World info: after its ↻ (the sort list beside it gives up the room; the search box keeps it)
+    // World info: at the right end of the ↻ row
     const refreshButton = document.getElementById('world_refresh');
-    if (refreshButton && !refreshButton.parentElement.querySelector('.stqa_tr_icon')) {
-        refreshButton.after(...listIcons('world'));
+    if (refreshButton && !document.getElementById('stqa_wi_tr')) {
+        refreshButton.parentElement.append(buttonGroup('stqa_wi_tr', 'world', LIST_BUTTONS));
     }
     for (const entry of document.querySelectorAll('#world_popup_entries_list .world_entry')) {
         const move = entry.querySelector('.move_entry_button');
@@ -410,8 +483,12 @@ function onClick(event) {
             setView(!viewOn());
         } else if (action === 'delete') {
             deleteList(list);
+        } else if (action === 'switch') {
+            LISTS[list]().then(texts => switchOne(allTexts(texts)));
+        } else if (action === 'one') {
+            job(icon, async () => toggleOne(allTexts(await LISTS[list]())));
         } else {
-            job(icon, () => translateList(list));
+            job(icon, () => translatePart(list, action));
         }
         return;
     }
@@ -457,6 +534,7 @@ export function initEntryTranslate() {
     document.addEventListener('click', onClick, true);
     // Forms filled in place (no new elements): look again when they are opened or switched
     document.addEventListener('click', event => event.target.closest?.('.prompt-manager-edit-action, .prompt-manager-inspect-action, .world_entry .inline-drawer-toggle') && setTimeout(render, 50));
+    $('#world_editor_select').on('change', syncToggles);
     const { eventSource, eventTypes } = SillyTavern.getContext();
     eventSource.on(eventTypes.CHARACTER_EDITED ?? 'character_edited', () => setTimeout(render, 50));
     eventSource.on(eventTypes.CHAT_CHANGED, () => setTimeout(render, 50));

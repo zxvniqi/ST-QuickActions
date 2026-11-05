@@ -1847,30 +1847,37 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
 .stqa_folder_item.stqa_readonly {
     cursor: default;
 }
-/* QR input tools at the right end of the OK / Cancel row, clear of them */
-/* OK / Cancel stay centred in the room left of the tools, so they never meet */
+/* QR input tools at the two ends of the OK / Cancel row; OK / Cancel stay where ST puts them.
+   The tools are ST buttons (menu_button), so they get the theme's size and look. */
 .popup-controls:has(> .stqa_qr_tools) {
     position: relative;
     align-self: stretch;
     justify-content: center;
-    box-sizing: border-box;
-    padding-right: 116px;
 }
 
 .popup-controls > .stqa_qr_tools {
     position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    gap: 4px;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    gap: 5px;
     margin: 0;
 }
 
-.popup-controls > .stqa_qr_tools .stqa_qr_tool {
-    width: 34px;
-    height: 32px;
-    font-size: 1em;
-    opacity: 1;
+.popup-controls > .stqa_qr_tools_left {
+    left: 0;
+}
+
+.popup-controls > .stqa_qr_tools_right {
+    right: 0;
+}
+
+.popup-controls > .stqa_qr_tools .stqa_qr_btn {
+    margin: 0;
+}
+
+.stqa_qr_btn.stqa_active {
+    color: var(--SmartThemeQuoteColor);
 }
 
 .popup-controls ~ .stqa_qr_history,
@@ -2117,12 +2124,18 @@ body.stqa_char_picking #rm_print_characters_block .character_select {
     word-break: break-all;
 }
 
-/* A finger-sized tap area around the small icon, without taking room */
 .stqa_chat_rename {
-    padding: 10px 8px;
-    margin: -10px 0 -10px 0;
-    line-height: 1;
     cursor: pointer;
+}
+
+/* 전체 내보내기 / 불러오기: one pair, spaced like the header's own buttons */
+#stqa_chat_io {
+    display: flex;
+    gap: 5px;
+}
+
+#stqa_chat_io .menu_button {
+    margin: 0;
 }
 
 body:not(.stqa_chat_rename_on) .stqa_chat_rename {
@@ -2154,8 +2167,10 @@ div.stqa_tr_view.stqa_tr_long {
     overflow-y: auto;
 }
 
-span.stqa_tr_view {
-    border-bottom: 1px dashed currentColor;
+/* A translated prompt list name (its own text swapped) */
+.stqa_tr_label {
+    text-decoration: underline dashed;
+    text-underline-offset: 3px;
 }
 
 .stqa_tr_toggle.stqa_active {
@@ -2192,4 +2207,24 @@ body.stqa_hide_hints .toggle-description {
 #stqa_description_translate {
     margin-left: auto;
     margin-right: 4px;
+}
+/* Short word buttons (이름 / 내용) the size of the icon buttons beside them */
+.stqa_tr_word {
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Prompt edit form: the group in the middle of its bottom row */
+#stqa_prompt_form_tr {
+    margin: 0 auto;
+}
+
+/* World info: at the right end of its row, only while a world info is open */
+#stqa_wi_tr {
+    margin-left: auto;
+}
+
+body:not(.stqa_wi_open) #stqa_wi_tr {
+    display: none !important;
 }
