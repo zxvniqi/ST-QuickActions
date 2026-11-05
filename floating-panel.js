@@ -221,20 +221,41 @@ function place(x, y) {
     return { left, top };
 }
 
+const toggleOf = () => panel.querySelector('.stqa_floating_toggle');
+
+/** Where ··· sits on screen (saved; default: right edge, above the input bar). */
+function anchorSpot() {
+    const saved = getSettings().floatingPosition;
+    if (saved) {
+        return { x: saved.x * window.innerWidth, y: saved.y * window.innerHeight };
+    }
+    const size = toggleOf().getBoundingClientRect();
+    const inputTop = document.getElementById('send_form')?.getBoundingClientRect().top ?? window.innerHeight;
+    return { x: window.innerWidth - size.width - EDGE * 4, y: inputTop - size.height - EDGE * 6 };
+}
+
 /**
- * Floating: the saved spot (default: right edge, above the input bar), kept on screen as the
- * panel opens. In the input bar the row sits in the page flow and needs no position.
+ * Floating: ··· stays where it is and the buttons open out from it, toward the side with more
+ * room (left / up near the right / bottom, so ··· ends up last), so a second tap on the same
+ * spot folds it again. In the input bar the row sits in the page flow and needs no position.
  */
 function restorePosition() {
     if (inInputBar()) {
         return;
     }
-    const inputTop = document.getElementById('send_form')?.getBoundingClientRect().top ?? window.innerHeight;
+    const { x, y } = anchorSpot();
+    const vertical = panel.classList.contains('stqa_layout_vertical');
+    panel.classList.toggle('stqa_grow_back', open && (vertical ? y > window.innerHeight / 2 : x > window.innerWidth / 2));
     const box = panel.getBoundingClientRect();
-    const saved = getSettings().floatingPosition;
-    const x = saved ? saved.x * window.innerWidth : window.innerWidth - box.width - EDGE * 2;
-    const y = saved ? saved.y * window.innerHeight : inputTop - box.height - EDGE * 4;
-    place(x, y);
+    const toggle = toggleOf().getBoundingClientRect();
+    place(x - (toggle.left - box.left), y - (toggle.top - box.top));
+}
+
+/** Remembers where ··· is now (after a move), as a share of the window. */
+function saveAnchor() {
+    const toggle = toggleOf().getBoundingClientRect();
+    getSettings().floatingPosition = { x: toggle.left / window.innerWidth, y: toggle.top / window.innerHeight };
+    SillyTavern.getContext().saveSettingsDebounced();
 }
 
 /** The buttons look like ST's own input bar buttons (color, dimming) in whatever theme is on. */
@@ -283,9 +304,10 @@ function enableMoving() {
             // Let go: it sticks to the nearer side edge, out of the way of the messages
             const box = panel.getBoundingClientRect();
             const toLeft = box.left + box.width / 2 < window.innerWidth / 2;
-            const { left, top } = place(toLeft ? EDGE : window.innerWidth, box.top);
-            getSettings().floatingPosition = { x: left / window.innerWidth, y: top / window.innerHeight };
-            SillyTavern.getContext().saveSettingsDebounced();
+            place(toLeft ? EDGE : window.innerWidth, box.top);
+            saveAnchor();
+            // Open, it may now have to open out the other way from ···
+            open && restorePosition();
         } else if (!moved && button && event.type === 'pointerup') {
             button.dataset.key === 'toggle' ? setOpen(!open) : runAction(button.dataset.key);
         }

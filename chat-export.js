@@ -228,6 +228,7 @@ export function applyChatExport() {
     const pair = document.getElementById(PAIR_ID);
     if (pair) {
         pair.style.display = isOn('chatExportAll') ? '' : 'none';
+        pair.previousElementSibling?.classList.contains('stqa_line_break') && (pair.previousElementSibling.style.display = pair.style.display);
     }
 }
 
@@ -244,7 +245,7 @@ function headerButton(id, icon, title, onClick) {
 }
 
 export function initChatExport() {
-    const anchor = document.getElementById('select_chat_search');
+    const anchor = document.getElementById('chat_import_button');
     if (anchor && !document.getElementById(BUTTON_ID)) {
         const picker = document.createElement('input');
         picker.type = 'file';
@@ -270,12 +271,16 @@ export function initChatExport() {
             toastr.error('내보내지 못했습니다.', TITLE);
         }));
         const importer = headerButton(IMPORT_ID, 'fa-folder-open', '전체 불러오기: 전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
-        // One pair, right before the search box: the header's first row (New Chat, Import Chat)
-        // keeps ST's own spacing, and the search box gives up the room
+        // The header spreads its items evenly over each line: added to ST's first line they
+        // would push its buttons apart. So the first line stays ST's own (title, New Chat,
+        // Import Chat) and these two start the next line, in front of the search box
+        const lineBreak = document.createElement('div');
+        lineBreak.className = 'stqa_line_break';
         const pair = document.createElement('div');
         pair.id = PAIR_ID;
         pair.append(exporter, importer, picker);
-        anchor.before(pair);
+        const search = document.getElementById('select_chat_search');
+        (search ?? anchor.nextSibling)?.before(lineBreak, pair);
     }
     applyChatExport();
 }

@@ -42,61 +42,61 @@ const TABS = Object.freeze([
     {
         title: '메시지',
         features: [
-            ['deleteButton', '메시지 삭제 버튼', '메시지 메뉴(메시지 오른쪽 위 ⋯)에 휴지통 버튼을 추가합니다. 누르면 그 메시지 하나만 지웁니다.'],
-            ['menuToBottom', '메시지 끝으로 이동', '메시지 메뉴에 ↓ 버튼을 추가합니다. 누르면 그 메시지의 마지막 줄로 내려갑니다. 긴 답변을 읽을 때 씁니다.'],
-            ['footerSwipe', '답변 넘기기 버튼', '마지막 답변 아래에 ‹ 1/3 › 를 표시합니다. ‹ 는 이전 답변, › 는 다음 답변이고, 마지막 답변에서 › 를 누르면 새 답변을 만듭니다. 켜면 ST의 스와이프 화살표는 숨겨집니다. 위치(왼쪽·가운데·오른쪽)는 아래에서 고릅니다.'],
-            ['footerTop', '메시지 처음으로 이동', '메시지 아래에 ↑ 버튼을 표시합니다. 누르면 그 메시지의 첫 줄로 올라갑니다. 위치는 아래에서 고릅니다.'],
-            ['selectionTools', '드래그로 수정·삭제', '메시지 글자를 드래그해 고르면 수정·삭제 버튼이 나타납니다. 번역된 메시지면 원문의 같은 부분도 함께 고치거나 지웁니다.'],
-            ['keepStatusPanels', '렌더링 픽스', '상태창 같은 HTML이 그려지지 않고 코드로 보이면 그 메시지를 다시 그립니다. 번역은 그대로 둡니다.'],
+            ['deleteButton', '메시지 삭제 버튼', '메시지 메뉴(메시지 오른쪽 위 ⋯)에 휴지통 버튼이 생깁니다. 누르면 그 메시지만 지웁니다.'],
+            ['menuToBottom', '메시지 끝으로 가기', '메시지 메뉴에 ↓ 버튼이 생깁니다. 누르면 그 메시지의 마지막 줄로 내려갑니다. 긴 답변을 읽다가 끝으로 갈 때 편합니다.'],
+            ['footerSwipe', '답변 넘기기 버튼', '마지막 답변 아래에 ‹ 1/3 › 이 생깁니다. ‹ 는 이전 답변, › 는 다음 답변을 보여 주고, 마지막 답변에서 › 를 누르면 새 답변을 만듭니다. 켜 두면 ST 기본 스와이프 화살표는 숨겨집니다. 위치는 아래에서 고릅니다.'],
+            ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 올라갑니다. 위치는 아래에서 고릅니다.'],
+            ['selectionTools', '드래그해서 고치기·지우기', '메시지 글자를 드래그해 고르면 고치기·지우기 버튼이 나타납니다. 번역해 둔 메시지라면 원문의 같은 부분도 함께 고치거나 지웁니다.'],
+            ['keepStatusPanels', '상태창 렌더링 픽스', '상태창 같은 HTML이 그려지지 않고 코드로 보이면, 그 메시지를 다시 그려서 제대로 보이게 합니다. 번역문은 그대로 둡니다.'],
         ],
     },
     {
         title: '채팅',
         features: [
-            ['chatPicker', '채팅 목록 먼저 보기', '캐릭터 목록이나 즐겨찾기 줄에서 캐릭터를 누르면, 마지막 채팅으로 바로 들어가지 않고 그 캐릭터의 채팅 목록을 먼저 보여 줍니다. 그 목록에서 채팅 이름 바꾸기·내보내기·지우기, 전체 내보내기·불러오기도 할 수 있습니다.'],
-            ['chatExportAll', '채팅 전체 내보내기·불러오기', 'ST 채팅 목록(Chat History) 창의 검색칸 앞에 버튼 2개를 추가합니다. zip 아이콘은 그 캐릭터의 채팅을 모두 zip 파일 하나로 내려받고, 폴더 아이콘은 그 zip 파일(또는 .jsonl 여러 개)을 지금 캐릭터에 채팅 이름 그대로 불러옵니다. 같은 이름이 있으면 뒤에 (2)를 붙이고, 있던 채팅은 건드리지 않습니다.'],
-            ['chatQuickRename', '채팅 이름 빠르게 바꾸기', 'ST 채팅 목록 창에서 채팅 이름 옆 ✎ 옆에 사람 모양 버튼을 추가합니다. 누르면 페르소나 이름, 페르소나 이름 + 날짜, 캐릭터 이름, 캐릭터 이름 + 날짜 중에서 골라 바꿉니다. 페르소나는 그 채팅에 고정한 페르소나(없으면 지금 페르소나), 날짜는 채팅을 만든 날짜입니다.'],
-            ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"를 추가합니다. 첫 메시지와 끝 메시지를 누르면 그 사이가 골라지고, 아래 삭제 버튼으로 지웁니다.'],
-            ['chatReplace', '채팅 단어 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"를 추가합니다. 지금 채팅의 모든 메시지에서 한 단어를 다른 단어로 바꿉니다(예: 상태창의 2024 → 2205). 다른 답변(스와이프)과 번역문도 바꿉니다. 답변을 만드는 중에는 쓸 수 없습니다.'],
-            ['welcomeRecent', '시작 화면 최근 채팅', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지를 숨기고, 최근 채팅 목록을 모두 펼쳐 보여 줍니다.'],
+            ['chatPicker', '캐릭터 누르면 채팅 목록부터', '캐릭터 목록이나 즐겨찾기 줄에서 캐릭터를 누르면, 마지막 채팅으로 바로 들어가지 않고 채팅 목록부터 보여 줍니다. 목록에서 들어갈 채팅을 고르거나 이름 바꾸기·내보내기·삭제를 할 수 있고, 위쪽 아이콘으로 채팅 전체를 zip으로 내보내거나 불러올 수 있습니다.'],
+            ['chatExportAll', '채팅 전체 내보내기·불러오기', 'ST 채팅 목록 창(Chat History)의 "채팅 가져오기" 옆에 아이콘 두 개가 생깁니다. zip 아이콘을 누르면 그 캐릭터의 채팅을 전부 zip 파일 하나로 받고, 폴더 아이콘을 누르면 그 zip 파일(또는 .jsonl 파일 여러 개)을 원래 채팅 이름 그대로 불러옵니다. 이름이 겹치면 뒤에 (2)를 붙이며, 원래 있던 채팅은 건드리지 않습니다.'],
+            ['chatQuickRename', '채팅 이름 한 번에 바꾸기', 'ST 채팅 목록 창에서 채팅 이름 옆 연필 버튼 옆에 사람 모양 버튼이 생깁니다. 누르면 페르소나 이름, 페르소나 이름 + 날짜, 캐릭터 이름, 캐릭터 이름 + 날짜 중 하나를 골라 바로 바꿀 수 있습니다. 페르소나는 그 채팅에 고정해 둔 페르소나(없으면 지금 페르소나)이고, 날짜는 채팅을 만든 날입니다.'],
+            ['rangeDelete', '메시지 여러 개 한꺼번에 지우기', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다. 첫 메시지와 끝 메시지를 누르면 그 사이 메시지가 모두 골라지고, 아래 삭제 버튼으로 한꺼번에 지웁니다.'],
+            ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 어떤 단어를 다른 단어로 한꺼번에 바꿉니다(예: 상태창의 2024를 2205로). 다른 답변(스와이프)과 번역문도 같이 바꾸며, 답변을 만드는 중에는 쓸 수 없습니다.'],
+            ['welcomeRecent', '시작 화면에 최근 채팅 펼치기', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지를 숨기고, 최근 채팅 목록을 모두 펼쳐서 보여 줍니다.'],
         ],
     },
     {
         title: '캐릭터',
         features: [
-            ['charListTools', '목록에서 즐겨찾기·태그', '캐릭터 목록의 캐릭터마다 ☆(즐겨찾기)와 태그 버튼을 추가합니다. 캐릭터를 열지 않고 즐겨찾기를 켜고 끄거나, 태그를 넣고 빼고 새로 만들 수 있습니다.'],
-            ['hdAvatars', '프로필 사진 고화질', '채팅과 캐릭터 목록의 프로필 사진을 작은 썸네일 대신 원본 사진으로 보여 줍니다. 목록의 사진은 화면에 보일 때만 바꿉니다. 원본이 큰 캐릭터가 많으면 느려질 수 있습니다.'],
+            ['charListTools', '목록에서 바로 즐겨찾기·태그', '캐릭터 목록의 캐릭터마다 ☆(즐겨찾기)와 태그 버튼이 생깁니다. 캐릭터를 열지 않고도 즐겨찾기를 켜고 끄거나, 태그를 붙이고 떼고 새로 만들 수 있습니다.'],
+            ['hdAvatars', '프로필 사진 선명하게', '채팅과 캐릭터 목록의 프로필 사진을 작은 썸네일 대신 원본 사진으로 보여 줍니다. 캐릭터 목록의 사진은 화면에 보일 때만 바꿉니다. 원본 사진이 큰 캐릭터가 많으면 느려질 수 있으니, 느리다면 이 기능부터 꺼 보세요.'],
         ],
     },
     {
         title: '입력창',
         features: [
-            ['qrBar', 'QR바 정리', '입력창 위 QR 버튼을 세트마다 한 줄로 정리하고, 줄마다 옆으로 밀어 넘기게 합니다. 여는 방식은 아래에서 고릅니다: ▲▼ 버튼(마법봉 옆), 얇은 바(입력창 바로 위), 세트 이름(이름을 누르면 그 세트가 펼쳐짐).'],
-            ['qrHistory', 'QR 입력창 도구', 'QR이 띄우는 입력창의 OK·취소 줄 왼쪽에 지우기·복사, 오른쪽에 기록 버튼을 추가합니다. 기록은 최근 입력 3개를 보여 주며, 어느 QR에서 입력했든 함께 나옵니다.'],
-            ['hideInputPlaceholder', '입력창 안내 문구 숨기기', '입력창에 흐리게 보이는 "Type a message…" 안내 문구를 숨깁니다.'],
+            ['qrBar', 'QR바 정리', '입력창 위 QR 버튼을 세트별로 한 줄씩 정리하고, 줄마다 옆으로 밀어서 넘기게 합니다. 여는 방법은 아래에서 고릅니다. ▲▼ 버튼(마법봉 옆), 얇은 바(입력창 바로 위), 세트 이름(이름을 누르면 그 세트가 펼쳐짐) 중 하나입니다.'],
+            ['qrHistory', 'QR 입력창 도구', 'QR이 띄우는 입력창에서 확인·취소 버튼 줄 왼쪽에 지우기·복사, 오른쪽에 최근 입력 버튼이 생깁니다. 최근 입력은 마지막으로 입력한 3개를 보여 주며, 어느 QR에서 입력했는지와 상관없이 함께 나옵니다.'],
+            ['hideInputPlaceholder', '입력창 안내 문구 숨기기', '입력창에 흐리게 보이는 "Type a message…" 문구를 숨깁니다.'],
         ],
     },
     {
         title: '바로가기',
         features: [
-            ['floatingPanel', '바로가기 버튼', '자주 쓰는 동작을 한곳에 모읍니다. 보이는 방식은 아래에서 고릅니다: 입력창 위에 펼치기(입력창 왼쪽 ⋯ 버튼), 입력창 위에 항상 보이기, 떠 있는 버튼(화면 가장자리, 꾹 눌러 옮김). 아래 칩을 눌러 보일 버튼을 고르고, 칩을 꾹 누른 채 끌어서 순서를 바꿉니다.'],
+            ['floatingPanel', '바로가기 버튼', '자주 쓰는 기능 버튼을 한곳에 모아 둡니다. 보이는 방식은 아래에서 고릅니다. 입력창 위에 펼치기(입력창 왼쪽 ··· 버튼으로 열고 닫기), 입력창 위에 늘 보이기, 떠 있는 버튼(화면 가장자리에 붙고 꾹 눌러 옮김) 중 하나입니다. 떠 있는 버튼은 펼쳐도 ··· 자리가 그대로라서 같은 곳을 한 번 더 누르면 닫힙니다. 아래 칩을 눌러 보일 버튼을 고르고, 칩을 꾹 누른 채 끌면 순서를 바꿀 수 있습니다.'],
         ],
     },
     {
         title: '프롬프트',
         features: [
-            ['presetFolders', '프롬프트 폴더·관리', '프롬프트 선택 칸을 누르면 폴더로 묶인 목록이 열립니다. 목록 맨 아래 "프롬프트 관리"에서 순서 바꾸기, 폴더 만들기·옮기기, 여러 개 지우기를 합니다.'],
-            ['toggleSetChips', '프롬프트 빠른 전환', '프롬프트 항목 목록 위에 버튼을 추가합니다. 지금 켜고 끈 상태를 이름 붙여 저장해 두면, 그 버튼을 눌러 한 번에 그 상태로 바꿉니다. ✎ 로 덮어쓰기·이름 바꾸기·지우기를 합니다. 프롬프트마다 따로 저장됩니다.'],
-            ['entryTranslate', '번역 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 읽게 해 줍니다. 화면에 보이는 글만 바뀌고, 저장되고 AI에게 보내지는 것은 언제나 원문입니다.\n· 프롬프트 목록(이름과 토큰 사이)과 월드인포 도구 줄(월드인포를 고른 뒤): 꼬리표 아이콘은 이름, 줄글 아이콘은 내용을 번역하고, ⇄는 원문과 번역을 오가며, 지우개는 그 목록의 번역을 지웁니다.\n· 프롬프트 편집 창, 월드인포 항목, 캐릭터 설명: 文A(번역), ⇄(그것만 전환), 지우개(그것의 번역 지우기).\n· 번역 중에는 누른 버튼이 돌고 진행 수가 알림으로 나옵니다. 그 버튼을 다시 누르면 멈춥니다.\n· 점선 테두리가 번역문이고, 누르면 그것만 원문으로 돌아가 고칠 수 있습니다.\n· 번역기는 아래에서 고릅니다. 기본은 구글 번역이고, AI를 고르면 번역 프롬프트를 직접 쓸 수 있습니다. 번역은 이 기기에 저장해 두어 다시 번역하지 않습니다. 다른 번역기로 다시 하려면 지우개로 지운 뒤 번역합니다.'],
-            ['hideSettingHints', '설정 설명 글씨 숨기기', 'ST 설정 항목 아래에 흐리게 붙은 설명 글씨(예: "생성되는 대답을 조금씩 표시합니다…")를 숨깁니다.'],
+            ['presetFolders', '프롬프트 폴더·관리', '프롬프트(프리셋) 선택 칸을 누르면 폴더로 정리된 목록이 열립니다. 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지울 수 있습니다.'],
+            ['toggleSetChips', '항목 켜기·끄기 상태 저장', '프롬프트 항목 목록 위에 버튼 줄이 생깁니다. 지금 켜고 끈 상태에 이름을 붙여 저장해 두면, 그 버튼 하나로 언제든 그 상태로 돌아갈 수 있습니다. ✎ 를 누르면 덮어쓰기·이름 바꾸기·지우기를 할 수 있고, 프롬프트마다 따로 저장됩니다.'],
+            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 볼 수 있습니다. 화면에 보이는 글만 바뀌고, 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 프롬프트 목록(이름과 토큰 사이): 이름 번역, 내용 번역, 원문/번역 바꿔 보기, 번역 지우기 버튼이 있습니다.\n· 월드인포(페이지 넘김 옆 文A): 누르면 같은 메뉴가 열립니다. 월드인포를 고른 뒤에만 보입니다.\n· 프롬프트 편집 창, 월드인포 항목, 캐릭터 설명: 文A로 그것만 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 번역을 지웁니다.\n· 번역하는 동안 누른 버튼이 돌고, 몇 개째인지 알림이 뜹니다. 돌고 있는 버튼을 다시 누르면 멈춥니다.\n· 점선 테두리가 있는 글이 번역문입니다. 누르면 그 글만 원문으로 돌아가서 고칠 수 있습니다.\n· 번역 방식은 아래에서 고릅니다. 기본은 구글 번역이고, AI를 고르면 쓸 API와 번역 프롬프트를 따로 정할 수 있습니다. 연결 프로필을 고르면 그 프로필의 API만 쓰고, 프롬프트는 여기 적은 것만 씁니다.\n· 번역은 이 기기에 저장해 두고 다시 번역하지 않습니다. 다른 방식으로 다시 번역하려면 먼저 지우개로 지우세요.'],
+            ['hideSettingHints', 'ST 설정 설명 글씨 숨기기', 'ST 설정 항목 아래에 흐리게 붙어 있는 설명 글씨(예: "생성되는 대답을 조금씩 표시합니다…")를 모두 숨깁니다.'],
         ],
     },
     {
         title: '메뉴 정리',
         features: [
-            ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정의 항목을 숨기거나 순서를 바꿉니다. 아래 "메뉴 정리 열기"에서 합니다. 끄면 원래대로 돌아갑니다.'],
-            ['wandGrid', '확장 메뉴 아이콘 보기', '확장 메뉴(입력창 왼쪽 마법봉)를 글자 없이 아이콘만, 한 줄에 2개씩 보여 줍니다. 아이콘을 꾹 누르거나 마우스를 올리면 이름이 보입니다.'],
-            ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접고 펼칩니다. 실행 순서는 바뀌지 않습니다. 폴더 편집은 정규식 창의 "폴더" 버튼에서 합니다.'],
+            ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정에 있는 항목을 숨기거나 순서를 바꿉니다. 아래 "메뉴 정리 열기"를 눌러 정리하고, 이 기능을 끄면 원래대로 돌아갑니다.'],
+            ['wandGrid', '확장 메뉴를 아이콘으로', '확장 메뉴(입력창 왼쪽 마법봉)를 글자 없이 아이콘만, 한 줄에 2개씩 보여 줍니다. 아이콘을 꾹 누르면(컴퓨터는 마우스를 올리면) 이름이 보입니다.'],
+            ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접었다 펼 수 있습니다. 정규식이 실행되는 순서는 바뀌지 않습니다. 폴더는 정규식 창의 "폴더" 버튼에서 만들고 고칩니다.'],
         ],
     },
 ]);
@@ -214,20 +214,28 @@ function enableChipOrdering(chips, onReorder) {
     });
 }
 
-/** Translator: Google, or an AI (the connection in use or a saved connection profile) with its prompt. */
+/**
+ * Translator: Google, or an AI. For the AI, the API (the one in use, or a saved connection
+ * profile's) and the prompt are set apart: a profile lends only its API, never its preset.
+ */
 function translatorControls(settings) {
     const box = document.createElement('div');
     box.className = 'stqa_translator';
     const profiles = SillyTavern.getContext().extensionSettings.connectionManager?.profiles ?? [];
-    const options = [
-        { value: 'google', label: '번역기: 구글 번역 (기본)' },
-        { value: 'ai:', label: '번역기: 지금 연결된 AI' },
-        ...profiles.map(profile => ({ value: `ai:${profile.id}`, label: `번역기: AI 연결 프로필 "${profile.name}"` })),
+    const methods = [
+        { value: 'google', label: '번역 방식: 구글 번역 (기본)' },
+        { value: 'ai', label: '번역 방식: AI' },
     ];
-    const current = settings.translateEngine === 'ai' ? `ai:${settings.translateProfile ?? ''}` : 'google';
+    // Which API the AI translation goes to; the prompt below is chosen on its own
+    const connections = [
+        { value: '', label: 'AI 연결: 지금 쓰고 있는 API' },
+        ...profiles.map(profile => ({ value: profile.id, label: `AI 연결: ${profile.name} (연결 프로필)` })),
+    ];
+    const ai = document.createElement('div');
+    ai.className = 'stqa_translator_ai';
     const prompt = document.createElement('div');
     prompt.className = 'stqa_translator_prompt';
-    prompt.innerHTML = '<small>번역 프롬프트 · {{text}} 자리에 번역할 글이 들어갑니다. 비우면 기본 프롬프트를 씁니다.</small><textarea class="text_pole" rows="4"></textarea><div class="menu_button stqa_panel_button"><i class="fa-solid fa-rotate-left"></i><span>기본 프롬프트로</span></div>';
+    prompt.innerHTML = '<small>번역 프롬프트: {{text}} 자리에 번역할 글이 들어갑니다.</small><textarea class="text_pole" rows="5"></textarea><div class="menu_button stqa_panel_button"><i class="fa-solid fa-rotate-left"></i><span>기본 프롬프트로 되돌리기</span></div>';
     const area = prompt.querySelector('textarea');
     area.value = settings.translatePrompt || DEFAULT_TRANSLATE_PROMPT;
     area.addEventListener('input', () => {
@@ -239,18 +247,25 @@ function translatorControls(settings) {
         settings.translatePrompt = '';
         saveSettings();
     });
-    prompt.hidden = current === 'google';
-    box.append(createInlineSelect({
-        // A profile deleted since: shown as the connection in use
-        options,
-        value: options.some(option => option.value === current) ? current : 'ai:',
+    ai.append(createInlineSelect({
+        options: connections,
+        // A profile deleted since: shown as the API in use
+        value: connections.some(option => option.value === settings.translateProfile) ? settings.translateProfile : '',
         onChange: (value) => {
-            settings.translateEngine = value === 'google' ? 'google' : 'ai';
-            settings.translateProfile = value.startsWith('ai:') ? value.slice(3) : '';
-            prompt.hidden = value === 'google';
+            settings.translateProfile = value;
             saveSettings();
         },
     }), prompt);
+    ai.hidden = settings.translateEngine !== 'ai';
+    box.append(createInlineSelect({
+        options: methods,
+        value: settings.translateEngine === 'ai' ? 'ai' : 'google',
+        onChange: (value) => {
+            settings.translateEngine = value;
+            ai.hidden = value !== 'ai';
+            saveSettings();
+        },
+    }), ai);
     return box;
 }
 

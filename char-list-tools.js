@@ -168,12 +168,6 @@ function decorateAll() {
     added && placeTools();
 }
 
-// ST draws a list in several steps (cards, then their tags): one pass after it settles
-let decorateTimer = 0;
-function scheduleDecorate() {
-    clearTimeout(decorateTimer);
-    decorateTimer = setTimeout(decorateAll, 60);
-}
 
 /** Taps on the ★ / tag buttons (not openings of the character). */
 function onListClick(event) {
@@ -206,7 +200,9 @@ export function initCharListTools() {
     // ST redraws the list (pages, filters, search): new rows get the buttons
     const list = document.querySelector(LIST);
     if (list) {
-        new MutationObserver(records => !onlyOwnChanges(records) && isOn('charListTools') && scheduleDecorate()).observe(list, { childList: true, subtree: true });
+        // Right away, in the same moment ST draws the cards (no flash of cards without buttons);
+        // cards that have them already are only checked
+        new MutationObserver(records => !onlyOwnChanges(records) && decorateAll()).observe(list, { childList: true, subtree: true });
         // Shown, resized or restyled by another theme: the room on a card may differ
         new ResizeObserver(placeTools).observe(list);
     }

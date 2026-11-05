@@ -92,7 +92,7 @@ function chunks(text) {
     return parts;
 }
 
-export const DEFAULT_TRANSLATE_PROMPT = '다음 글을 자연스러운 한국어로 번역하세요. 줄바꿈, 마크다운, HTML 태그, {{char}} 같은 매크로와 고유명사는 그대로 두고, 설명 없이 번역문만 출력하세요.\n\n{{text}}';
+export const DEFAULT_TRANSLATE_PROMPT = 'Translate the text below into natural, fluent Korean. Keep line breaks, Markdown, HTML tags, macros such as {{char}} and {{user}}, and proper nouns exactly as they are. Reply with the translation only, without any notes or explanations.\n\n{{text}}';
 
 /** One piece through the chosen engine: Google (ST's translator) or an AI connection. */
 async function translatePiece(part) {
@@ -141,7 +141,7 @@ async function translateAll(texts) {
         toastr.info('새로 번역할 것이 없습니다. 이미 번역했거나 한국어입니다.', TITLE);
         return 0;
     }
-    const toast = toastr.info(`번역하는 중… 0/${todo.length} (돌아가는 버튼을 누르면 멈춥니다)`, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
+    const toast = toastr.info(`번역하는 중… 0/${todo.length} (돌고 있는 버튼을 누르면 멈춥니다)`, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
     let failed = 0;
     let done = 0;
     try {
@@ -149,7 +149,7 @@ async function translateAll(texts) {
             if (stopAsked) {
                 break;
             }
-            toast.find('.toast-message').text(`번역하는 중… ${done + failed + 1}/${todo.length} (돌아가는 버튼을 누르면 멈춥니다)`);
+            toast.find('.toast-message').text(`번역하는 중… ${done + failed + 1}/${todo.length} (돌고 있는 버튼을 누르면 멈춥니다)`);
             try {
                 await translateText(text);
                 done++;
@@ -230,7 +230,7 @@ function render() {
         if (!view) {
             view = document.createElement('div');
             view.className = `${VIEW_CLASS} text_pole${element.matches('textarea') ? ' stqa_tr_long' : ''}`;
-            view.title = '번역문 (누르면 이것만 원문 보기)';
+            view.title = '번역문 · 누르면 이 글만 원문으로';
             element.after(view);
         }
         view.dataset.original = text;
@@ -315,9 +315,9 @@ async function job(button, task) {
     if (busy) {
         if (button === busy) {
             stopAsked = true;
-            toastr.info('멈추는 중… 지금 번역하는 것까지만 끝냅니다.', TITLE);
+            toastr.info('멈추는 중입니다. 지금 번역 중인 글까지만 마칩니다.', TITLE);
         } else {
-            toastr.info('이미 번역하는 중입니다. 돌아가는 버튼을 누르면 멈춥니다.', TITLE);
+            toastr.info('이미 번역하고 있습니다. 멈추려면 돌고 있는 버튼을 누르세요.', TITLE);
         }
         return;
     }
@@ -369,7 +369,7 @@ async function switchOne(texts) {
     await loadCache();
     const present = texts.filter(text => text?.trim() && cache.has(text));
     if (!present.length) {
-        toastr.info('아직 번역하지 않았습니다. 文A를 먼저 누릅니다.', TITLE);
+        toastr.info('아직 번역하지 않았습니다. 먼저 文A를 누르세요.', TITLE);
         return;
     }
     const showing = present.every(showsTranslation);
@@ -404,17 +404,18 @@ async function deleteList(list, button) {
 
 /* ---------- buttons ---------- */
 
-// [action, icon, title]. 이름 / 내용: a label or a paragraph, with a small 文A in the corner (CSS)
+// [action, icon, title, words in the menu]. 이름 / 내용: a label or a paragraph icon with a small
+// 文A in the corner (CSS)
 const LIST_BUTTONS = [
-    ['names', 'fa-tag stqa_tr_badge', '이름 번역 (보기만 바뀝니다)'],
-    ['contents', 'fa-align-left stqa_tr_badge', '내용 번역 (보기만 바뀝니다)'],
-    ['toggle', 'fa-repeat', '원문 ⇄ 번역 전환'],
-    ['delete', 'fa-eraser', '이 목록의 번역 지우기'],
+    ['names', 'fa-tag stqa_tr_badge', '이름 번역', '이름 번역하기'],
+    ['contents', 'fa-align-left stqa_tr_badge', '내용 번역', '내용 번역하기'],
+    ['toggle', 'fa-repeat', '원문과 번역 바꿔 보기', ''],
+    ['delete', 'fa-eraser', '저장한 번역 지우기', '저장한 번역 지우기'],
 ];
 const ONE_BUTTONS = [
-    ['one', 'fa-language', '번역 (이름과 내용)'],
-    ['switch', 'fa-repeat', '이것만 원문 ⇄ 번역 전환'],
-    ['delete', 'fa-eraser', '이것의 번역 지우기'],
+    ['one', 'fa-language', '번역하기'],
+    ['switch', 'fa-repeat', '원문과 번역 바꿔 보기'],
+    ['delete', 'fa-eraser', '번역 지우기'],
 ];
 
 /**
@@ -445,7 +446,7 @@ function syncToggles() {
     const on = viewOn();
     document.querySelectorAll('.stqa_tr_toggle').forEach((toggle) => {
         toggle.classList.toggle('stqa_active', on);
-        toggle.title = on ? '지금 번역문을 보는 중 (누르면 원문 보기)' : '지금 원문을 보는 중 (누르면 번역 보기)';
+        toggle.title = on ? '번역문을 보는 중 · 누르면 원문으로' : '원문을 보는 중 · 누르면 번역문으로';
     });
     // World info buttons only while a world info is open
     document.body.classList.toggle('stqa_wi_open', Boolean(document.getElementById('world_editor_select')?.value));
@@ -481,10 +482,15 @@ function addButtons() {
     if (head?.firstElementChild && !document.getElementById('stqa_prompt_tr')) {
         head.firstElementChild.after(buttonGroup('stqa_prompt_tr', 'prompts', LIST_BUTTONS));
     }
-    // World info: at the right end of the ↻ row
-    const refreshButton = document.getElementById('world_refresh');
-    if (refreshButton && !document.getElementById('stqa_wi_tr')) {
-        refreshButton.parentElement.append(buttonGroup('stqa_wi_tr', 'world', LIST_BUTTONS));
+    // World info: one 文A beside the page controls (no room there for four); it opens a menu
+    const pages = document.getElementById('world_info_pagination');
+    if (pages && !document.getElementById('stqa_wi_tr')) {
+        const button = document.createElement('div');
+        button.id = 'stqa_wi_tr';
+        button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
+        button.title = '번역 메뉴';
+        button.dataset.trMenu = 'world';
+        pages.after(button);
     }
     document.querySelectorAll('#world_popup_entries_list .world_entry').forEach(addEntryButtons);
     // Character description: next to its Ext. Media button
@@ -493,6 +499,54 @@ function addButtons() {
         media.before(buttonGroup('stqa_description_tr', 'character', ONE_BUTTONS, true));
     }
     syncToggles();
+}
+
+/* ---------- the menu of a single 文A (world info) ---------- */
+
+let menu = null;
+let menuOwner = null;
+
+function closeMenu() {
+    menu?.remove();
+    menu = null;
+    menuOwner = null;
+    document.removeEventListener('pointerdown', onOutsideMenu, true);
+}
+
+function onOutsideMenu(event) {
+    if (menu && !menu.contains(event.target) && !menuOwner?.contains(event.target)) {
+        closeMenu();
+    }
+}
+
+/** The four list actions as a small menu under (or above) the button, worded so each is clear. */
+function toggleMenu(button) {
+    if (menu) {
+        const same = menuOwner === button;
+        closeMenu();
+        if (same) {
+            return;
+        }
+    }
+    menuOwner = button;
+    menu = document.createElement('div');
+    // ST keeps its side panels open for taps on its own kinds of lists; this is one
+    menu.className = 'stqa_tr_menu list-group select2-results';
+    for (const [action, icon, , label] of LIST_BUTTONS) {
+        const row = document.createElement('div');
+        row.className = 'list-group-item';
+        row.dataset.trDo = action;
+        row.innerHTML = `<i class="fa-solid ${icon.split(' ')[0]}"></i><span></span>`;
+        row.querySelector('span').textContent = action === 'toggle' ? (viewOn() ? '원문으로 보기' : '번역문으로 보기') : label;
+        menu.append(row);
+    }
+    document.body.append(menu);
+    const box = button.getBoundingClientRect();
+    const height = menu.offsetHeight;
+    const below = box.bottom + height + 4 < window.innerHeight;
+    menu.style.top = `${below ? box.bottom + 4 : box.top - height - 4}px`;
+    menu.style.left = `${Math.max(4, Math.min(box.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 4))}px`;
+    document.addEventListener('pointerdown', onOutsideMenu, true);
 }
 
 function onClick(event) {
@@ -505,13 +559,21 @@ function onClick(event) {
         render();
         return;
     }
-    const icon = target.closest('[data-tr-do]');
+    const menuButton = target.closest('[data-tr-menu]');
+    if (menuButton) {
+        event.stopPropagation();
+        toggleMenu(menuButton);
+        return;
+    }
+    const item = target.closest('.stqa_tr_menu [data-tr-do]');
+    const icon = item ? menuOwner : target.closest('[data-tr-do]');
     if (!icon) {
         return;
     }
     // Not a tap on what the button sits in (a world info entry's header folds it)
     event.stopPropagation();
-    const { trList: list, trDo: action } = icon.dataset;
+    const { trList: list, trDo: action } = item ? { trList: menuOwner.dataset.trMenu, trDo: item.dataset.trDo } : icon.dataset;
+    item && closeMenu();
     if (action === 'toggle') {
         setView(!viewOn());
     } else if (action === 'delete') {

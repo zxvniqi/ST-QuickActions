@@ -130,9 +130,15 @@ export function applyMessageToolSettings() {
 export function initMessageTools() {
     patchMessages();
     applyMessageToolSettings();
-    document.getElementById('chat')?.addEventListener('click', onChatClick);
+    const chat = document.getElementById('chat');
+    chat?.addEventListener('click', onChatClick);
+    // The number is filled in as soon as messages are drawn (chat opened, more loaded, a reply
+    // added), not after: only the chat's own children are watched, so streaming text costs nothing
+    if (chat) {
+        new MutationObserver(updateCount).observe(chat, { childList: true });
+    }
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED, eventTypes.MESSAGE_UPDATED, eventTypes.MESSAGE_DELETED, eventTypes.CHAT_CHANGED]) {
-        eventSource.on(event, () => setTimeout(updateCount));
+    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.MESSAGE_UPDATED, eventTypes.MESSAGE_DELETED]) {
+        eventSource.on(event, updateCount);
     }
 }
