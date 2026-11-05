@@ -60,6 +60,7 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 
 /* Inline select: options unfold below the box */
 .stqa_select {
+    position: relative;
     flex: 1;
     min-width: 0;
 }
@@ -77,12 +78,25 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     transform: rotate(180deg);
 }
 
+/* The options float over what is below (or above) the box: they take no room of their own */
 .stqa_select_list {
-    max-height: 180px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 3px);
+    z-index: 20;
+    max-height: 260px;
     overflow-y: auto;
-    margin-top: 3px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 6px;
+    background: var(--SmartThemeBlurTintColor);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
+}
+
+.stqa_select.stqa_up .stqa_select_list {
+    top: auto;
+    bottom: calc(100% + 3px);
 }
 
 .stqa_select_list[hidden] {

@@ -3,7 +3,6 @@
 // cover nothing) or floating (a small button stuck to a screen edge; long-press to move it).
 // The floating position is kept as a share of the window, so it stays put after a rotation.
 import { MODULE, getSettings, isOn } from './settings.js';
-import { rerunLastQr } from './qr-input.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 
 const PANEL_ID = 'stqa_floating_panel';
@@ -19,7 +18,6 @@ export const FLOATING_BUTTONS = Object.freeze([
     { key: 'top', icon: 'fa-angles-up', label: '맨 위로' },
     { key: 'jump', icon: 'fa-hashtag', label: '번호로 이동' },
     { key: 'bottom', icon: 'fa-angles-down', label: '맨 아래로' },
-    { key: 'qrRerun', icon: 'fa-rotate-right', label: 'QR 다시 실행' },
     { key: 'names', icon: 'fa-id-badge', label: '이름 바꾸기' },
 ]);
 
@@ -199,7 +197,6 @@ const ACTIONS = {
     top: scrollToTop,
     jump: askAndJump,
     bottom: scrollToBottom,
-    qrRerun: rerunLastQr,
 };
 
 function runAction(key) {

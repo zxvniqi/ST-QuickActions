@@ -6,6 +6,8 @@ const defaultSettings = Object.freeze({
     layoutManager: true,
     qrBar: true,
     qrHistory: true,
+    // Swiping a message a QR made runs the QR again (same answers) for a new swipe
+    qrSwipe: true,
     regexFolders: true,
     presetFolders: true,
     toggleSetChips: true,
@@ -45,7 +47,7 @@ const defaultSettings = Object.freeze({
     menuToBottom: true,
     // Floating shortcut panel
     floatingPanel: true,
-    floatingButtons: { deleteLast: true, top: true, jump: true, bottom: true, qrRerun: true, names: true },
+    floatingButtons: { deleteLast: true, top: true, jump: true, bottom: true, names: true },
     // Button keys in the order the panel shows them (ones left out follow, as listed)
     floatingOrder: [],
     floatingPosition: null,

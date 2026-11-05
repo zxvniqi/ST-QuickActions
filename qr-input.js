@@ -1,7 +1,8 @@
-// Quick Reply input helpers: the input popups a QR opens (/input) get 삭제 / 복사 / 기록 buttons
-// in the bottom left corner (clear what is typed, copy it, the last few answers typed
-// in any QR), and the last QR can be run again with the same answers, e.g. when the AI failed
-// to reply.
+// Quick Reply helpers:
+//  - the input popups a QR opens (/input) get 지우기 / 복사 / 기록 buttons beside OK / Cancel
+//  - a message a QR made (/gen + /sendas and the like) can be swiped like a reply: swiping right
+//    on its last version runs the QR again with the same answers, and the new text becomes the
+//    message's next swipe instead of a new message
 import { MODULE, getSettings, isOn } from './settings.js';
 
 const HISTORY_SIZE = 3;
@@ -19,8 +20,7 @@ try {
 
 // The QR running now (outermost one the user started), with the answers given so far
 let run = null;
-// The last finished run, for running it again
-let lastRun = null;
+
 // Answers to type in by themselves while a run is replayed
 let replay = null;
 let observer = null;
@@ -202,24 +202,117 @@ function watchPopups(on) {
     }
 }
 
-/** Runs the last QR again; its input popups get the same answers by themselves. */
-export async function rerunLastQr() {
-    if (!lastRun) {
-        toastr.info('다시 실행할 QR 없음', TITLE);
+// Set while a QR message is being made again: that run marks no message of its own
+let regenerating = false;
+
+const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
+
+/** After a run started by the user: the last message it added (not the user's) remembers it. */
+async function markMadeMessage(started, chatId, finishedRun) {
+    const context = SillyTavern.getContext();
+    if (!isOn('qrSwipe') || context.getCurrentChatId() !== chatId || context.chat.length <= started) {
         return;
     }
-    replay = lastRun.answers.filter(Boolean).map(answer => ({ ...answer }));
+    const made = context.chat.slice(started).reverse().find(message => !message.is_user && !message.is_system);
+    if (!made) {
+        return;
+    }
+    made.extra ??= {};
+    made.extra.stqa_qr = {
+        set: finishedRun.set.name,
+        qr: finishedRun.qr.label,
+        answers: finishedRun.answers.filter(Boolean),
+    };
+    await context.saveChat();
+}
+
+/** Whether a swipe right on this message would make a new version (it is on its last one). */
+function swipesToNew(message, messageId, chat) {
+    const last = Array.isArray(message?.swipes) ? message.swipes.length - 1 : 0;
+    return messageId === chat.length - 1 && (message.swipe_id ?? 0) >= last;
+}
+
+/**
+ * Makes a QR message again: the QR runs with the same answers, the message(s) it adds are taken
+ * back out, and the text it made becomes the message's next swipe.
+ */
+async function regenerateQrMessage(messageId) {
+    const context = SillyTavern.getContext();
+    const message = context.chat[messageId];
+    const mark = message?.extra?.stqa_qr;
+    const set = QuickReplySet?.list.find(item => item.name === mark?.set);
+    const qr = set?.qrList.find(item => item.label === mark?.qr);
+    if (!qr) {
+        toastr.warning(`이 메시지를 만든 QR(${mark?.set ?? '?'} / ${mark?.qr ?? '?'})을 찾지 못했습니다.`, TITLE);
+        return;
+    }
+    if (isGenerating() || regenerating) {
+        return;
+    }
+    const chatId = context.getCurrentChatId();
+    const before = context.chat.length;
+    regenerating = true;
+    replay = mark.answers.map(answer => ({ ...answer }));
     try {
-        await lastRun.set.executeWithOptions(lastRun.qr, { ...lastRun.options });
+        await set.executeWithOptions(qr, {});
     } finally {
         replay = null;
+        regenerating = false;
     }
+    // Another chat opened meanwhile: nothing is touched
+    if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
+        return;
+    }
+    const added = context.chat.slice(before);
+    const made = [...added].reverse().find(item => !item.is_user && !item.is_system);
+    if (!made) {
+        toastr.info('QR이 새 메시지를 만들지 않았습니다.', TITLE);
+        return;
+    }
+    // The run's own messages go (ST's way, one by one from the end), then the text joins as a swipe
+    while (context.chat.length > before) {
+        await context.deleteLastMessage();
+    }
+    if (!Array.isArray(message.swipes) || !message.swipes.length) {
+        message.swipes = [message.mes];
+        message.swipe_info = [{ send_date: message.send_date, gen_started: message.gen_started, gen_finished: message.gen_finished, extra: structuredClone(message.extra ?? {}) }];
+        message.swipe_id = 0;
+    }
+    message.swipe_info ??= message.swipes.map(() => ({}));
+    message.swipes.push(made.mes);
+    message.swipe_info.push({ send_date: made.send_date, gen_started: made.gen_started, gen_finished: made.gen_finished, extra: { ...structuredClone(made.extra ?? {}), stqa_qr: mark } });
+    message.swipe_id = message.swipes.length - 1;
+    message.mes = made.mes;
+    message.send_date = made.send_date;
+    message.extra = { ...structuredClone(made.extra ?? {}), stqa_qr: mark };
+    context.updateMessageBlock(messageId, message);
+    await context.saveChat();
+    await context.eventSource.emit(context.eventTypes.MESSAGE_SWIPED, messageId);
 }
 
-export function hasLastQr() {
-    return Boolean(lastRun);
+/** A swipe right that would make a new version of a QR message is ours (ST's would write a normal reply). */
+function onSwipeClick(event) {
+    if (!isOn('qrSwipe')) {
+        return;
+    }
+    const button = event.target.closest('#chat .swipe_right, #chat .stqa_mes_footer [data-stqa-action="next"]');
+    const element = button?.closest('.mes');
+    if (!element) {
+        return;
+    }
+    const { chat } = SillyTavern.getContext();
+    const messageId = Number(element.getAttribute('mesid'));
+    const message = chat[messageId];
+    if (!message?.extra?.stqa_qr || !swipesToNew(message, messageId, chat)) {
+        return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    regenerateQrMessage(messageId).catch((error) => {
+        console.error(`[${MODULE}] Making the QR message again failed`, error);
+        toastr.error('QR 메시지를 다시 만들지 못했습니다.', TITLE);
+    });
 }
-
 export function initQrInput() {
     // Per-QR history of earlier versions: one shared list now
     delete getSettings().qrInputHistory;
@@ -233,13 +326,19 @@ export function initQrInput() {
             return execute.call(this, qr, options);
         }
         run = { set: this, qr, options: { ...options }, answers: [] };
+        const context = SillyTavern.getContext();
+        const started = context.chat.length;
+        const chatId = context.getCurrentChatId();
         watchPopups(true);
         try {
             return await execute.call(this, qr, options);
         } finally {
-            lastRun = run;
+            const finished = run;
             run = null;
             watchPopups(false);
+            !regenerating && markMadeMessage(started, chatId, finished).catch(error => console.error(`[${MODULE}] Marking the QR message failed`, error));
         }
     };
+    // Capture: before ST's own swipe (and the 답변 넘기기 button's)
+    document.addEventListener('click', onSwipeClick, true);
 }

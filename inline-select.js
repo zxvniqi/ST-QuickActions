@@ -1,5 +1,6 @@
-// A select box whose options unfold right below it (scrolling inside when long),
-// instead of the phone's native option popup.
+// A select box whose options float over the page right below it (above it when there is more
+// room there), instead of the phone's native option popup. Floating, the list takes no room:
+// the window around it doesn't grow and shrink as it opens and closes.
 
 /**
  * @param {{ options: { value: string, label: string }[], value: string, onChange: (value: string) => void }} config
@@ -39,6 +40,12 @@ export function createInlineSelect({ options, value, onChange }) {
     const setOpen = (open) => {
         list.hidden = !open;
         root.classList.toggle('stqa_open', open);
+        if (open) {
+            // Opens upward when the room below on screen is short and there is more above
+            const box = root.getBoundingClientRect();
+            const height = Math.min(list.scrollHeight, 260);
+            root.classList.toggle('stqa_up', window.innerHeight - box.bottom < height + 8 && box.top > window.innerHeight - box.bottom);
+        }
         open ? document.addEventListener('click', onOutside, true) : document.removeEventListener('click', onOutside, true);
     };
 
