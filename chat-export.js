@@ -1,9 +1,12 @@
-// "전체 내보내기" in the chat list (Chat History) window: every chat of the character in one
-// zip file, each chat as the .jsonl ST itself saves and imports.
+// "전체 내보내기" / "전체 불러오기" in the chat list (Chat History) window: every chat of the
+// character in one zip file, each chat as the .jsonl ST itself saves; and such a zip (or .jsonl
+// files) put back into the character under the chats' own names.
 import { isOn } from './settings.js';
 
 const TITLE = '편의성 모음';
 const BUTTON_ID = 'stqa_export_all_chats';
+const IMPORT_ID = 'stqa_import_all_chats';
+const ROW_ID = 'stqa_chat_io';
 
 // CRC-32 table for the zip format
 const CRC_TABLE = (() => {
@@ -122,27 +125,143 @@ async function exportAllChats() {
     failed ? toastr.warning(`${files.length}개를 내보냈고, ${failed}개는 읽지 못했습니다.`, TITLE) : toastr.success(`채팅 ${files.length}개를 내보냈습니다.`, TITLE);
 }
 
-export function applyChatExport() {
-    const button = document.getElementById(BUTTON_ID);
-    if (button) {
-        // menu_button's own display would beat `hidden`
-        button.style.display = isOn('chatExportAll') ? '' : 'none';
+/** The .jsonl files in a zip (stored or deflated, as zip tools make them). */
+async function readZip(buffer) {
+    const view = new DataView(buffer);
+    const bytes = new Uint8Array(buffer);
+    // The end record is in the last 64 KB (after an optional comment)
+    let end = -1;
+    for (let at = buffer.byteLength - 22; at >= Math.max(0, buffer.byteLength - 65557); at--) {
+        if (view.getUint32(at, true) === 0x06054B50) {
+            end = at;
+            break;
+        }
+    }
+    if (end < 0) {
+        throw new Error('Not a zip file');
+    }
+    const decoder = new TextDecoder();
+    const files = [];
+    let at = view.getUint32(end + 16, true);
+    for (let i = 0; i < view.getUint16(end + 10, true); i++) {
+        const method = view.getUint16(at + 10, true);
+        const size = view.getUint32(at + 20, true);
+        const nameLength = view.getUint16(at + 28, true);
+        const extraLength = view.getUint16(at + 30, true);
+        const commentLength = view.getUint16(at + 32, true);
+        const local = view.getUint32(at + 42, true);
+        const name = decoder.decode(bytes.subarray(at + 46, at + 46 + nameLength));
+        at += 46 + nameLength + extraLength + commentLength;
+        if (!/\.jsonl$/i.test(name) || (method !== 0 && method !== 8)) {
+            continue;
+        }
+        const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+        const raw = bytes.subarray(start, start + size);
+        const data = method === 0 ? raw : new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+        files.push({ name: name.split('/').pop(), text: decoder.decode(data) });
+    }
+    return files;
+}
+
+/** Chats from a zip made by 전체 내보내기 (or any zip of .jsonl) or .jsonl files, saved under their own names. */
+async function importChats(picked) {
+    const context = SillyTavern.getContext();
+    const character = context.characters[context.characterId];
+    if (!character || context.groupId) {
+        toastr.info('캐릭터 채팅에서만 쓸 수 있습니다.', TITLE);
+        return;
+    }
+    const chats = [];
+    for (const file of picked) {
+        if (/\.zip$/i.test(file.name)) {
+            chats.push(...await readZip(await file.arrayBuffer()));
+        } else if (/\.jsonl$/i.test(file.name)) {
+            chats.push({ name: file.name, text: await file.text() });
+        }
+    }
+    if (!chats.length) {
+        toastr.info('불러올 채팅(.jsonl)이 없습니다.', TITLE);
+        return;
+    }
+    const headers = context.getRequestHeaders();
+    const listed = await fetch('/api/characters/chats', { method: 'POST', headers, body: JSON.stringify({ avatar_url: character.avatar, simple: true }) });
+    const taken = new Set((listed.ok ? Object.values(await listed.json()) : []).map(item => String(item?.file_name ?? '').replace(/\.jsonl$/, '')));
+    let saved = 0;
+    let failed = 0;
+    for (const { name, text } of chats) {
+        try {
+            const lines = text.split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
+            // ST chats start with a header line (user_name / character_name / chat_metadata)
+            if (!lines.length || !(lines[0].chat_metadata !== undefined || lines[0].user_name !== undefined)) {
+                throw new Error('Not an ST chat');
+            }
+            const base = safeName(name.replace(/\.jsonl$/i, ''));
+            let fileName = base;
+            for (let n = 2; taken.has(fileName); n++) {
+                fileName = `${base} (${n})`;
+            }
+            const response = await fetch('/api/chats/save', { method: 'POST', headers, body: JSON.stringify({ ch_name: character.name, file_name: fileName, chat: lines, avatar_url: character.avatar }) });
+            if (!response.ok) {
+                throw new Error(`Saving failed: ${response.status}`);
+            }
+            taken.add(fileName);
+            saved++;
+        } catch (error) {
+            console.error(`[${TITLE}] Importing ${name} failed`, error);
+            failed++;
+        }
+    }
+    failed ? toastr.warning(`${saved}개를 불러왔고, ${failed}개는 불러오지 못했습니다.`, TITLE) : toastr.success(`채팅 ${saved}개를 불러왔습니다.`, TITLE);
+    if (saved) {
+        // The chat list shows them once opened again (as ST's own ✎ does)
+        $('#option_select_chat').trigger('click');
+        $('#options').hide();
     }
 }
 
+export function applyChatExport() {
+    const row = document.getElementById(ROW_ID);
+    if (row) {
+        row.hidden = !isOn('chatExportAll');
+    }
+}
+
+function headerButton(id, icon, text, title, onClick) {
+    const button = document.createElement('div');
+    button.id = id;
+    button.className = 'menu_button menu_button_icon';
+    button.title = title;
+    button.innerHTML = `<i class="fa-solid ${icon}"></i><span>${text}</span>`;
+    button.addEventListener('click', onClick);
+    return button;
+}
+
 export function initChatExport() {
-    const anchor = document.getElementById('chat_import_button');
-    if (anchor && !document.getElementById(BUTTON_ID)) {
-        const button = document.createElement('div');
-        button.id = BUTTON_ID;
-        button.className = 'menu_button menu_button_icon';
-        button.title = '이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다';
-        button.innerHTML = '<i class="fa-solid fa-file-zipper"></i><span>전체 내보내기</span>';
-        button.addEventListener('click', () => exportAllChats().catch((error) => {
+    const header = document.querySelector('#select_chat_popup [name="selectChatPopupHeader"]');
+    if (header && !document.getElementById(ROW_ID)) {
+        const picker = document.createElement('input');
+        picker.type = 'file';
+        picker.accept = '.zip,.jsonl';
+        picker.multiple = true;
+        picker.hidden = true;
+        picker.addEventListener('change', () => {
+            const files = [...picker.files];
+            picker.value = '';
+            importChats(files).catch((error) => {
+                console.error(`[${TITLE}] Importing chats failed`, error);
+                toastr.error('불러오지 못했습니다.', TITLE);
+            });
+        });
+        const exporter = headerButton(BUTTON_ID, 'fa-file-zipper', '전체 내보내기', '이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다', () => exportAllChats().catch((error) => {
             console.error(`[${TITLE}] Exporting chats failed`, error);
             toastr.error('내보내지 못했습니다.', TITLE);
         }));
-        anchor.after(button);
+        const importer = headerButton(IMPORT_ID, 'fa-file-arrow-up', '전체 불러오기', '전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
+        // A line of their own at the end of the header, so the search box keeps its width
+        const row = document.createElement('div');
+        row.id = ROW_ID;
+        row.append(exporter, importer, picker);
+        header.append(row);
     }
     applyChatExport();
 }

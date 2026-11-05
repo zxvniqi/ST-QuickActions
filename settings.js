@@ -12,9 +12,11 @@ const defaultSettings = Object.freeze({
     rangeDelete: true,
     charListTools: true,
     chatExportAll: true,
-    chatNamePersona: true,
+    chatQuickRename: true,
     chatReplace: true,
     entryTranslate: true,
+    // Prompts / world info shown translated (reading only; originals are what is saved and sent)
+    translationView: false,
     welcomeRecent: false,
     wandGrid: false,
     // {{char}} and {{user}} names swapped while on

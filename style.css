@@ -1904,24 +1904,35 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
     font-size: 0.8em;
     opacity: 0.5;
 }
-/* Character list: ☆ and tag on each character */
+/* Character list: ☆ and tag side by side in the card's top right corner, out of the layout
+   (themes wrap the card's parts, so a part of its own would add a line) */
 .stqa_char_tools {
     display: none;
-    flex-direction: column;
-    align-self: center;
-    gap: 4px;
-    margin-left: auto;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 1;
+    gap: 2px;
 }
 
 body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
     display: flex;
 }
 
+body.stqa_char_tools_on #rm_print_characters_block .character_select {
+    position: relative;
+}
+
+body.stqa_char_tools_on #rm_print_characters_block .character_select .character_name_block {
+    box-sizing: border-box;
+    padding-right: 60px;
+}
+
 .stqa_char_tool {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
+    width: 28px;
     height: 26px;
     border-radius: 6px;
     font-size: 0.9em;
@@ -1936,11 +1947,6 @@ body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
 
 .stqa_char_tool.stqa_on {
     color: var(--golden, #f5c242);
-}
-
-body.charListGrid #rm_print_characters_block .stqa_char_tools {
-    flex-direction: row;
-    margin: 0 auto;
 }
 
 body.stqa_char_picking #rm_print_characters_block .character_select {
@@ -2048,9 +2054,9 @@ body.stqa_char_picking #rm_print_characters_block .character_select {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 30%, transparent);
 }
 
-/* Chat word replace and translations */
+/* Chat word replace and the chat rename choices */
 .stqa_replace,
-.stqa_translation {
+.stqa_rename_pick {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -2058,7 +2064,7 @@ body.stqa_char_picking #rm_print_characters_block .character_select {
 }
 
 .stqa_replace h3,
-.stqa_translation h3 {
+.stqa_rename_pick h3 {
     margin: 0;
     text-align: center;
 }
@@ -2079,17 +2085,120 @@ body.stqa_char_picking #rm_print_characters_block .character_select {
     opacity: 0.8;
 }
 
-.stqa_translation_text {
-    max-height: 40vh;
-    overflow-y: auto;
+.stqa_rename_pick .stqa_hint {
+    word-break: break-all;
+}
+
+.stqa_rename_choices {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stqa_rename_choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 6px 8px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 8px;
-    white-space: pre-wrap;
+    cursor: pointer;
 }
 
-body:not(.stqa_entry_translate_on) .stqa_wi_translate,
-body:not(.stqa_entry_translate_on) .stqa_prompt_translate,
-body:not(.stqa_entry_translate_on) .stqa_translate_names {
+.stqa_rename_choice:has(input:checked) {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
+}
+
+.stqa_rename_choice span {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.stqa_rename_choice small {
+    opacity: 0.75;
+    word-break: break-all;
+}
+
+/* A finger-sized tap area around the small icon, without taking room */
+.stqa_chat_rename {
+    padding: 10px 8px;
+    margin: -10px 0 -10px 0;
+    line-height: 1;
+    cursor: pointer;
+}
+
+body:not(.stqa_chat_rename_on) .stqa_chat_rename {
+    display: none;
+}
+
+/* Prompt / world info translations: shown in place of the original, for reading only */
+.stqa_tr_hidden {
     display: none !important;
+}
+
+.stqa_tr_view {
+    cursor: pointer;
+    color: inherit;
+}
+
+div.stqa_tr_view {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    text-align: left;
+    border-style: dashed;
+}
+
+div.stqa_tr_view.stqa_tr_long {
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+span.stqa_tr_view {
+    border-bottom: 1px dashed currentColor;
+}
+
+.stqa_tr_tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    margin: 6px 0;
+}
+
+.stqa_tr_tools .menu_button {
+    display: inline-flex;
+    gap: 5px;
+    width: auto;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.stqa_tr_toggle.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeQuoteColor);
+}
+
+body:not(.stqa_entry_translate_on) .stqa_tr_tools,
+body:not(.stqa_entry_translate_on) .stqa_tr_one {
+    display: none !important;
+}
+/* 전체 내보내기 / 불러오기: a line of their own under the chat list header */
+#stqa_chat_io {
+    display: flex;
+    flex: 1 0 100%;
+    justify-content: center;
+    gap: 6px;
+}
+
+#stqa_chat_io[hidden] {
+    display: none;
+}
+
+#stqa_chat_io .menu_button {
+    margin: 0;
 }
