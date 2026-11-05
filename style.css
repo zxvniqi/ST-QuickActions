@@ -2120,11 +2120,7 @@ div.stqa_tr_view.stqa_tr_long {
     overflow-y: auto;
 }
 
-/* A translated prompt list name (its own text swapped) */
-.stqa_tr_label {
-    text-decoration: underline dashed;
-    text-underline-offset: 3px;
-}
+
 
 .stqa_tr_toggle.stqa_active {
     border-color: var(--SmartThemeQuoteColor);
@@ -2198,11 +2194,17 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     position: relative;
 }
 
-#stqa_prompt_tr {
+.completion_prompt_manager_list_head > #stqa_prompt_tr {
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
+}
+
+/* The prompt 文A at the end of the quick switch row: a chip like the others */
+.stqa_tr_chip {
+    justify-content: center;
+    min-width: 2.4em;
 }
 
 /* QR tools: sized to OK / Cancel by the script; icon in the middle */
@@ -2287,23 +2289,31 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     align-self: flex-start;
 }
 
-/* Chat list header: 전체 내보내기 / 불러오기 start the second line, before the search box */
+/* Chat list header: ST spreads its items evenly over the line, which leaves big uneven gaps once
+   buttons are added. The title stays on the left and the buttons sit together on the right,
+   all with the same gap */
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) {
+    justify-content: flex-start;
+    column-gap: 6px;
+}
+
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) > #selectChatPopupHeaderText {
+    margin-right: auto;
+}
+
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) > .menu_button {
+    margin: 0;
+}
+
 #stqa_chat_io {
     display: flex;
     flex: none;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
 }
 
 #stqa_chat_io > .menu_button {
     margin: 0;
-}
-
-.stqa_line_break {
-    flex-basis: 100%;
-    height: 0;
-    margin: 0;
-    padding: 0;
 }
 
 /* Chat picker head: export / import icons at the right */
@@ -2371,4 +2381,18 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 
 .stqa_translator_ai[hidden] {
     display: none;
+}
+/* A translation's stand-in: the box's own look (copied by the script), text only changed */
+.stqa_tr_standin {
+    box-sizing: border-box;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: default;
+}
+
+.stqa_tr_standin.stqa_tr_line {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }

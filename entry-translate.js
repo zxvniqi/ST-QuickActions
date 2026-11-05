@@ -5,7 +5,8 @@
 //    contents there, switch original ⇄ translation everywhere, delete that list's translations
 //  - prompt edit form, each world info entry, the character description: translate that one,
 //    switch just it, delete its translations
-//  - tapping a translation shows that one's original (to edit it)
+//  - a translation shows in a stand-in that looks exactly like the box, in its place; the box
+//    itself is never written to
 // Google (through ST's translator) by default, or an AI connection with a prompt of one's own
 // (settings window); one job at a time. Stored translations load only once they are shown.
 import { MODULE, getSettings, isOn } from './settings.js';
@@ -16,8 +17,6 @@ const LANG = 'ko';
 const DB_NAME = 'stqa_translations';
 const STORE = 'texts';
 const CHUNK = 3500; // characters per request; long texts go in parts, split at line breaks
-const VIEW_CLASS = 'stqa_tr_view';
-const HIDDEN_CLASS = 'stqa_tr_hidden';
 const LABEL_CLASS = 'stqa_tr_label';
 
 let translator = null;
@@ -181,6 +180,64 @@ const showsTranslation = text => (itemView.get(text) ?? (viewOn() ? 'translation
 const PROMPT_FIELDS = ['completion_prompt_manager_popup_entry_form_name', 'completion_prompt_manager_popup_entry_form_prompt'];
 const CHARACTER_FIELDS = ['description_textarea'];
 
+const STAND_IN = 'stqa_tr_standin';
+const HIDDEN = 'stqa_tr_hidden';
+// The look of a box, copied onto its stand-in so the two can't be told apart
+const LOOK = ['font', 'color', 'background-color', 'background-image', 'border', 'border-radius', 'padding', 'line-height', 'letter-spacing', 'text-align', 'box-shadow'];
+
+/**
+ * A translation is shown in a stand-in that takes the box's exact place, size and look; the
+ * box itself is only hidden, never written to, so whatever ST saves or sends is the original.
+ */
+function standIn(box, translation) {
+    let stand = box.nextElementSibling?.classList.contains(STAND_IN) ? box.nextElementSibling : null;
+    if (!stand) {
+        const style = getComputedStyle(box);
+        stand = document.createElement('div');
+        stand.className = STAND_IN;
+        for (const property of LOOK) {
+            stand.style.setProperty(property, style.getPropertyValue(property));
+        }
+        stand.style.margin = style.margin;
+        stand.classList.toggle('stqa_tr_line', box.matches('input'));
+        box.after(stand);
+    }
+    stand.dataset.original = boxValue(box);
+    stand.textContent !== translation && (stand.textContent = translation);
+    box.classList.add(HIDDEN);
+    !stand.dataset.sized && sizeStand(stand, box);
+    return stand;
+}
+
+// Stand-ins made while their panel was closed get their size once they come into view
+let sizer = null;
+
+/** The box's size, measured with the box shown for a moment; later if the panel is closed. */
+function sizeStand(stand, box) {
+    box.classList.remove(HIDDEN);
+    const width = box.offsetWidth;
+    const height = box.offsetHeight;
+    const full = width >= (box.parentElement?.clientWidth ?? 0) - 2;
+    box.classList.add(HIDDEN);
+    if (!height) {
+        sizer ??= new IntersectionObserver(entries => entries.forEach((entry) => {
+            const own = entry.target.previousElementSibling;
+            if (entry.isIntersecting && own) {
+                sizer.unobserve(entry.target);
+                sizeStand(entry.target, own);
+            }
+        }));
+        sizer.observe(stand);
+        return;
+    }
+    // Full width when the box is (so it follows the panel's width); a text box keeps its
+    // height, and longer text scrolls inside
+    stand.style.width = full ? '100%' : `${width}px`;
+    stand.style.height = `${height}px`;
+    stand.dataset.sized = '1';
+}
+
+const boxValue = box => box.value;
 /** Text fields and labels that can show a translation, with their original text. */
 function targets() {
     const found = [];
@@ -192,7 +249,7 @@ function targets() {
     // The prompt edit form and the character description
     for (const id of [...PROMPT_FIELDS, ...CHARACTER_FIELDS]) {
         const field = document.getElementById(id);
-        add(field, field?.value);
+        field && add(field, field.value);
     }
     // World info entries: name, and content while unfolded
     for (const field of document.querySelectorAll('#world_popup_entries_list .world_entry textarea[name="comment"], #world_popup_entries_list .world_entry textarea[name="content"]')) {
@@ -201,15 +258,16 @@ function targets() {
     return found;
 }
 
+/** Shows translations in place: a label's own text, or a stand-in in a box's place. */
 function render() {
     if (!cache) {
         return;
     }
-    const wanted = new Set();
+    const seen = new Set();
     for (const { element, text } of targets()) {
         const translation = text && showsTranslation(text) && cache.get(text);
         if (!element.matches('input, textarea')) {
-            // A label (prompt list name): its own text is swapped, so the row keeps its layout
+            // A label (prompt list name)
             if (translation) {
                 element.dataset.stqaOriginal ??= element.textContent;
                 element.textContent !== translation && (element.textContent = translation);
@@ -221,30 +279,17 @@ function render() {
             }
             continue;
         }
-        let view = element.nextElementSibling?.classList.contains(VIEW_CLASS) ? element.nextElementSibling : null;
-        if (!translation) {
-            view?.remove();
-            element.classList.remove(HIDDEN_CLASS);
-            continue;
+        if (translation) {
+            seen.add(standIn(element, translation));
+        } else {
+            element.classList.remove(HIDDEN);
         }
-        if (!view) {
-            view = document.createElement('div');
-            view.className = `${VIEW_CLASS} text_pole${element.matches('textarea') ? ' stqa_tr_long' : ''}`;
-            view.title = '번역문 · 누르면 이 글만 원문으로';
-            element.after(view);
-        }
-        view.dataset.original = text;
-        if (view.textContent !== translation) {
-            view.textContent = translation;
-        }
-        element.classList.add(HIDDEN_CLASS);
-        wanted.add(view);
     }
-    // Views whose field went away or changed
-    document.querySelectorAll(`.${VIEW_CLASS}`).forEach((view) => {
-        if (!wanted.has(view)) {
-            view.previousElementSibling?.classList.remove(HIDDEN_CLASS);
-            view.remove();
+    // Stand-ins whose box went away or shows its original again
+    document.querySelectorAll(`.${STAND_IN}`).forEach((stand) => {
+        if (!seen.has(stand)) {
+            stand.previousElementSibling?.classList.remove(HIDDEN);
+            stand.remove();
         }
     });
     syncToggles();
@@ -477,10 +522,27 @@ function addButtons() {
     if (close && !document.getElementById('stqa_prompt_form_tr')) {
         close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
-    // Prompt list: in its column titles, in the gap between "Name" and "Tokens"
+    // Prompt list: one 文A that opens the menu, at the end of the quick switch row (or, with
+    // that row switched off, between "Name" and "Tokens"). The row is drawn anew often: it is
+    // put back each time
+    const chips = document.querySelector('.stqa_toggle_sets');
     const head = document.querySelector('.completion_prompt_manager_list_head');
-    if (head?.firstElementChild && !document.getElementById('stqa_prompt_tr')) {
-        head.firstElementChild.after(buttonGroup('stqa_prompt_tr', 'prompts', LIST_BUTTONS));
+    let promptButton = document.getElementById('stqa_prompt_tr');
+    if ((chips || head?.firstElementChild) && !(promptButton && (chips ?? head).contains(promptButton))) {
+        promptButton?.remove();
+        promptButton = document.createElement('div');
+        promptButton.id = 'stqa_prompt_tr';
+        promptButton.title = '번역 메뉴';
+        promptButton.dataset.trMenu = 'prompts';
+        if (chips) {
+            // Looks like the chips beside it
+            promptButton.className = 'stqa_variant_chip stqa_tr_chip';
+            promptButton.innerHTML = '<i class="fa-solid fa-language"></i>';
+            chips.append(promptButton);
+        } else {
+            promptButton.className = 'menu_button fa-solid fa-language stqa_tr_icon';
+            head.firstElementChild.after(promptButton);
+        }
     }
     // World info: one 文A beside the page controls (no room there for four); it opens a menu
     const pages = document.getElementById('world_info_pagination');
@@ -551,14 +613,7 @@ function toggleMenu(button) {
 
 function onClick(event) {
     const target = event.target;
-    const view = target.closest(`.${VIEW_CLASS}`);
-    if (view) {
-        // A translation tapped: that one shows its original, to read or edit
-        event.stopPropagation();
-        itemView.set(view.dataset.original, 'original');
-        render();
-        return;
-    }
+
     const menuButton = target.closest('[data-tr-menu]');
     if (menuButton) {
         event.stopPropagation();
@@ -617,7 +672,7 @@ export function initEntryTranslate() {
         target && new MutationObserver(refresh).observe(target, { childList: true, subtree: true });
     }
     document.addEventListener('click', onClick, true);
-    // Forms filled in place (no new elements): look again when they are opened or switched
+   // Forms filled in place (no new elements): look again when they are opened or switched
     const later = () => cache && setTimeout(render, 50);
     document.addEventListener('click', event => event.target.closest?.('.prompt-manager-edit-action, .prompt-manager-inspect-action, .world_entry .inline-drawer-toggle') && later());
     $('#world_editor_select').on('change', syncToggles);

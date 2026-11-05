@@ -17,6 +17,7 @@ import { FOLDER_AREAS, initFolders, applyFolders } from './folders.js';
 import { initPresetFolders, applyFolderButtons } from './preset-folders.js';
 import { initToggleSets, applyToggleSets } from './prompt-toggle-sets.js';
 import { initRangeDelete, applyRangeDelete } from './range-delete.js';
+import { initSaveGuard } from './save-guard.js';
 import { initCharListTools, applyCharListTools } from './char-list-tools.js';
 import { initChatExport, applyChatExport } from './chat-export.js';
 import { initChatName, applyChatName } from './chat-name.js';
@@ -87,7 +88,7 @@ const TABS = Object.freeze([
         features: [
             ['presetFolders', '프롬프트 폴더·관리', '프롬프트(프리셋) 선택 칸을 누르면 폴더로 정리된 목록이 열립니다. 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지울 수 있습니다.'],
             ['toggleSetChips', '항목 켜기·끄기 상태 저장', '프롬프트 항목 목록 위에 버튼 줄이 생깁니다. 지금 켜고 끈 상태에 이름을 붙여 저장해 두면, 그 버튼 하나로 언제든 그 상태로 돌아갈 수 있습니다. ✎ 를 누르면 덮어쓰기·이름 바꾸기·지우기를 할 수 있고, 프롬프트마다 따로 저장됩니다.'],
-            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 볼 수 있습니다. 화면에 보이는 글만 바뀌고, 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 프롬프트 목록(이름과 토큰 사이): 이름 번역, 내용 번역, 원문/번역 바꿔 보기, 번역 지우기 버튼이 있습니다.\n· 월드인포(페이지 넘김 옆 文A): 누르면 같은 메뉴가 열립니다. 월드인포를 고른 뒤에만 보입니다.\n· 프롬프트 편집 창, 월드인포 항목, 캐릭터 설명: 文A로 그것만 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 번역을 지웁니다.\n· 번역하는 동안 누른 버튼이 돌고, 몇 개째인지 알림이 뜹니다. 돌고 있는 버튼을 다시 누르면 멈춥니다.\n· 점선 테두리가 있는 글이 번역문입니다. 누르면 그 글만 원문으로 돌아가서 고칠 수 있습니다.\n· 번역 방식은 아래에서 고릅니다. 기본은 구글 번역이고, AI를 고르면 쓸 API와 번역 프롬프트를 따로 정할 수 있습니다. 연결 프로필을 고르면 그 프로필의 API만 쓰고, 프롬프트는 여기 적은 것만 씁니다.\n· 번역은 이 기기에 저장해 두고 다시 번역하지 않습니다. 다른 방식으로 다시 번역하려면 먼저 지우개로 지우세요.'],
+            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 볼 수 있습니다. 화면에 보이는 글만 바뀌고, 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 프롬프트 목록(빠른 전환 버튼 줄 끝의 文A)과 월드인포(페이지 넘김 옆 文A): 누르면 이름 번역하기, 내용 번역하기, 원문/번역문으로 보기, 저장한 번역 지우기 메뉴가 열립니다. 월드인포 버튼은 월드인포를 고른 뒤에만 보입니다.\n· 프롬프트 편집 창, 월드인포 항목, 캐릭터 설명: 文A로 그것만 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 번역을 지웁니다.\n· 번역하는 동안 누른 버튼이 돌고, 몇 개째인지 알림이 뜹니다. 돌고 있는 버튼을 다시 누르면 멈춥니다.\n· 번역문은 원래 칸과 똑같은 모양으로, 같은 자리에 글자만 바뀌어 보입니다. 원래 칸의 글은 그대로라서 저장되는 건 항상 원문입니다. 번역문을 보는 동안에는 고칠 수 없으니, 고치려면 ⇄로 원문으로 돌린 뒤 고치세요.\n· 번역 방식은 아래에서 고릅니다. 기본은 구글 번역이고, AI를 고르면 쓸 API와 번역 프롬프트를 따로 정할 수 있습니다. 연결 프로필을 고르면 그 프로필의 API만 쓰고, 프롬프트는 여기 적은 것만 씁니다.\n· 번역은 이 기기에 저장해 두고 다시 번역하지 않습니다. 다른 방식으로 다시 번역하려면 먼저 지우개로 지우세요.'],
             ['hideSettingHints', 'ST 설정 설명 글씨 숨기기', 'ST 설정 항목 아래에 흐리게 붙어 있는 설명 글씨(예: "생성되는 대답을 조금씩 표시합니다…")를 모두 숨깁니다.'],
         ],
     },
@@ -391,6 +392,8 @@ function addMenuButton() {
 }
 
 (function init() {
+    // First, before anything else can save a chat
+    initSaveGuard();
     initDeleteButton();
     initChatPicker();
     initNameOverride();

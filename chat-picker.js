@@ -279,8 +279,9 @@ function onCharacterClickCapture(event) {
     if (BULK_MODE_CLASSES.some(cls => list.classList.contains(cls))) {
         return;
     }
-    // ☆ / tag buttons (char-list-tools.js) aren't openings
-    if (event.target.closest('.stqa_char_tools')) {
+    // A tap on the ☆ / tag buttons (char-list-tools.js) isn't an opening. The buttons only: the
+    // strip holding them spans the card, and a tap on the rest of it is a tap on the character
+    if (event.target.closest('.stqa_char_tool')) {
         return;
     }
 
