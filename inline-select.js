@@ -41,10 +41,21 @@ export function createInlineSelect({ options, value, onChange }) {
         list.hidden = !open;
         root.classList.toggle('stqa_open', open);
         if (open) {
-            // Opens upward when the room below on screen is short and there is more above
+            // Opens upward when the room below is short and there is more above. The room is
+            // what the scrolling box around it (a popup's content) shows, else the screen.
             const box = root.getBoundingClientRect();
             const height = Math.min(list.scrollHeight, 260);
-            root.classList.toggle('stqa_up', window.innerHeight - box.bottom < height + 8 && box.top > window.innerHeight - box.bottom);
+            let top = 0;
+            let bottom = window.innerHeight;
+            for (let parent = root.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+                if (/auto|scroll|hidden/.test(getComputedStyle(parent).overflowY)) {
+                    const rect = parent.getBoundingClientRect();
+                    top = Math.max(top, rect.top);
+                    bottom = Math.min(bottom, rect.bottom);
+                    break;
+                }
+            }
+            root.classList.toggle('stqa_up', bottom - box.bottom < height + 8 && box.top - top > bottom - box.bottom);
         }
         open ? document.addEventListener('click', onOutside, true) : document.removeEventListener('click', onOutside, true);
     };
