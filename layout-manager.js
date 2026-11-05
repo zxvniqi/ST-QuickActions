@@ -528,6 +528,9 @@ function applyOneContainer(selector) {
             rules.push(`${spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`).join(', ')} { display: none !important; }`);
         }
     }
+    for (const key of idleSeparators(container, order.length > 0 ? arrange(order, keys) : keys, hidden)) {
+        rules.push(`${selector} > ${itemSelector(key)} { display: none !important; }`);
+    }
     // A row of buttons that fills the screen width (Top Bar on phones): the ones left share the
     // room, so hiding some leaves no gap at one end
     if (hidden.length > 0 && findArea(selector)?.fillRow) {
@@ -535,6 +538,45 @@ function applyOneContainer(selector) {
     }
     containerRules.set(selector, rules.join('\n'));
     writeStyles();
+}
+
+/**
+ * Separator lines (<hr>) left with nothing to separate once items are hidden here: two lines in
+ * a row, or a line at either end of the menu. Only when something is hidden here, so a menu left
+ * alone stays exactly as the page draws it.
+ * @param {string[]} sequence the container's keys in the order shown
+ */
+function idleSeparators(container, sequence, hidden) {
+    if (!hidden.length) {
+        return [];
+    }
+    const children = [...container.children];
+    const shownKeys = new Set(withoutOwnRules(() => children.filter(isDisplayed).map(child => keyOf(child, false))));
+    const isLine = key => children.some(child => child.tagName === 'HR' && keyOf(child, false) === key);
+    const idle = [];
+    // Lines kept so far wait for an item after them; one with no item since the last kept line goes
+    let itemSinceLine = false;
+    let lastLine = null;
+    for (const key of sequence) {
+        if (!shownKeys.has(key) || hidden.includes(key)) {
+            continue;
+        }
+        if (isLine(key)) {
+            if (itemSinceLine) {
+                lastLine = key;
+            } else {
+                idle.push(key);
+            }
+            itemSinceLine = false;
+        } else {
+            itemSinceLine = true;
+        }
+    }
+    // A line with nothing after it
+    if (lastLine && !itemSinceLine) {
+        idle.push(lastLine);
+    }
+    return idle;
 }
 
 /** Whether the page / theme displays the element (call inside `withoutOwnRules`). */
@@ -803,6 +845,13 @@ function migrateNestedLayout() {
 }
 
 export function initLayoutManager() {
+    // Options menu items come and go with the chat (Back to parent chat...): its lines are
+    // checked again each time it opens
+    const options = document.getElementById('options');
+    if (options) {
+        new MutationObserver(() => options.style.display !== 'none' && applyContainer('#options .options-content'))
+            .observe(options, { attributes: true, attributeFilter: ['style'] });
+    }
     migrateNestedLayout();
     applyMessageStyles();
     watchRenderedMessages();
