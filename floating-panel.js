@@ -135,7 +135,7 @@ async function askAndJump() {
 }
 
 // Fields in the order the user reads them
-const NAME_ORDER = Object.freeze(['user', 'char']);
+const NAME_ORDER = Object.freeze(['char', 'user']);
 
 /** Name replacement and the {{char}} ⇄ {{user}} swap in one window. */
 async function editNames() {

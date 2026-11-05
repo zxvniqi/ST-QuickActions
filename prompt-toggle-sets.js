@@ -56,11 +56,13 @@ async function applySet(set) {
         }
     }
     if (!changed) {
+        toastr.info(`이미 '${set.name}' 상태입니다.`, TITLE);
         return;
     }
     // The same as switching them by hand: one redraw, saved alongside
     pm.render();
     await pm.saveServiceSettings();
+    toastr.success(`'${set.name}'(으)로 전환했습니다.`, TITLE);
 }
 
 const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));

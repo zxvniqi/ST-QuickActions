@@ -290,8 +290,10 @@ function onCharacterClickCapture(event) {
     if (!context.characters[characterId]) {
         return;
     }
-    // The character already open too: its chat list is what a tap here asks for (its card
-    // stays one tap away, on the character panel's own button)
+    // The character already open: ST's own tap (its card) stays
+    if (!context.groupId && String(context.characterId) === String(characterId)) {
+        return;
+    }
 
     event.stopImmediatePropagation();
     event.preventDefault();
