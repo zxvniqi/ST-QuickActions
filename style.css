@@ -1412,10 +1412,6 @@ details.stqa_section[open] > summary {
     background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
 }
 
-.stqa_swap_row.stqa_on > i {
-    color: var(--SmartThemeQuoteColor);
-}
-
 .stqa_swap_state {
     flex: none;
     padding: 1px 8px;

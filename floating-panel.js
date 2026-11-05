@@ -154,8 +154,7 @@ async function editNames() {
         <div class="stqa_hint">비워 두면 원래 이름을 씁니다.</div>
         <label class="stqa_swap_row">
             <input type="checkbox" data-name="swap">
-            <i class="fa-solid fa-right-left"></i>
-            <span>{{user}} ⇄ {{char}} 서로 바꾸기</span>
+            <span>{{char}} ⇄ {{user}} 서로 바꾸기</span>
             <b class="stqa_swap_state"></b>
         </label>
         <label class="checkbox_label"><input type="checkbox" data-name="status"><span>상태창에는 원래 이름 쓰기</span></label>`;
