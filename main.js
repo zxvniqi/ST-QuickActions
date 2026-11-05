@@ -8,7 +8,7 @@ import { initLayoutManager, applyLayoutSettings } from './layout-manager.js';
 import { openLayoutEditor } from './layout-editor.js';
 import { createInlineSelect } from './inline-select.js';
 import { FOOTER_POSITIONS, initMessageTools, applyMessageToolSettings } from './message-tools.js';
-import { FLOATING_LAYOUTS, orderedFloatingButtons, initFloatingPanel, applyFloatingSettings } from './floating-panel.js';
+import { FLOATING_LAYOUTS, orderedFloatingButtons, initFloatingPanel, applyFloatingSettings, pickMenuItems } from './floating-panel.js';
 import { QR_MODES, initQrBar, applyQrPreset } from './qr-bar.js';
 import { initQrInput } from './qr-input.js';
 import { initStatusGuard } from './status-guard.js';
@@ -58,6 +58,7 @@ const TABS = Object.freeze([
             ['chatExportAll', '채팅 전체 내보내기·불러오기', 'ST 채팅 목록 창(Chat History)의 "채팅 가져오기" 옆에 아이콘 두 개가 생깁니다. zip 아이콘을 누르면 그 캐릭터의 채팅을 전부 zip 파일 하나로 받고, 폴더 아이콘을 누르면 그 zip 파일(또는 .jsonl 파일 여러 개)을 원래 채팅 이름 그대로 불러옵니다. 이름이 겹치면 뒤에 (2)를 붙이며, 원래 있던 채팅은 건드리지 않습니다.'],
             ['chatQuickRename', '채팅 이름 한 번에 바꾸기', 'ST 채팅 목록 창에서 채팅 이름 옆 연필 버튼 옆에 사람 모양 버튼이 생깁니다. 누르면 페르소나 이름, 페르소나 이름 + 날짜, 캐릭터 이름, 캐릭터 이름 + 날짜 중 하나를 골라 바로 바꿀 수 있습니다. 페르소나는 그 채팅에 고정해 둔 페르소나(없으면 지금 페르소나)이고, 날짜는 채팅을 만든 날입니다.'],
             ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다. ST의 "메시지 삭제"처럼 메시지마다 체크칸이 나오는데, 첫 메시지와 끝 메시지를 누르면 그 사이만 체크됩니다(ST 기본은 누른 메시지부터 끝까지). 입력창 자리에 뜨는 삭제 버튼으로 지우고, 취소 버튼으로 나옵니다.'],
+            ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다. 범위 삭제처럼 첫 메시지와 끝 메시지를 눌러 고르고, 입력창 자리에 뜨는 숨기기 버튼을 누르면 그 사이 메시지를 숨깁니다. 숨긴 메시지는 채팅에 남아 있지만 AI에게 보내지 않습니다. 다시 보이게 하려면 메시지의 눈 버튼을 누릅니다. 바로가기 버튼의 "메시지 범위 숨기기"로는 번호를 적어서(예: 3-10) 숨길 수 있습니다.'],
             ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 어떤 단어를 다른 단어로 한꺼번에 바꿉니다(예: 상태창의 2024를 2205로). 다른 답변(스와이프)과 번역문도 같이 바꾸며, 답변을 만드는 중에는 쓸 수 없습니다.'],
             ['welcomeRecent', '시작 화면에 최근 채팅 펼치기', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지를 숨기고, 최근 채팅 목록을 모두 펼쳐서 보여 줍니다.'],
         ],
@@ -81,7 +82,7 @@ const TABS = Object.freeze([
     {
         title: '바로가기',
         features: [
-            ['floatingPanel', '바로가기 버튼', '최근 메시지 삭제, 맨 위로, 번호로 이동, 맨 아래로, 이름 바꾸기 버튼을 한곳에 모아 둡니다. 보이는 방식은 아래에서 고릅니다. 입력창 위에 펼치기(입력창 왼쪽 ··· 버튼으로 열고 닫기), 입력창 위에 늘 보이기, 떠 있는 버튼(화면 가장자리에 붙고, 꾹 눌러 옮김) 중 하나입니다. 떠 있는 버튼은 펼쳐도 ··· 자리가 그대로라서, 같은 곳을 한 번 더 누르면 닫힙니다. 아래 칩을 눌러 보일 버튼을 고르고, 칩을 꾹 누른 채 끌면 순서가 바뀝니다.'],
+            ['floatingPanel', '바로가기 버튼', '최근 메시지 삭제, 맨 위로, 한 메시지 위로, 번호로 이동, 한 메시지 아래로, 맨 아래로, 메시지 범위 숨기기, 이름 바꾸기 버튼을 한곳에 모아 둡니다. 한 메시지 위로·아래로는 지금 화면 맨 위에 보이는 메시지를 기준으로 하나씩 옮겨 갑니다. 버튼이 많아 줄이 넘치면 옆으로 밀어서 봅니다. 보이는 방식은 아래에서 고릅니다. 입력창 위에 펼치기(입력창 왼쪽 ··· 버튼으로 열고 닫기), 입력창 위에 늘 보이기, 떠 있는 버튼(화면 가장자리에 붙고, 꾹 눌러 옮김) 중 하나입니다. 떠 있는 버튼은 펼쳐도 ··· 자리가 그대로라서, 같은 곳을 한 번 더 누르면 닫힙니다. 아래 칩을 눌러 보일 버튼을 고르고, 칩을 꾹 누른 채 끌면 순서가 바뀝니다. "메뉴 항목 추가"를 누르면 확장 메뉴(마법봉), 옵션 메뉴, 입력창에 있는 버튼도 골라서 바로가기에 아이콘으로 넣을 수 있습니다. 누르면 원래 메뉴에서 누른 것과 같습니다.'],
         ],
     },
     {
@@ -97,7 +98,7 @@ const TABS = Object.freeze([
         title: '메뉴 정리',
         features: [
             ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정에 있는 항목을 숨기거나 순서를 바꿉니다. 아래 "메뉴 정리 열기"를 눌러 정리하고, 이 기능을 끄면 원래대로 돌아갑니다.'],
-            ['wandGrid', '확장 메뉴를 아이콘으로', '확장 메뉴(입력창 왼쪽 마법봉)를 글자 없이 아이콘만, 한 줄에 2개씩 보여 줍니다. 아이콘을 꾹 누르면(컴퓨터는 마우스를 올리면) 이름이 보입니다.'],
+            ['wandGrid', '확장 메뉴를 아이콘으로', '확장 메뉴(입력창 왼쪽 마법봉)를 글자 없이 아이콘만, 한 줄에 2개씩 보여 줍니다. 아이콘을 꾹 누르면 위에 이름이 잠깐 뜹니다(그때는 실행되지 않습니다). 컴퓨터는 마우스를 올리면 보입니다.'],
             ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접었다 펼 수 있습니다. 정규식이 실행되는 순서는 바뀌지 않습니다. 폴더는 정규식 창의 "폴더" 버튼에서 만들고 고칩니다.'],
         ],
     },
@@ -304,15 +305,31 @@ function extrasFor(key) {
         });
         const chips = document.createElement('div');
         chips.className = 'stqa_chips';
-        chips.innerHTML = orderedFloatingButtons().map(({ key: button, icon, label }) => `
-            <label class="stqa_chip" title="${label}"><input type="checkbox" data-floating-button="${button}"><i class="fa-solid ${icon}"></i><span>${label}</span></label>`).join('');
-        chips.querySelectorAll('input').forEach(input => (input.checked = settings.floatingButtons?.[input.dataset.floatingButton] !== false));
+        // Menu items' names and icons come from other extensions: set as text and classes, not markup
+        const renderChips = () => {
+            chips.replaceChildren(...orderedFloatingButtons().map(({ key: button, icon, label }) => {
+                const chip = document.createElement('label');
+                chip.className = 'stqa_chip';
+                chip.title = label;
+                chip.innerHTML = '<input type="checkbox"><i></i><span></span>';
+                chip.querySelector('input').dataset.floatingButton = button;
+                chip.querySelector('input').checked = settings.floatingButtons?.[button] !== false;
+                chip.querySelector('i').className = /\bfa-(solid|regular|brands)\b/.test(icon) ? icon : `fa-solid ${icon}`;
+                chip.querySelector('span').textContent = label;
+                return chip;
+            }));
+        };
+        renderChips();
         enableChipOrdering(chips, (keys) => {
             settings.floatingOrder = keys;
             saveSettings();
             applyFloatingSettings();
         });
-        extra.append(chips);
+        extra.append(chips, panelButton('fa-plus', '메뉴 항목 추가 (마법봉·옵션·입력창)', async () => {
+            if (await pickMenuItems()) {
+                renderChips();
+            }
+        }));
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }

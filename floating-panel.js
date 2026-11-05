@@ -4,6 +4,8 @@
 // The floating position is kept as a share of the window, so it stays put after a rotation.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
+import { askAndHideRange } from './range-delete.js';
+import { findMenuItem, listItems } from './layout-manager.js';
 
 const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
@@ -16,16 +18,113 @@ const TITLE = '편의성 모음';
 export const FLOATING_BUTTONS = Object.freeze([
     { key: 'deleteLast', icon: 'fa-trash-can', label: '최근 메시지 삭제' },
     { key: 'top', icon: 'fa-angles-up', label: '맨 위로' },
+    { key: 'up', icon: 'fa-angle-up', label: '한 메시지 위로' },
     { key: 'jump', icon: 'fa-hashtag', label: '번호로 이동' },
+    { key: 'down', icon: 'fa-angle-down', label: '한 메시지 아래로' },
     { key: 'bottom', icon: 'fa-angles-down', label: '맨 아래로' },
+    { key: 'hideRange', icon: 'fa-eye-slash', label: '메시지 범위 숨기기' },
     { key: 'names', icon: 'fa-id-badge', label: '이름 바꾸기' },
 ]);
 
-/** The buttons in the order set in the settings (long-press a chip there to move it). */
+/**
+ * The buttons in the order set in the settings (long-press a chip there to move it). Buttons
+ * that order doesn't know yet (added in later versions) go right after the button they follow
+ * in the default order.
+ */
 export function orderedFloatingButtons() {
-    const order = getSettings().floatingOrder ?? [];
-    const rank = key => (order.includes(key) ? order.indexOf(key) : order.length);
-    return [...FLOATING_BUTTONS].sort((a, b) => rank(a.key) - rank(b.key));
+    const buttons = [...FLOATING_BUTTONS, ...extraButtons()];
+    const keys = buttons.map(button => button.key);
+    const order = (getSettings().floatingOrder ?? []).filter(key => keys.includes(key));
+    keys.forEach((key, index) => {
+        if (!order.includes(key)) {
+            const previous = keys.slice(0, index).findLast(other => order.includes(other));
+            order.splice(previous ? order.indexOf(previous) + 1 : 0, 0, key);
+        }
+    });
+    return order.map(key => buttons.find(button => button.key === key));
+}
+
+/** Where menu items can be taken from for the shortcuts. */
+export const MENU_SOURCES = Object.freeze([
+    { title: '확장 메뉴 (마법봉)', selectors: ['#extensionsMenu'] },
+    { title: '옵션 메뉴 (☰)', selectors: ['#options .options-content'] },
+    { title: '입력창 버튼', selectors: ['#leftSendForm', '#rightSendForm'] },
+]);
+const FALLBACK_ICON = 'fa-solid fa-puzzle-piece';
+// Size classes a menu icon may carry (fa-lg in the Options menu): the shortcuts size their icons themselves
+const iconWithoutSize = icon => icon.split(/\s+/).filter(name => name && !/^fa-(lg|xl|2xl|xs|sm|2xs|fw|\d+x)$/.test(name)).join(' ');
+const extraKey = (selector, key) => `menu:${selector}|${key}`;
+
+/** Menu items added to the shortcuts (settings: { selector, key, label, icon }). */
+function extraButtons() {
+    return (getSettings().floatingExtras ?? []).map(item => ({
+        key: extraKey(item.selector, item.key),
+        icon: iconWithoutSize(item.icon || '') || FALLBACK_ICON,
+        label: item.label,
+        menuItem: item,
+    }));
+}
+
+/** Taps the menu item a shortcut stands for, where the page has it (the menu needn't be open). */
+function runMenuItem(key) {
+    const item = (getSettings().floatingExtras ?? []).find(entry => extraKey(entry.selector, entry.key) === key);
+    const element = item && findMenuItem(item.selector, item.key);
+    if (!element) {
+        toastr.warning(`"${item?.label ?? '?'}" 항목을 찾지 못했습니다. 그 확장이 꺼져 있거나 이름이 바뀌었을 수 있습니다.`, TITLE);
+        return;
+    }
+    element.click();
+}
+
+/**
+ * Picks menu items to add to the shortcuts: the wand menu, the Options menu and the input bar
+ * buttons, each with its icon and name; the ones added already come ticked.
+ * @returns {Promise<boolean>} whether the list was changed
+ */
+export async function pickMenuItems() {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
+    const settings = getSettings();
+    const chosen = new Set((settings.floatingExtras ?? []).map(item => extraKey(item.selector, item.key)));
+    const entries = new Map();
+    const root = document.createElement('div');
+    root.className = 'stqa_panel stqa_menu_pick';
+    root.innerHTML = '<h3>바로가기에 메뉴 항목 추가</h3><div class="stqa_hint">고른 항목이 바로가기 줄에 아이콘으로 생깁니다. 누르면 원래 메뉴에서 누른 것과 같습니다.</div>';
+    for (const { title, selectors } of MENU_SOURCES) {
+        // The shortcuts' own ··· isn't one to add
+        const items = selectors.flatMap(selector => listItems(selector, { natural: true }).map(item => ({ ...item, selector })))
+            .filter(item => item.key !== INPUT_TOGGLE_ID);
+        if (!items.length) {
+            continue;
+        }
+        const group = document.createElement('div');
+        group.className = 'stqa_menu_pick_group';
+        group.innerHTML = '<div class="stqa_layout_group_title"></div>';
+        group.firstElementChild.textContent = title;
+        for (const item of items) {
+            const key = extraKey(item.selector, item.key);
+            entries.set(key, { selector: item.selector, key: item.key, label: item.label, icon: item.icon });
+            const row = document.createElement('label');
+            row.className = 'stqa_menu_pick_row';
+            row.innerHTML = '<input type="checkbox"><i></i><span></span>';
+            row.querySelector('input').dataset.key = key;
+            row.querySelector('input').checked = chosen.has(key);
+            row.querySelector('i').className = item.icon || FALLBACK_ICON;
+            row.querySelector('span').textContent = item.label;
+            group.append(row);
+        }
+        root.append(group);
+    }
+    const result = await new Popup(root, POPUP_TYPE.CONFIRM, '', { okButton: '저장', cancelButton: '취소', leftAlign: true, allowVerticalScrolling: true }).show();
+    if (result !== POPUP_RESULT.AFFIRMATIVE) {
+        return false;
+    }
+    const ticked = [...root.querySelectorAll('input:checked')].map(input => input.dataset.key);
+    // Items added before that aren't on the page right now (an extension switched off) stay
+    const kept = (settings.floatingExtras ?? []).filter(item => !entries.has(extraKey(item.selector, item.key)));
+    settings.floatingExtras = [...kept, ...ticked.map(key => entries.get(key))];
+    SillyTavern.getContext().saveSettingsDebounced();
+    applyFloatingSettings();
+    return true;
 }
 
 export const FLOATING_LAYOUTS = Object.freeze([
@@ -49,7 +148,11 @@ async function jumpTo(messageId) {
  * drawn (a smooth scroll stops halfway when the chat grows under it). `target` gives the
  * scroll position wanted, asked again each frame as things move.
  */
+// The settling in progress: a new one (a second tap) takes over from it
+let settling = 0;
+
 function settle(chat, target) {
+    const run = ++settling;
     let frame = 0;
     let steady = 0;
     let last = null;
@@ -59,7 +162,11 @@ function settle(chat, target) {
     chat.addEventListener('touchstart', stopNow, { once: true, passive: true });
     chat.addEventListener('wheel', stopNow, { once: true, passive: true });
     const step = () => {
+        if (run !== settling) {
+            frame = Infinity;
+        }
         if (frame === Infinity) {
+            chat.removeEventListener('touchstart', stopNow);
             chat.removeEventListener('wheel', stopNow);
             return;
         }
@@ -99,6 +206,53 @@ async function scrollToTop() {
 
 function scrollToBottom() {
     settleAtEnd(false);
+}
+
+/**
+ * The message being read: the one at the top edge of the chat (the first one that reaches
+ * below it), and whether its top is scrolled out of sight.
+ */
+function messageInView(chat) {
+    const top = chat.getBoundingClientRect().top;
+    const messages = [...chat.querySelectorAll(':scope > .mes[mesid]')].filter(element => element.offsetParent);
+    const index = messages.findIndex(element => element.getBoundingClientRect().bottom > top + 2);
+    return index === -1 ? null : { messages, index, cut: messages[index].getBoundingClientRect().top < top - 4 };
+}
+
+/**
+ * One message up or down from the one being read, its top edge at the top of the chat. Up from
+ * the middle of a long message goes to that message's own start first. Up from the first one
+ * drawn loads the older ones (like 번호로 이동).
+ */
+async function stepMessage(direction) {
+    const chat = document.getElementById('chat');
+    const spot = chat && messageInView(chat);
+    if (!spot) {
+        toastr.info('메시지 없음', TITLE);
+        return;
+    }
+    const { messages, index, cut } = spot;
+    if (direction < 0) {
+        if (cut) {
+            settleAtMessage(messages[index].getAttribute('mesid'));
+            return;
+        }
+        if (index > 0) {
+            settleAtMessage(messages[index - 1].getAttribute('mesid'));
+            return;
+        }
+        const id = Number(messages[0].getAttribute('mesid'));
+        if (id > 0) {
+            await jumpTo(id - 1);
+            settleAtMessage(id - 1);
+        }
+        return;
+    }
+    if (index < messages.length - 1) {
+        settleAtMessage(messages[index + 1].getAttribute('mesid'));
+    } else {
+        scrollToBottom();
+    }
 }
 
 async function deleteLastMessage() {
@@ -194,13 +348,16 @@ const ACTIONS = {
     deleteLast: deleteLastMessage,
     names: editNames,
     top: scrollToTop,
+    up: () => stepMessage(-1),
     jump: askAndJump,
+    down: () => stepMessage(1),
     bottom: scrollToBottom,
+    hideRange: askAndHideRange,
 };
 
 function runAction(key) {
     Promise.resolve()
-        .then(() => ACTIONS[key]?.())
+        .then(() => (key.startsWith('menu:') ? runMenuItem(key) : ACTIONS[key]?.()))
         .catch(error => console.error(`[${MODULE}] Shortcut failed`, error));
 }
 
@@ -349,6 +506,15 @@ function enableMoving() {
     panel.addEventListener('contextmenu', event => event.preventDefault());
 }
 
+/** A shortcut button (a menu item's icon may be in any Font Awesome style, so its classes go as they are). */
+function createButton(key, icon, label) {
+    const button = document.createElement('div');
+    button.className = `stqa_floating_button ${/\bfa-(solid|regular|brands|light|thin|duotone)\b|\bfa[srb]\b/.test(icon) ? icon : `fa-solid ${icon}`}`;
+    button.dataset.key = key;
+    button.title = label;
+    return button;
+}
+
 function build() {
     panel = document.createElement('div');
     panel.id = PANEL_ID;
@@ -357,13 +523,6 @@ function build() {
     toggle.dataset.key = 'toggle';
     toggle.title = '바로가기 펼치기/접기 (꾹 누르면 위치 이동)';
     panel.append(toggle);
-    for (const { key, icon, label } of FLOATING_BUTTONS) {
-        const button = document.createElement('div');
-        button.className = `stqa_floating_button fa-solid ${icon}`;
-        button.dataset.key = key;
-        button.title = label;
-        panel.append(button);
-    }
     document.body.append(panel);
     enableMoving();
     // Open stays open (scrolling the chat doesn't fold it) until ⋯ is tapped again
@@ -399,8 +558,13 @@ export function applyFloatingSettings() {
         build();
     }
     matchTheme();
-    for (const { key } of orderedFloatingButtons()) {
-        const button = panel.querySelector(`:scope > [data-key="${key}"]`);
+    const ordered = orderedFloatingButtons();
+    // Menu items taken off the list go
+    for (const button of panel.querySelectorAll(':scope > [data-key^="menu:"]')) {
+        ordered.some(({ key }) => key === button.dataset.key) || button.remove();
+    }
+    for (const { key, icon, label } of ordered) {
+        const button = [...panel.children].find(child => child.dataset.key === key) ?? createButton(key, icon, label);
         // Buttons added in later versions start switched on
         button.hidden = settings.floatingButtons?.[key] === false;
         panel.append(button);

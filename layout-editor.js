@@ -50,8 +50,11 @@ function renderList(listElement, items) {
     listElement.replaceChildren(fragment);
 }
 
-/** Pointer-based drag (works with touch): the row follows the finger, others make room. */
-export function enableDragging(listElement, onReorder) {
+/**
+ * Pointer-based drag (works with touch): the row follows the finger, others make room. With
+ * `lists` (the lists a row may go to, this one among them) a row can be dragged into another.
+ */
+export function enableDragging(listElement, onReorder, lists = () => [listElement]) {
     listElement.addEventListener('pointerdown', (event) => {
         const handle = event.target.closest('.stqa_layout_handle');
         if (!handle) {
@@ -70,8 +73,14 @@ export function enableDragging(listElement, onReorder) {
             } else if (y > box.bottom - AUTO_SCROLL_EDGE) {
                 scroller.scrollTop += AUTO_SCROLL_STEP;
             }
-            const next = [...listElement.children].find(other => other !== row && y < other.getBoundingClientRect().top + other.offsetHeight / 2);
-            next ? listElement.insertBefore(row, next) : listElement.append(row);
+            // The list under the finger, or the nearest one
+            const distance = (list) => {
+                const rect = list.getBoundingClientRect();
+                return y < rect.top ? rect.top - y : Math.max(0, y - rect.bottom);
+            };
+            const target = lists().reduce((best, list) => (distance(list) < distance(best) ? list : best));
+            const next = [...target.querySelectorAll(':scope > .stqa_layout_row')].find(other => other !== row && y < other.getBoundingClientRect().top + other.offsetHeight / 2);
+            next ? target.insertBefore(row, next) : target.append(row);
         };
         // Listen on the document (not pointer capture), so the drag keeps working wherever the
         // finger goes and with any input type
@@ -80,7 +89,7 @@ export function enableDragging(listElement, onReorder) {
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerup', onEnd);
             document.removeEventListener('pointercancel', onEnd);
-            onReorder([...listElement.children].map(child => child.dataset.key));
+            onReorder([...listElement.querySelectorAll(':scope > .stqa_layout_row')].map(child => child.dataset.key));
         };
         document.addEventListener('pointermove', onMove);
         document.addEventListener('pointerup', onEnd);
@@ -88,9 +97,14 @@ export function enableDragging(listElement, onReorder) {
     });
 }
 
-function buildGroup(selector, label, drafts) {
+/**
+ * One container's list. `area` given (its items can change sides): rows can be dragged into the
+ * other side's list too, and both drafts are read back from the lists after a drag.
+ */
+function buildGroup(selector, label, drafts, area = null) {
     const group = document.createElement('div');
     group.className = 'stqa_layout_group';
+    group.dataset.selector = selector;
     group.innerHTML = `${label ? `<div class="stqa_layout_group_title">${label}</div>` : ''}<div class="stqa_layout_list"></div>`;
     const list = group.querySelector('.stqa_layout_list');
     const render = () => renderList(list, drafts.get(selector));
@@ -105,10 +119,22 @@ function buildGroup(selector, label, drafts) {
         item.hidden = !item.hidden;
         render();
     });
-    enableDragging(list, (keys) => {
-        const byKey = new Map(drafts.get(selector).map(item => [item.key, item]));
-        drafts.set(selector, keys.map(key => byKey.get(key)));
-    });
+    if (!area) {
+        enableDragging(list, (keys) => {
+            const byKey = new Map(drafts.get(selector).map(item => [item.key, item]));
+            drafts.set(selector, keys.map(key => byKey.get(key)));
+        });
+        return group;
+    }
+    const groups = () => [...(group.parentElement?.querySelectorAll(':scope > .stqa_layout_group') ?? [group])];
+    enableDragging(list, () => {
+        const byKey = new Map(area.containers.flatMap(({ selector: own }) => drafts.get(own)).map(item => [item.key, item]));
+        for (const other of groups()) {
+            const keys = [...other.querySelectorAll('.stqa_layout_row')].map(row => row.dataset.key);
+            drafts.set(other.dataset.selector, keys.map(key => byKey.get(key)));
+            renderList(other.querySelector('.stqa_layout_list'), drafts.get(other.dataset.selector));
+        }
+    }, () => groups().map(other => other.querySelector('.stqa_layout_list')));
     return group;
 }
 
@@ -135,7 +161,13 @@ export async function openLayoutEditor() {
         for (const tab of tabs.children) {
             tab.classList.toggle('stqa_tab_active', tab.dataset.title === area.title);
         }
-        body.replaceChildren(...area.containers.map(({ selector, label }) => buildGroup(selector, label, drafts)));
+        body.replaceChildren(...area.containers.map(({ selector, label }) => buildGroup(selector, label, drafts, area.crossMove ? area : null)));
+        if (area.crossMove) {
+            const hint = document.createElement('div');
+            hint.className = 'stqa_hint';
+            hint.textContent = '≡ 를 끌어 왼쪽과 오른쪽 사이로도 옮길 수 있습니다.';
+            body.prepend(hint);
+        }
     };
     for (const area of LAYOUT_AREAS) {
         const tab = document.createElement('div');
@@ -163,9 +195,11 @@ export async function openLayoutEditor() {
         return;
     }
     for (const [selector, items] of drafts) {
+        const area = LAYOUT_AREAS.find(entry => entry.containers.some(container => container.selector === selector));
         saveLayout(selector, {
             order: items.map(item => item.key),
             hidden: items.filter(item => item.hidden).map(item => item.key),
+            listed: area.crossMove ? area.containers.flatMap(container => drafts.get(container.selector).map(item => item.key)) : items.map(item => item.key),
         });
     }
     SillyTavern.getContext().saveSettingsDebounced();
