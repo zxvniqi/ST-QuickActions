@@ -2190,22 +2190,7 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 }
 
 /* Prompt list column titles: the buttons centred between "Name" and "Tokens", out of the layout */
-.completion_prompt_manager_list_head:has(> #stqa_prompt_tr) {
-    position: relative;
-}
 
-.completion_prompt_manager_list_head > #stqa_prompt_tr {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-}
-
-/* The prompt 文A at the end of the quick switch row: a chip like the others */
-.stqa_tr_chip {
-    justify-content: center;
-    min-width: 2.4em;
-}
 
 /* QR tools: sized to OK / Cancel by the script; icon in the middle */
 .stqa_qr_btn {

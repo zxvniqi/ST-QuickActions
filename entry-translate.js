@@ -522,27 +522,18 @@ function addButtons() {
     if (close && !document.getElementById('stqa_prompt_form_tr')) {
         close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
-    // Prompt list: one 文A that opens the menu, at the end of the quick switch row (or, with
-    // that row switched off, between "Name" and "Tokens"). The row is drawn anew often: it is
-    // put back each time
-    const chips = document.querySelector('.stqa_toggle_sets');
-    const head = document.querySelector('.completion_prompt_manager_list_head');
-    let promptButton = document.getElementById('stqa_prompt_tr');
-    if ((chips || head?.firstElementChild) && !(promptButton && (chips ?? head).contains(promptButton))) {
-        promptButton?.remove();
-        promptButton = document.createElement('div');
-        promptButton.id = 'stqa_prompt_tr';
-        promptButton.title = '번역 메뉴';
-        promptButton.dataset.trMenu = 'prompts';
-        if (chips) {
-            // Looks like the chips beside it
-            promptButton.className = 'stqa_variant_chip stqa_tr_chip';
-            promptButton.innerHTML = '<i class="fa-solid fa-language"></i>';
-            chips.append(promptButton);
-        } else {
-            promptButton.className = 'menu_button fa-solid fa-language stqa_tr_icon';
-            head.firstElementChild.after(promptButton);
-        }
+    // Prompt list: one 文A that opens the menu, right after ST's ✚ (new prompt) at the end of its
+    // tool row. ST draws that row anew often: the button is put back each time
+    const add = document.querySelector('.completion_prompt_manager_footer .fa-plus-square')
+        ?? document.querySelector('.completion_prompt_manager_footer > :last-child');
+    if (add && add.nextElementSibling?.id !== 'stqa_prompt_tr') {
+        document.getElementById('stqa_prompt_tr')?.remove();
+        const button = document.createElement('div');
+        button.id = 'stqa_prompt_tr';
+        button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
+        button.title = '번역 메뉴';
+        button.dataset.trMenu = 'prompts';
+        add.after(button);
     }
     // World info: one 文A beside the page controls (no room there for four); it opens a menu
     const pages = document.getElementById('world_info_pagination');
