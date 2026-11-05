@@ -123,7 +123,13 @@ function decorate(row) {
         tools.innerHTML = '<div class="stqa_char_tool" data-tool="fav" title="즐겨찾기"></div><div class="stqa_char_tool fa-solid fa-tag" data-tool="tag" title="태그"></div>';
         // Where the card's tags were; the tags go under it, smaller (CSS)
         const tags = row.querySelector('.tags');
-        tags ? tags.before(tools) : row.append(tools);
+        if (tags) {
+            tags.before(tools);
+            // Lined up the way the theme lines up the tags
+            tools.style.justifyContent = getComputedStyle(tags).justifyContent;
+        } else {
+            row.append(tools);
+        }
     }
     const fav = isFav(character);
     tools.querySelector('[data-tool="fav"]').className = `stqa_char_tool ${fav ? 'fa-solid stqa_on' : 'fa-regular'} fa-star`;

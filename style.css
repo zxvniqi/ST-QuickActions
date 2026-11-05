@@ -1909,6 +1909,8 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
 /* Character list: ☆ and tag where the card's tags were, the tags under them, smaller */
 .stqa_char_tools {
     display: none;
+    box-sizing: border-box;
+    width: 100%;
     gap: 6px;
 }
 
@@ -1916,8 +1918,10 @@ body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
     display: flex;
 }
 
-body.stqa_char_tools_on #rm_print_characters_block .character_select .tags {
-    font-size: 0.8em;
+/* Themes size the tag pills themselves, so the pills are sized here */
+body.stqa_char_tools_on #rm_print_characters_block .character_select .tags .tag {
+    font-size: 11px !important;
+    padding: 2px 7px !important;
 }
 
 .stqa_char_tool {
@@ -2174,4 +2178,13 @@ body:not(.stqa_entry_translate_on) .stqa_tr_one {
 /* Setting descriptions hidden (the grey lines under ST's options) */
 body.stqa_hide_hints .toggle-description {
     display: none !important;
+}
+.stqa_tr_icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stqa_tr_icons .menu_button {
+    margin: 0;
 }

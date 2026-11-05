@@ -362,15 +362,18 @@ function addButtons() {
         button.id = 'stqa_prompt_translate';
         close.before(button);
     }
-    // Prompt list: among the footer's own icons
-    const footer = document.querySelector('.completion_prompt_manager_footer');
-    if (footer && !footer.querySelector('.stqa_tr_icon')) {
-        footer.append(...listIcons('prompts'));
+    // Prompt list: in its header, in the gap between "Prompts" and the token count
+    const header = document.querySelector('.completion_prompt_manager_header');
+    if (header?.firstElementChild && !header.querySelector('.stqa_tr_icon')) {
+        const group = document.createElement('div');
+        group.className = 'stqa_tr_icons';
+        group.append(...listIcons('prompts'));
+        header.firstElementChild.after(group);
     }
-    // World info: in the row of its entry tools (new, open all...)
-    const wiTools = document.getElementById('OpenAllWIEntries')?.parentElement;
-    if (wiTools && !wiTools.querySelector('.stqa_tr_icon')) {
-        document.getElementById('OpenAllWIEntries').after(...listIcons('world'));
+    // World info: after its ↻ (the sort list beside it gives up the room; the search box keeps it)
+    const refreshButton = document.getElementById('world_refresh');
+    if (refreshButton && !refreshButton.parentElement.querySelector('.stqa_tr_icon')) {
+        refreshButton.after(...listIcons('world'));
     }
     for (const entry of document.querySelectorAll('#world_popup_entries_list .world_entry')) {
         const move = entry.querySelector('.move_entry_button');
