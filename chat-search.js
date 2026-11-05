@@ -43,12 +43,42 @@ function searchableText(message) {
     return `${shown}\n${message?.mes ?? ''}`.replace(/<[^>]*>/g, ' ').toLowerCase();
 }
 
-/** Ranges of every place the word is in the message's drawn text (within one text piece each). */
+/**
+ * Whether text in this element is drawn on screen. Messages keep text that isn't shown: the
+ * original behind a translation, a folded <details>, parts a regex or an extension hides.
+ */
+function shows(element) {
+    if (!element) {
+        return false;
+    }
+    if (typeof element.checkVisibility === 'function') {
+        return element.checkVisibility({ visibilityProperty: true });
+    }
+    return element.getClientRects().length > 0;
+}
+
+/** Ranges of every place the word is in the message's shown text (within one text piece each). */
 function rangesIn(element, word) {
     const needle = word.toLowerCase();
     const ranges = [];
     const walker = document.createTreeWalker(element.querySelector('.mes_text') ?? element, NodeFilter.SHOW_TEXT);
+    // The message itself may be left undrawn by a chat virtualizer: its own visibility isn't asked
+    const visible = new Map();
+    const showsText = (node) => {
+        // An element without a box of its own (display: contents) shows through its parent
+        let parent = node.parentElement;
+        while (parent && getComputedStyle(parent).display === 'contents') {
+            parent = parent.parentElement;
+        }
+        if (!visible.has(parent)) {
+            visible.set(parent, shows(parent));
+        }
+        return visible.get(parent);
+    };
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.nodeValue.toLowerCase().includes(needle) || !showsText(node)) {
+            continue;
+        }
         const text = node.nodeValue.toLowerCase();
         for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) {
             const range = new Range();
@@ -126,6 +156,10 @@ function bringIntoView() {
         showForReal([element.previousElementSibling, element, element.nextElementSibling]);
     }
     const target = range.getBoundingClientRect();
+    // Nothing drawn there (it was hidden meanwhile): stay put rather than jump to the top
+    if (!target.width && !target.height) {
+        return;
+    }
     const box = chat.getBoundingClientRect();
     const wanted = box.top + box.height / 3;
     if (Math.abs(target.top - wanted) > 4) {
