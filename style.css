@@ -1847,28 +1847,30 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
 .stqa_folder_item.stqa_readonly {
     cursor: default;
 }
-/* QR input tools tucked in the bottom left corner, clear of OK / Cancel */
+/* QR input tools at the right end of the OK / Cancel row, clear of them */
+/* OK / Cancel stay centred in the room left of the tools, so they never meet */
 .popup-controls:has(> .stqa_qr_tools) {
     position: relative;
     align-self: stretch;
     justify-content: center;
+    box-sizing: border-box;
+    padding-right: 116px;
 }
 
 .popup-controls > .stqa_qr_tools {
     position: absolute;
-    left: 0;
+    right: 0;
     top: 50%;
     transform: translateY(-50%);
-    gap: 0;
+    gap: 4px;
     margin: 0;
 }
 
 .popup-controls > .stqa_qr_tools .stqa_qr_tool {
-    width: 26px;
-    height: 26px;
-    border: none;
-    font-size: 0.8em;
-    opacity: 0.5;
+    width: 34px;
+    height: 32px;
+    font-size: 1em;
+    opacity: 1;
 }
 
 .popup-controls ~ .stqa_qr_history,
@@ -1904,38 +1906,28 @@ body.stqa_swipe_at_right.stqa_top_at_right .stqa_mes_footer {
     font-size: 0.8em;
     opacity: 0.5;
 }
-/* Character list: ☆ and tag side by side in the card's top right corner, out of the layout
-   (themes wrap the card's parts, so a part of its own would add a line) */
+/* Character list: ☆ and tag where the card's tags were, the tags under them, smaller */
 .stqa_char_tools {
     display: none;
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 1;
-    gap: 2px;
+    gap: 6px;
 }
 
 body.stqa_char_tools_on #rm_print_characters_block .stqa_char_tools {
     display: flex;
 }
 
-body.stqa_char_tools_on #rm_print_characters_block .character_select {
-    position: relative;
-}
-
-body.stqa_char_tools_on #rm_print_characters_block .character_select .character_name_block {
-    box-sizing: border-box;
-    padding-right: 60px;
+body.stqa_char_tools_on #rm_print_characters_block .character_select .tags {
+    font-size: 0.8em;
 }
 
 .stqa_char_tool {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 26px;
+    width: 32px;
+    height: 28px;
     border-radius: 6px;
-    font-size: 0.9em;
+    font-size: 1em;
     opacity: 0.55;
     cursor: pointer;
 }
@@ -2162,43 +2154,24 @@ span.stqa_tr_view {
     border-bottom: 1px dashed currentColor;
 }
 
-.stqa_tr_tools {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-    margin: 6px 0;
-}
-
-.stqa_tr_tools .menu_button {
-    display: inline-flex;
-    gap: 5px;
-    width: auto;
-    margin: 0;
-    white-space: nowrap;
-}
-
 .stqa_tr_toggle.stqa_active {
     border-color: var(--SmartThemeQuoteColor);
     color: var(--SmartThemeQuoteColor);
 }
 
-body:not(.stqa_entry_translate_on) .stqa_tr_tools,
+/* Translating: the button tapped spins */
+.stqa_busy::before {
+    content: "\f110" !important;
+    display: inline-block;
+    animation: fa-spin 1s linear infinite;
+}
+
+body:not(.stqa_entry_translate_on) .stqa_tr_icon,
 body:not(.stqa_entry_translate_on) .stqa_tr_one {
     display: none !important;
 }
-/* 전체 내보내기 / 불러오기: a line of their own under the chat list header */
-#stqa_chat_io {
-    display: flex;
-    flex: 1 0 100%;
-    justify-content: center;
-    gap: 6px;
-}
 
-#stqa_chat_io[hidden] {
-    display: none;
-}
-
-#stqa_chat_io .menu_button {
-    margin: 0;
+/* Setting descriptions hidden (the grey lines under ST's options) */
+body.stqa_hide_hints .toggle-description {
+    display: none !important;
 }

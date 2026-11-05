@@ -62,6 +62,7 @@ const defaultSettings = Object.freeze({
     keepStatusPanels: true,
     hdAvatars: true,
     hideInputPlaceholder: false,
+    hideSettingHints: true,
     // Per container selector: { order: string[], hidden: string[] }
     layout: {},
 });

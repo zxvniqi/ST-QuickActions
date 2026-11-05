@@ -6,7 +6,6 @@ import { isOn } from './settings.js';
 const TITLE = '편의성 모음';
 const BUTTON_ID = 'stqa_export_all_chats';
 const IMPORT_ID = 'stqa_import_all_chats';
-const ROW_ID = 'stqa_chat_io';
 
 // CRC-32 table for the zip format
 const CRC_TABLE = (() => {
@@ -220,25 +219,28 @@ async function importChats(picked) {
 }
 
 export function applyChatExport() {
-    const row = document.getElementById(ROW_ID);
-    if (row) {
-        row.hidden = !isOn('chatExportAll');
+    for (const id of [BUTTON_ID, IMPORT_ID]) {
+        const button = document.getElementById(id);
+        if (button) {
+            // menu_button's own display would beat `hidden`
+            button.style.display = isOn('chatExportAll') ? '' : 'none';
+        }
     }
 }
 
-function headerButton(id, icon, text, title, onClick) {
+/** An icon button like the header's own (no words: the header has no room on phones). */
+function headerButton(id, icon, title, onClick) {
     const button = document.createElement('div');
     button.id = id;
-    button.className = 'menu_button menu_button_icon';
+    button.className = `menu_button fa-solid ${icon} stqa_chat_io`;
     button.title = title;
-    button.innerHTML = `<i class="fa-solid ${icon}"></i><span>${text}</span>`;
     button.addEventListener('click', onClick);
     return button;
 }
 
 export function initChatExport() {
-    const header = document.querySelector('#select_chat_popup [name="selectChatPopupHeader"]');
-    if (header && !document.getElementById(ROW_ID)) {
+    const anchor = document.getElementById('chat_import_button');
+    if (anchor && !document.getElementById(BUTTON_ID)) {
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = '.zip,.jsonl';
@@ -252,16 +254,12 @@ export function initChatExport() {
                 toastr.error('불러오지 못했습니다.', TITLE);
             });
         });
-        const exporter = headerButton(BUTTON_ID, 'fa-file-zipper', '전체 내보내기', '이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다', () => exportAllChats().catch((error) => {
+        const exporter = headerButton(BUTTON_ID, 'fa-file-zipper', '전체 내보내기: 이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다', () => exportAllChats().catch((error) => {
             console.error(`[${TITLE}] Exporting chats failed`, error);
             toastr.error('내보내지 못했습니다.', TITLE);
         }));
-        const importer = headerButton(IMPORT_ID, 'fa-file-arrow-up', '전체 불러오기', '전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
-        // A line of their own at the end of the header, so the search box keeps its width
-        const row = document.createElement('div');
-        row.id = ROW_ID;
-        row.append(exporter, importer, picker);
-        header.append(row);
+        const importer = headerButton(IMPORT_ID, 'fa-folder-open', '전체 불러오기: 전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
+        anchor.after(exporter, importer, picker);
     }
     applyChatExport();
 }

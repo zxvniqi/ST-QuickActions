@@ -108,6 +108,7 @@ export function applyDisplayTweaks() {
         document.querySelectorAll('#extensionsMenu .list-group-item:not([title])').forEach(item => (item.title = item.textContent.trim()));
     }
     document.body.classList.toggle('stqa_welcome_recent', isOn('welcomeRecent'));
+    document.body.classList.toggle('stqa_hide_hints', isOn('hideSettingHints'));
     syncPlaceholder();
     expandRecentChats();
     if (isOn('hdAvatars')) {

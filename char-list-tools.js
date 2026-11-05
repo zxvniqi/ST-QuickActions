@@ -116,12 +116,14 @@ function decorate(row) {
     if (!character) {
         return;
     }
-    let tools = row.querySelector(':scope > .stqa_char_tools');
+    let tools = row.querySelector('.stqa_char_tools');
     if (!tools) {
         tools = document.createElement('div');
         tools.className = 'stqa_char_tools';
         tools.innerHTML = '<div class="stqa_char_tool" data-tool="fav" title="즐겨찾기"></div><div class="stqa_char_tool fa-solid fa-tag" data-tool="tag" title="태그"></div>';
-        row.append(tools);
+        // Where the card's tags were; the tags go under it, smaller (CSS)
+        const tags = row.querySelector('.tags');
+        tags ? tags.before(tools) : row.append(tools);
     }
     const fav = isFav(character);
     tools.querySelector('[data-tool="fav"]').className = `stqa_char_tool ${fav ? 'fa-solid stqa_on' : 'fa-regular'} fa-star`;
