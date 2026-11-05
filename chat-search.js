@@ -1,11 +1,12 @@
 // "채팅에서 찾기" in the Options menu. The search box shows above the chat (under the top bar, or
 // under a chat top bar extension's bar), the ▲ / ▼ / ✕ buttons in place of the input. Typing a word
-// finds the messages that have it, newest first; ▲ goes to the next result (older, up the chat),
-// ▼ back to the previous one. The word is marked where it shows (CSS highlights: the message's own text is never
-// touched). The search runs over the chat's text in memory, so even long chats answer at once;
-// a message whose shown text turns out not to have the word (a regex hides it, it is in a status
-// panel's code) is skipped when it is reached. Messages not drawn yet are loaded the way 번호로
-// 이동 does.
+// goes to the last place it shows in the newest message that has it; ▲ goes to the next place up
+// the chat (the one above in the same message, then into older messages), ▼ back down. Every place
+// in the message is marked, the current one more strongly (CSS highlights: the message's own text
+// is never touched). The search runs over the chat's text in memory, so even long chats answer at
+// once; a message whose shown text turns out not to have the word (a regex hides it, it is in a
+// status panel's code) is skipped when it is reached. Messages not drawn yet are loaded the way
+// 번호로 이동 does. A message drawn again meanwhile (a translation coming in) is marked again.
 import { MODULE, isOn } from './settings.js';
 import { showForReal } from './floating-panel.js';
 
@@ -13,14 +14,21 @@ const OPTION_ID = 'stqa_option_search';
 const TOP_ID = 'stqa_search_top';
 const BAR_ID = 'stqa_search_bar';
 const HIGHLIGHT = 'stqa-find';
+const HIGHLIGHT_CURRENT = 'stqa-find-current';
 const TYPING_DELAY_MS = 250;
+// Checks after a jump: messages are still being drawn (translations, pictures, status panels)
+const RECHECK_MS = [150, 500, 1200];
 
 let top = null;
 let bar = null;
+// Messages with the word, newest first; the one shown; the places in it; the place shown
 let results = [];
 let current = -1;
+let places = [];
+let place = -1;
 let formDisplay = '';
 let timer = null;
+let rechecks = [];
 
 const highlights = () => (typeof Highlight === 'function' && CSS.highlights ? CSS.highlights : null);
 const wordOf = () => top?.querySelector('input').value.trim() ?? '';
@@ -69,54 +77,134 @@ function find(word) {
 
 function clearMarks() {
     highlights()?.delete(HIGHLIGHT);
+    highlights()?.delete(HIGHLIGHT_CURRENT);
+}
+
+function cancelRechecks() {
+    rechecks.forEach(clearTimeout);
+    rechecks = [];
 }
 
 function setCount() {
     const count = bar?.querySelector('.stqa_search_count');
-    if (count) {
-        count.textContent = results.length ? `${current + 1}/${results.length}` : (wordOf() ? '0' : '');
+    if (!count) {
+        return;
+    }
+    if (!results.length) {
+        count.textContent = wordOf() ? '0' : '';
+        return;
+    }
+    // Which message, and which place in it when it has several
+    count.textContent = `${current + 1}/${results.length}${places.length > 1 ? ` · ${place + 1}/${places.length}` : ''}`;
+}
+
+/** Marks the places in the message shown, the current one more strongly. */
+function mark() {
+    clearMarks();
+    if (!places.length) {
+        return;
+    }
+    highlights()?.set(HIGHLIGHT, new Highlight(...places));
+    const currentMark = new Highlight(places[place]);
+    currentMark.priority = 1;
+    highlights()?.set(HIGHLIGHT_CURRENT, currentMark);
+}
+
+/** Brings the current place a third of the way down the chat (the message drawn for real first). */
+function bringIntoView() {
+    const chat = document.getElementById('chat');
+    const range = places[place];
+    if (!chat || !range) {
+        return;
+    }
+    const element = range.startContainer.parentElement?.closest('.mes');
+    if (element) {
+        showForReal([element.previousElementSibling, element, element.nextElementSibling]);
+    }
+    const target = range.getBoundingClientRect();
+    const box = chat.getBoundingClientRect();
+    const wanted = box.top + box.height / 3;
+    if (Math.abs(target.top - wanted) > 4) {
+        chat.scrollTo({ top: chat.scrollTop + target.top - wanted, behavior: 'instant' });
     }
 }
 
 /**
- * Goes to a found message: loads it if needed, marks the word, and brings the first mark into
- * view. One whose shown text hasn't the word is dropped, and the next one that way is shown.
+ * The message may be drawn again just after the jump (a translation arriving, a status panel
+ * filling in): its places are found again in the new text, and the current one brought back.
  */
-async function show(position, direction = 1) {
+function watchCurrent() {
+    cancelRechecks();
     const word = wordOf();
-    const chat = document.getElementById('chat');
+    const index = results[current];
+    rechecks = RECHECK_MS.map(delay => setTimeout(() => {
+        if (word !== wordOf() || results[current] !== index || !places.length) {
+            return;
+        }
+        // Redrawn: the text pieces may be gone, or kept and given new text (then the place no
+        // longer holds the word)
+        const stale = range => !range.startContainer.isConnected || range.toString().toLowerCase() !== word.toLowerCase();
+        if (places.some(stale)) {
+            const element = drawnMessage(index);
+            const fresh = element ? rangesIn(element, word) : [];
+            if (!fresh.length) {
+                return;
+            }
+            // The same place counted from the same end it was reached from
+            const fromEnd = places.length - 1 - place;
+            place = fresh.length === places.length ? place : Math.max(0, fresh.length - 1 - fromEnd);
+            places = fresh;
+            setCount();
+            mark();
+        }
+        bringIntoView();
+    }, delay));
+}
+
+/** Shows a place in the message shown now. */
+function showPlace(at) {
+    place = at;
+    setCount();
+    mark();
+    bringIntoView();
+    watchCurrent();
+}
+
+/**
+ * Goes to a found message (loading it if needed) and to its last place (`fromEnd`, coming from
+ * below) or its first. One whose shown text hasn't the word is dropped, and the next one that way
+ * is shown.
+ */
+async function showMessage(position, older, fromEnd) {
+    const word = wordOf();
+    cancelRechecks();
     while (results.length) {
         current = (position + results.length) % results.length;
         const index = results[current];
         if (!drawnMessage(index)) {
             await SillyTavern.getContext().executeSlashCommandsWithOptions(`/chat-jump ${index}`);
         }
-        const element = drawnMessage(index);
         // Typed something else meanwhile
         if (word !== wordOf() || results[current] !== index) {
             return;
         }
+        const element = drawnMessage(index);
         // Drawn for real before measuring (chat virtualizers leave messages out of sight undrawn)
         if (element) {
             showForReal([element.previousElementSibling, element, element.nextElementSibling]);
         }
-        const ranges = element ? rangesIn(element, word) : [];
-        if (!ranges.length) {
+        places = element ? rangesIn(element, word) : [];
+        if (!places.length) {
             results.splice(current, 1);
             // The next one the same way: older ones are after it in the list, newer before
-            position = direction > 0 ? current : current - 1;
+            position = older ? current : current - 1;
             continue;
         }
-        setCount();
-        clearMarks();
-        highlights()?.set(HIGHLIGHT, new Highlight(...ranges));
-        // The first mark a third of the way down the chat
-        const target = ranges[0].getBoundingClientRect();
-        const box = chat.getBoundingClientRect();
-        chat.scrollTo({ top: chat.scrollTop + target.top - box.top - box.height / 3, behavior: 'instant' });
+        showPlace(fromEnd ? places.length - 1 : 0);
         return;
     }
     current = -1;
+    places = [];
     clearMarks();
     setCount();
 }
@@ -124,13 +212,16 @@ async function show(position, direction = 1) {
 function search() {
     clearTimeout(timer);
     timer = null;
+    cancelRechecks();
     const word = wordOf();
     results = word ? find(word) : [];
     current = -1;
+    places = [];
     clearMarks();
     setCount();
+    // The newest message, its last place: the one nearest the bottom
     if (results.length) {
-        show(0).catch(error => console.error(`[${MODULE}] Search failed`, error));
+        showMessage(0, true, true).catch(error => console.error(`[${MODULE}] Search failed`, error));
     }
 }
 
@@ -140,9 +231,15 @@ function step(direction) {
         search();
         return;
     }
-    // ▲ older (further down the list), ▼ newer
-    const older = direction < 0;
-    show(current + (older ? 1 : -1), older ? 1 : -1).catch(error => console.error(`[${MODULE}] Search failed`, error));
+    const up = direction < 0;
+    // Within the message first
+    if (up ? place > 0 : place < places.length - 1) {
+        showPlace(place + (up ? -1 : 1));
+        return;
+    }
+    // Up: the next older message (later in the list), reached from below, so its last place
+    const next = up ? current + 1 : current - 1;
+    showMessage(next, up, up).catch(error => console.error(`[${MODULE}] Search failed`, error));
 }
 
 function stop() {
@@ -151,9 +248,11 @@ function stop() {
     }
     clearTimeout(timer);
     timer = null;
+    cancelRechecks();
     clearMarks();
     results = [];
     current = -1;
+    places = [];
     top?.remove();
     bar.remove();
     top = bar = null;

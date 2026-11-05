@@ -1677,6 +1677,12 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     color: #111;
 }
 
+/* The place shown now (registered after the others, so it wins where they overlap) */
+::highlight(stqa-find-current) {
+    background-color: #ff9632;
+    color: #111;
+}
+
 /* Hiding a range from the shortcuts: [ ] 부터 [ ] 까지 */
 .stqa_hide_range_row {
     display: flex;
