@@ -103,6 +103,77 @@ function expandRecentChats() {
     more?.click();
 }
 
+const WAND_HOLD_MS = 450;
+const WAND_TIP_MS = 1500;
+
+/**
+ * Wand menu as icons: holding an icon shows its name in a small label above it (phones show no
+ * tooltips), and that press doesn't run the item. A computer shows the tooltip on hover.
+ */
+function enableWandNames() {
+    const menu = document.getElementById('extensionsMenu');
+    if (!menu) {
+        return;
+    }
+    let press = null;
+    let tip = null;
+    let swallowClick = false;
+    const hideTip = () => {
+        tip?.remove();
+        tip = null;
+    };
+    const showTip = (item) => {
+        hideTip();
+        tip = document.createElement('div');
+        tip.className = 'stqa_wand_tip';
+        // The name as the menu writes it (an item's title may be a longer description)
+        tip.textContent = item.textContent.trim() || item.title;
+        document.body.append(tip);
+        const box = item.getBoundingClientRect();
+        const size = tip.getBoundingClientRect();
+        tip.style.left = `${Math.min(Math.max(4, box.left + box.width / 2 - size.width / 2), window.innerWidth - size.width - 4)}px`;
+        tip.style.top = `${Math.max(4, box.top - size.height - 6)}px`;
+        setTimeout(hideTip, WAND_TIP_MS);
+    };
+    const cancel = () => {
+        clearTimeout(press?.timer);
+        press = null;
+    };
+    menu.addEventListener('pointerdown', (event) => {
+        const item = event.target.closest('.list-group-item');
+        if (!isOn('wandGrid') || !item) {
+            return;
+        }
+        swallowClick = false;
+        press = { x: event.clientX, y: event.clientY };
+        press.timer = setTimeout(() => {
+            showTip(item);
+            swallowClick = true;
+            navigator.vibrate?.(15);
+        }, WAND_HOLD_MS);
+    });
+    menu.addEventListener('pointermove', (event) => {
+        if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
+            cancel();
+        }
+    });
+    menu.addEventListener('pointerup', cancel);
+    menu.addEventListener('pointercancel', cancel);
+    // The press that showed the name doesn't also open the item
+    menu.addEventListener('click', (event) => {
+        if (swallowClick) {
+            swallowClick = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
+    menu.addEventListener('contextmenu', (event) => {
+        if (isOn('wandGrid') && event.target.closest('.list-group-item')) {
+            event.preventDefault();
+        }
+    });
+}
+
 export function applyDisplayTweaks() {
     document.body.classList.toggle('stqa_wand_grid', isOn('wandGrid'));
     if (isOn('wandGrid')) {
@@ -120,6 +191,7 @@ export function applyDisplayTweaks() {
 
 export function initDisplayTweaks() {
     watchAvatars();
+    enableWandNames();
     // ST sets the placeholder again (language, chat changes); the start screen is drawn into the chat
     const input = document.getElementById('send_textarea');
     if (input) {

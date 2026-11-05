@@ -56,6 +56,8 @@ export const LAYOUT_AREAS = Object.freeze([
     },
     {
         title: '입력창',
+        // Items can go from one side to the other (see applyCrossArea)
+        crossMove: true,
         containers: [
             { selector: '#leftSendForm', label: '왼쪽' },
             { selector: '#rightSendForm', label: '오른쪽' },
@@ -148,6 +150,24 @@ function keyOf(element, perMessage) {
         element.setAttribute(KEY_ATTR, key);
     }
     return element.getAttribute(KEY_ATTR);
+}
+
+/**
+ * The element of a container's item with a key (the one shown, when there are copies), or null.
+ * For a wrapper an extension puts around its menu entry, the entry inside it, which is what
+ * takes the tap.
+ */
+export function findMenuItem(selector, key) {
+    // A side of the input bar also has the loose items beside it, right in the bar
+    const container = document.querySelector(selector);
+    const area = findArea(selector);
+    const pool = [...container?.children ?? [], ...(area?.crossMove && container?.parentElement ? [...container.parentElement.children] : [])];
+    const children = pool.filter(element => element !== container && keyOf(element, false) === key);
+    const element = children.find(child => withoutOwnRules(() => isDisplayed(child))) ?? children[0];
+    if (!element) {
+        return null;
+    }
+    return element.matches('.list-group-item') ? element : element.querySelector('.list-group-item') ?? element;
 }
 
 /** The key and readable name of a menu item, for other features that list menu items (folders). */
@@ -251,6 +271,233 @@ function childKeys(container) {
  * and so stay together in page order (script controls come right before Send / Stop).
  */
 function applyContainer(selector) {
+    const area = findArea(selector);
+    if (!area?.crossMove) {
+        applyOneContainer(selector);
+        return;
+    }
+    if (!applyCrossArea(area)) {
+        area.containers.forEach(({ selector: own }) => applyOneContainer(own));
+    }
+}
+
+// The input box the two sides of the input bar sit around
+const BAR_INPUT_ID = 'send_textarea';
+
+/**
+ * Items some extensions put right in the input bar, beside the input box, instead of in one
+ * of its sides: each counts as an item of the side it shows on (before the input: the left
+ * one, after it: the right one), at its place there.
+ * @returns {{ element: HTMLElement, key: string, side: number, after: boolean }[]}
+ */
+function looseItems(parent, containers) {
+    const sequence = withoutOwnRules(() => [...parent.children]
+        .map((child, index) => ({ child, index, order: Number(getComputedStyle(child).order) || 0 }))
+        .sort((a, b) => a.order - b.order || a.index - b.index)
+        .map(entry => entry.child));
+    const input = sequence.findIndex(child => child.id === BAR_INPUT_ID);
+    if (input === -1) {
+        return [];
+    }
+    const at = containers.map(container => sequence.indexOf(container));
+    return sequence
+        .map((child, index) => ({ child, index }))
+        .filter(({ child, index }) => index !== input && !containers.includes(child) && isMeaningful(child) && !child.matches('script, style, template'))
+        .map(({ child, index }) => {
+            const side = index < input ? 0 : 1;
+            return { element: child, key: keyOf(child, false), side, after: index > at[side] };
+        });
+}
+
+/**
+ * Where each item of an area whose items can change sides goes: the side whose saved order
+ * lists it, else the side it is on in the page. Null when every item stays where the page has
+ * it (then each side is arranged on its own, as any container), unless `always`.
+ */
+function crossState(area, { always = false } = {}) {
+    if (!area?.crossMove) {
+        return null;
+    }
+    const selectors = area.containers.map(container => container.selector);
+    const containers = selectors.map(selector => document.querySelector(selector));
+    const parent = containers[0]?.parentElement;
+    if (!parent?.id || containers.some(container => container?.parentElement !== parent)) {
+        return null;
+    }
+    const layouts = selectors.map(getLayout);
+    const loose = looseItems(parent, containers);
+    // Each side's items as the page has them, the loose ones at their places beside it
+    const natural = containers.map((container, side) => [
+        ...loose.filter(item => item.side === side && !item.after).map(item => item.key),
+        ...childKeys(container),
+        ...loose.filter(item => item.side === side && item.after).map(item => item.key),
+    ]);
+    const homeOf = (key) => {
+        const saved = layouts.findIndex(layout => layout.order.includes(key));
+        return saved === -1 ? natural.findIndex(keys => keys.includes(key)) : saved;
+    };
+    const ownKeys = containers.map(childKeys);
+    // An item on the other side now, or a loose one the user arranged (its place or hiding)
+    const moved = ownKeys.some((keys, index) => keys.some(key => homeOf(key) !== index))
+        || loose.some(item => layouts.some(layout => layout.order.includes(item.key) || layout.hidden.includes(item.key)));
+    return moved || always ? { selectors, containers, parent, layouts, natural, homeOf, loose } : null;
+}
+
+/** A side's items in their arranged order: its saved order first, then the rest as on the page. */
+function crossOrder(state, index) {
+    const { layouts, natural, homeOf } = state;
+    const own = natural.flat().filter((key, at, all) => all.indexOf(key) === at && homeOf(key) === index);
+    const order = layouts[index].order.filter(key => own.includes(key));
+    return [...order, ...own.filter(key => !order.includes(key))];
+}
+
+/**
+ * Items that changed sides. Nothing is moved in the page: both sides become `display: contents`,
+ * so their buttons are laid out right in the bar around the input, and CSS `order` puts each
+ * one in its side's block (the input keeps its place between them). The bar's spacing between
+ * the sides and the input, and the sides' button alignment, are kept as the theme had them.
+ */
+function applyCrossArea(area) {
+    const state = crossState(area);
+    if (!state) {
+        return false;
+    }
+    const { selectors, containers, parent } = state;
+    const parentSelector = `#${CSS.escape(parent.id)}`;
+    // Items are in a side or (loose ones) right in the bar
+    const scope = `:is(${selectors.join(', ')}, ${parentSelector})`;
+    const looseElements = state.loose.map(item => item.element);
+    const measured = withoutOwnRules(() => {
+        const style = getComputedStyle(parent);
+        const children = [...parent.children].map((child, index) => ({ child, index, order: Number(getComputedStyle(child).order) || 0 }));
+        return {
+            gap: parseFloat(style.columnGap) || 0,
+            sideGap: parseFloat(getComputedStyle(containers[0]).columnGap) || 0,
+            align: getComputedStyle(containers[0]).alignItems,
+            sequence: children.sort((a, b) => a.order - b.order || a.index - b.index),
+            margins: new Map(children.map(({ child }) => [child, [parseFloat(getComputedStyle(child).marginLeft) || 0, parseFloat(getComputedStyle(child).marginRight) || 0]])),
+            // A side's padding and margin together (the room it leaves at its edges)
+            paddings: new Map([parent, ...containers].map((element) => {
+                const style = getComputedStyle(element);
+                const edge = side => (parseFloat(style[`padding${side}`]) || 0) + (element === parent ? 0 : parseFloat(style[`margin${side}`]) || 0);
+                return [element, [edge('Left'), edge('Right')]];
+            })),
+            wrappers: new Set(containers.flatMap(container => [...container.children]).filter(child => getComputedStyle(child).display === 'contents')),
+        };
+    });
+    // The buttons keep the sides' spacing (the bar takes the sides' gap); the sides' padding and
+    // margin are kept at the bar's ends, and the input's distance to the sides as it was
+    const padding = (element, end) => (containers.includes(element) ? measured.paddings.get(element)[end] : 0);
+    const sequence = measured.sequence.map(entry => entry.child);
+    const [barLeft, barRight] = measured.paddings.get(parent);
+    // Margins of the bar's own children (the input): a first guess from the spacing rules, then
+    // corrected by measuring (themes space the buttons in their own ways)
+    const extra = new Map(measured.sequence.map(({ child }, at) => [child, [
+        at > 0 ? measured.gap + padding(sequence[at - 1], 1) - measured.sideGap : 0,
+        at < sequence.length - 1 ? measured.gap + padding(sequence[at + 1], 0) - measured.sideGap : 0,
+    ]]));
+    const write = () => {
+        const rules = [
+            `${selectors.join(', ')} { display: contents !important; }`,
+            // The sides are at the bar's ends now (loose items have joined them)
+            `${parentSelector} { column-gap: ${measured.sideGap}px !important; padding-left: ${barLeft + padding(containers[0], 0)}px !important; padding-right: ${barRight + padding(containers.at(-1), 1)}px !important; }`,
+        ];
+        if (measured.align && measured.align !== 'normal') {
+            rules.push(`${scope} > * { align-self: ${measured.align}; }`);
+        }
+        let next = 0;
+        measured.sequence.forEach(({ child, index }) => {
+            const side = containers.indexOf(child);
+            // Loose items take their order in their side's block
+            if (looseElements.includes(child)) {
+                return;
+            }
+            if (side === -1) {
+                const [left, right] = measured.margins.get(child);
+                const [before, after] = extra.get(child);
+                rules.push(`${parentSelector} > :nth-child(${index + 1}) { order: ${next}; margin-left: ${left + before}px !important; margin-right: ${right + after}px !important; }`);
+                next += 1;
+                return;
+            }
+            const keys = crossOrder(state, side);
+            // Items not in the list (shown only now and then) stay at the end of their own side
+            rules.push(`${selectors[side]} > * { order: ${next + keys.length}; }`);
+            keys.forEach((key, at) => {
+                const members = spotMembers(key).map(member => `${scope} > ${itemSelector(member)}`);
+                const inner = members.filter(item => [...measured.wrappers].some(wrapper => wrapper.matches(item))).map(item => `${item} > *`);
+                rules.push(`${[...members, ...inner].join(', ')} { order: ${next + at}; }`);
+            });
+            next += keys.length + 1;
+        });
+        for (const layout of state.layouts) {
+            for (const key of layout.hidden) {
+                if (!lockedKeys.has(key)) {
+                    rules.push(`${spotMembers(key).map(member => `${scope} > ${itemSelector(member)}`).join(', ')} { display: none !important; }`);
+                }
+            }
+        }
+        selectors.forEach((selector, index) => containerRules.set(selector, index === 0 ? rules.join('\n') : ''));
+        writeStyles();
+    };
+    withoutTransitions(() => {
+        const before = withoutOwnRules(() => sequence.map(child => distancesToButtons(child, containers, looseElements)));
+        write();
+        const after = sequence.map(child => distancesToButtons(child, containers, looseElements));
+        let corrected = false;
+        sequence.forEach((child, at) => {
+            if (containers.includes(child) || looseElements.includes(child)) {
+                return;
+            }
+            const margins = extra.get(child);
+            [0, 1].forEach((end) => {
+                // Small corrections only: a big difference means the bar is laid out differently
+                // (buttons wrapped into rows before), not spaced differently
+                const difference = before[at][end] !== null && after[at][end] !== null ? before[at][end] - after[at][end] : 0;
+                if (Math.abs(difference) > 0.5 && Math.abs(difference) < 20) {
+                    margins[end] += difference;
+                    corrected = true;
+                }
+            });
+        });
+        if (corrected) {
+            write();
+        }
+    });
+    return true;
+}
+
+/**
+ * Runs `measure` with every transition off (themes animate everything, sizes and margins too,
+ * some with !important on classes: `:not(#…)` weighs as much as an id, so it still wins).
+ */
+function withoutTransitions(measure) {
+    const style = document.createElement('style');
+    style.textContent = ':not(#stqa_no_such_id) { transition: none !important; }';
+    document.head.append(style);
+    try {
+        return measure();
+    } finally {
+        style.remove();
+    }
+}
+
+/**
+ * How far an element of the bar (the input) is from the nearest button shown on its left and
+ * on its right (null where there is none). Buttons are the sides' items (and loose ones in the
+ * bar), and the items inside wrappers without a box of their own.
+ */
+function distancesToButtons(element, containers, loose = []) {
+    const box = element.getBoundingClientRect();
+    const buttons = [...containers.flatMap(container => [...container.children]), ...loose]
+        .flatMap(child => (getComputedStyle(child).display === 'contents' ? [...child.children] : [child]))
+        .map(button => button.getBoundingClientRect())
+        .filter(rect => rect.width > 0 && rect.bottom > box.top && rect.top < box.bottom);
+    const left = buttons.filter(rect => rect.right <= box.left + 1).map(rect => rect.right);
+    const right = buttons.filter(rect => rect.left >= box.right - 1).map(rect => rect.left);
+    return [left.length ? box.left - Math.max(...left) : null, right.length ? Math.min(...right) - box.right : null];
+}
+
+function applyOneContainer(selector) {
     const container = document.querySelector(selector);
     if (!container) {
         return;
@@ -281,6 +528,9 @@ function applyContainer(selector) {
             rules.push(`${spotMembers(key).map(member => `${selector} > ${itemSelector(member)}`).join(', ')} { display: none !important; }`);
         }
     }
+    for (const key of idleSeparators(container, order.length > 0 ? arrange(order, keys) : keys, hidden)) {
+        rules.push(`${selector} > ${itemSelector(key)} { display: none !important; }`);
+    }
     // A row of buttons that fills the screen width (Top Bar on phones): the ones left share the
     // room, so hiding some leaves no gap at one end
     if (hidden.length > 0 && findArea(selector)?.fillRow) {
@@ -288,6 +538,45 @@ function applyContainer(selector) {
     }
     containerRules.set(selector, rules.join('\n'));
     writeStyles();
+}
+
+/**
+ * Separator lines (<hr>) left with nothing to separate once items are hidden here: two lines in
+ * a row, or a line at either end of the menu. Only when something is hidden here, so a menu left
+ * alone stays exactly as the page draws it.
+ * @param {string[]} sequence the container's keys in the order shown
+ */
+function idleSeparators(container, sequence, hidden) {
+    if (!hidden.length) {
+        return [];
+    }
+    const children = [...container.children];
+    const shownKeys = new Set(withoutOwnRules(() => children.filter(isDisplayed).map(child => keyOf(child, false))));
+    const isLine = key => children.some(child => child.tagName === 'HR' && keyOf(child, false) === key);
+    const idle = [];
+    // Lines kept so far wait for an item after them; one with no item since the last kept line goes
+    let itemSinceLine = false;
+    let lastLine = null;
+    for (const key of sequence) {
+        if (!shownKeys.has(key) || hidden.includes(key)) {
+            continue;
+        }
+        if (isLine(key)) {
+            if (itemSinceLine) {
+                lastLine = key;
+            } else {
+                idle.push(key);
+            }
+            itemSinceLine = false;
+        } else {
+            itemSinceLine = true;
+        }
+    }
+    // A line with nothing after it
+    if (lastLine && !itemSinceLine) {
+        idle.push(lastLine);
+    }
+    return idle;
 }
 
 /** Whether the page / theme displays the element (call inside `withoutOwnRules`). */
@@ -384,17 +673,36 @@ function detectInlineBox() {
  * themes that show the box inline get it flattened into the row, so the whole menu is one line;
  * with a "…" menu each button keeps its place relative to the others in its own box.
  */
-function applyMessageStyles() {
-    const rules = [];
+// Message rules already worked out, by the buttons messages have and the arrangement: a new
+// message with the same buttons (nearly always) costs no measuring of the page
+const messageRuleCache = new Map();
+
+function applyMessageStyles({ force = false } = {}) {
     const { order, hidden } = getLayout(MESSAGE_ROW);
+    if (force) {
+        messageRuleCache.clear();
+    }
+    const natural = naturalMessageKeys();
+    // The theme decides whether the "…" box shows inline
+    const signature = JSON.stringify([natural, order, hidden, document.getElementById('themes')?.value]);
+    if (messageRuleCache.has(signature)) {
+        const cached = messageRuleCache.get(signature);
+        if (cached !== messageRules) {
+            messageRules = cached;
+            writeStyles();
+        }
+        return;
+    }
+    const rules = [];
     const scopes = [`#chat .mes ${MESSAGE_ROW} >`, `#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} >`];
     const selectorFor = key => scopes.flatMap(scope => spotMembers(key).map(member => `${scope} .${CSS.escape(member)}`)).join(', ');
-    detectInlineBox();
     if (order.length > 0) {
+        // Measuring the theme's "…" box costs a restyle of the whole page: only with an arrangement
+        detectInlineBox();
         if (nestedBoxInline) {
             rules.push(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} { display: contents !important; }`);
         }
-        const full = arrange(order, naturalMessageKeys());
+        const full = arrange(order, natural);
         rules.push(`${scopes.map(scope => `${scope} *`).join(', ')} { order: ${full.length}; }`);
         full.forEach((key, index) => rules.push(`${selectorFor(key)} { order: ${index}; }`));
     }
@@ -404,6 +712,10 @@ function applyMessageStyles() {
         }
     }
     messageRules = rules.join('\n');
+    // A chat opened later may first be drawn without its "…" box: it is measured again then
+    if (document.querySelector(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX}`)) {
+        messageRuleCache.set(signature, messageRules);
+    }
     writeStyles();
 }
 
@@ -448,6 +760,21 @@ export function listItems(selector, { natural = false } = {}) {
         entries = messageButtons().map(({ key, element }) => ({
             key, element, sortIndex: natural ? at(naturalKeys, key) : at(full, key),
         }));
+    } else if (crossState(findArea(selector), { always: true })) {
+        // Sides of an area whose items can change sides: each lists the items it holds now
+        // (loose items in the bar beside it included)
+        const state = crossState(findArea(selector), { always: true });
+        const side = state.selectors.indexOf(selector);
+        const children = [...state.containers.flatMap(container => [...container.children]), ...state.loose.map(item => item.element)];
+        const keys = children.map(element => keyOf(element, false));
+        const shown = withoutOwnRules(() => children.map(child => isMeaningful(child) && isDisplayed(child)));
+        const moved = crossState(findArea(selector));
+        const full = natural ? state.natural[side] : moved ? crossOrder(state, side) : arrange(order, state.natural[side]);
+        entries = full.filter(key => keys.some((other, index) => other === key && shown[index])).map((key, index) => ({
+            key,
+            element: children.find((child, at) => keys[at] === key && child.id === key && shown[at]) ?? children.find((child, at) => keys[at] === key && shown[at]),
+            sortIndex: index,
+        }));
     } else {
         const children = [...(document.querySelector(selector)?.children ?? [])];
         const keys = children.map(element => keyOf(element, false));
@@ -481,13 +808,15 @@ export function listItems(selector, { natural = false } = {}) {
  * Stores and applies a container's arrangement (locked items can never be hidden). An order
  * that matches the page's own isn't stored, so untouched containers stay as the page lays them out.
  */
-export function saveLayout(selector, { order, hidden }) {
+export function saveLayout(selector, { order, hidden, listed = order }) {
     const natural = listItems(selector, { natural: true }).map(item => item.key);
     const unchanged = order.length === natural.length && order.every((key, index) => key === natural[index]);
-    // Items hidden before that weren't in the list this time (not on the page right now) stay hidden
-    const kept = getLayout(selector).hidden.filter(key => !order.includes(key));
+    // Items hidden before that weren't listed this time (not on the page right now) stay hidden.
+    // `listed`: every item the window showed (for sides items can move between, both sides'),
+    // so one that went to the other side is that side's to hide.
+    const kept = getLayout(selector).hidden.filter(key => !listed.includes(key));
     getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: unique([...hidden, ...kept]).filter(key => !lockedKeys.has(key)) };
-    findContainer(selector)?.perMessage ? applyMessageStyles() : applyContainer(selector);
+    findContainer(selector)?.perMessage ? applyMessageStyles({ force: true }) : applyContainer(selector);
 }
 
 /**
@@ -516,6 +845,13 @@ function migrateNestedLayout() {
 }
 
 export function initLayoutManager() {
+    // Options menu items come and go with the chat (Back to parent chat...): its lines are
+    // checked again each time it opens
+    const options = document.getElementById('options');
+    if (options) {
+        new MutationObserver(() => options.style.display !== 'none' && applyContainer('#options .options-content'))
+            .observe(options, { attributes: true, attributeFilter: ['style'] });
+    }
     migrateNestedLayout();
     applyMessageStyles();
     watchRenderedMessages();

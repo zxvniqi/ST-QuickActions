@@ -166,6 +166,9 @@ function onInputPopup(dialog) {
             cancelled = true;
         }
     }, true);
+    dialog.addEventListener('cancel', () => {
+        cancelled = true;
+    });
     // The answer is final once the popup starts closing (it's removed after its animation)
     const closing = new MutationObserver(() => {
         if (!dialog.hasAttribute('closing')) {
@@ -176,7 +179,8 @@ function onInputPopup(dialog) {
         if (run && run.answers[step] === null) {
             run.answers[step] = { value, confirmed: !cancelled };
         }
-        if (value.trim()) {
+        // Only answers sent with OK go to the history (not what was typed and then cancelled)
+        if (!cancelled && value.trim()) {
             remember(value);
         }
     });

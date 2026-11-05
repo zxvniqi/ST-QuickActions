@@ -562,6 +562,48 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     flex-direction: row;
 }
 
+/* Floating and open: a row longer than the window scrolls (no scrollbar); ··· stays in sight at its end */
+#stqa_floating_panel.stqa_layout_horizontal.stqa_open {
+    max-width: calc(100vw - 8px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    scrollbar-width: none;
+}
+
+#stqa_floating_panel.stqa_layout_vertical.stqa_open {
+    max-height: calc(100vh - 8px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+    scrollbar-width: none;
+}
+
+#stqa_floating_panel.stqa_open::-webkit-scrollbar {
+    display: none;
+}
+
+#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_toggle {
+    position: sticky;
+    z-index: 1;
+    flex: none;
+    touch-action: none;
+    background: var(--SmartThemeBlurTintColor);
+    left: 0;
+    top: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_grow_back > .stqa_floating_toggle {
+    left: auto;
+    right: 0;
+    top: auto;
+    bottom: 0;
+}
+
+#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_button {
+    flex: none;
+}
+
 /* Folded: only the open button shows */
 #stqa_floating_panel:not(.stqa_open) .stqa_floating_button:not(.stqa_floating_toggle) {
     display: none;
@@ -726,8 +768,13 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
 /* In the input bar: a row in the page flow right above the input, covering nothing */
 #stqa_floating_panel.stqa_in_flow {
     position: static;
-    flex-wrap: wrap;
-    justify-content: center;
+    /* One line; more buttons than fit scroll sideways (centred while they fit) */
+    flex-wrap: nowrap;
+    justify-content: safe center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    touch-action: pan-x;
     gap: 4px;
     margin: 4px 0 0;
     padding: 4px 0;
@@ -739,8 +786,12 @@ body.stqa_hide_placeholder #send_textarea::placeholder {
     backdrop-filter: none;
 }
 
+#stqa_floating_panel.stqa_in_flow::-webkit-scrollbar {
+    display: none;
+}
+
 #stqa_floating_panel.stqa_in_flow .stqa_floating_button {
-    flex: 1 1 0;
+    flex: 1 0 36px;
     max-width: 52px;
     height: 32px;
 }
@@ -825,6 +876,11 @@ body.stqa_qrc #qr--bar#qr--bar .stqa_qr_setname.stqa_active {
 /* Arrow shape: ▲ / ▼ in the input bar shows / hides the whole bar */
 body.stqa_qrc_arrow:not(.stqa_qrc_unfolded) #qr--bar#qr--bar {
     display: none !important;
+}
+
+/* Each set's line centred while it fits (it scrolls from its start once it doesn't) */
+body.stqa_qrc_arrow #qr--bar#qr--bar > .qr--buttons {
+    justify-content: safe center !important;
 }
 
 /* Thin bar shape: only the bar shows until it is tapped */
@@ -1565,6 +1621,146 @@ body.stqa_wand_grid #extensionsMenu .list-group-item > :not([class*="fa-"]):not(
     display: none !important;
 }
 
+/* Holding an icon shows its name (display-tweaks.js), not the phone's own menu or a selection */
+body.stqa_wand_grid #extensionsMenu .list-group-item {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* 채팅에서 찾기: the box above the chat, the buttons in place of the input, and the marked word */
+#stqa_search_top {
+    flex: none;
+    display: flex;
+    padding: 5px 6px;
+    background: var(--SmartThemeBlurTintColor);
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+}
+
+#stqa_search_top input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+#stqa_search_bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 5px;
+    padding: 5px 6px;
+    background: var(--SmartThemeBlurTintColor);
+    border-radius: 12px;
+}
+
+#stqa_search_bar .stqa_search_count {
+    flex: 1;
+    font-size: 0.9em;
+    text-align: center;
+    opacity: 0.8;
+}
+
+#stqa_search_bar .menu_button {
+    flex: none;
+    width: 34px;
+    min-width: 0;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+::highlight(stqa-find) {
+    background-color: #ffe14d;
+    color: #111;
+}
+
+/* The place shown now (registered after the others, so it wins where they overlap) */
+::highlight(stqa-find-current) {
+    background-color: #ff9632;
+    color: #111;
+}
+
+/* Hiding a range from the shortcuts: [ ] 부터 [ ] 까지 */
+.stqa_hide_range_row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 8px 0 4px;
+}
+
+.stqa_hide_range_row input {
+    width: 5em;
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_hide_range_row span {
+    flex: none;
+}
+
+/* Picking menu items for the shortcuts */
+.stqa_menu_pick_group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 10px;
+}
+
+.stqa_menu_pick_row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.stqa_menu_pick_row:hover {
+    background: var(--white30a, rgba(127, 127, 127, 0.15));
+}
+
+.stqa_menu_pick_row input {
+    margin: 0;
+    flex: none;
+}
+
+.stqa_menu_pick_row > i {
+    flex: none;
+    width: 20px;
+    text-align: center;
+}
+
+.stqa_menu_pick_row > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stqa_wand_tip {
+    position: fixed;
+    z-index: 100000;
+    max-width: 70vw;
+    padding: 4px 9px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--SmartThemeBlurTintColor);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 8px));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    color: var(--SmartThemeBodyColor);
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
 
 
 
@@ -2215,6 +2411,13 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     width: auto !important;
     padding-left: 0.55em !important;
     padding-right: 0.55em !important;
+}
+
+/* Themes animate every button (some with !important): the tools show at once, at full size */
+.popup-controls .stqa_qr_tools .stqa_qr_btn,
+.popup-controls .stqa_qr_tools .stqa_qr_btn > i {
+    transition: none !important;
+    animation: none !important;
 }
 
 /* Translation buttons: the icon in the middle of the button, whatever the theme's padding */

@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.0.2",
+    "version": "1.1.8",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -39,6 +39,7 @@
         "chat-export.js",
         "chat-name.js",
         "chat-replace.js",
+        "chat-search.js",
         "entry-translate.js",
         "mutations.js",
         "layout-manager.js",

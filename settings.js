@@ -12,10 +12,12 @@ const defaultSettings = Object.freeze({
     presetFolders: true,
     toggleSetChips: true,
     rangeDelete: true,
+    rangeHide: true,
     charListTools: true,
     chatExportAll: true,
     chatQuickRename: true,
     chatReplace: true,
+    chatSearch: true,
     entryTranslate: true,
     // Prompts / world info shown translated (reading only; originals are what is saved and sent)
     translationView: false,
@@ -47,9 +49,11 @@ const defaultSettings = Object.freeze({
     menuToBottom: true,
     // Floating shortcut panel
     floatingPanel: true,
-    floatingButtons: { deleteLast: true, top: true, jump: true, bottom: true, names: true },
+    floatingButtons: { deleteLast: true, top: true, up: true, jump: true, down: true, bottom: true, hideRange: true, names: true },
     // Button keys in the order the panel shows them (ones left out follow, as listed)
     floatingOrder: [],
+    // Menu items (wand / Options / input bar) added as shortcuts: [{ selector, key, label, icon }]
+    floatingExtras: [],
     floatingPosition: null,
     // input (a row above the input bar) | vertical | horizontal (floating)
     floatingLayout: 'input',
