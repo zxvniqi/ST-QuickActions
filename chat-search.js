@@ -30,6 +30,10 @@ let formDisplay = '';
 let timer = null;
 let rechecks = [];
 
+// The word last searched for, and whether this is a phone (a finger, no mouse)
+let searched = '';
+const TOUCH = () => window.matchMedia('(pointer: coarse)').matches;
+
 const highlights = () => (typeof Highlight === 'function' && CSS.highlights ? CSS.highlights : null);
 const wordOf = () => top?.querySelector('input').value.trim() ?? '';
 
@@ -214,6 +218,7 @@ function search() {
     timer = null;
     cancelRechecks();
     const word = wordOf();
+    searched = word;
     results = word ? find(word) : [];
     current = -1;
     places = [];
@@ -253,6 +258,7 @@ function stop() {
     results = [];
     current = -1;
     places = [];
+    searched = '';
     top?.remove();
     bar.remove();
     top = bar = null;
@@ -295,7 +301,19 @@ function start() {
     input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
             event.preventDefault();
-            // Enter: search, then each Enter the next older one
+            // The Enter that only finishes a Korean (IME) word is not one of the user's
+            if (event.isComposing || event.keyCode === 229) {
+                return;
+            }
+            // Phones: Enter searches and puts the keyboard away (moving on is for ▲ / ▼, so a
+            // second Enter can't skip the first result). Computers: Enter also goes on to the next
+            if (TOUCH()) {
+                if (timer || wordOf() !== searched) {
+                    search();
+                }
+                input.blur();
+                return;
+            }
             step(-1);
         } else if (event.key === 'Escape') {
             stop();
