@@ -215,8 +215,28 @@ function scrollToBottom() {
 function messageInView(chat) {
     const top = chat.getBoundingClientRect().top;
     const messages = [...chat.querySelectorAll(':scope > .mes[mesid]')].filter(element => element.offsetParent);
-    const index = messages.findIndex(element => element.getBoundingClientRect().bottom > top + 2);
-    return index === -1 ? null : { messages, index, cut: messages[index].getBoundingClientRect().top < top - 4 };
+    // Some room either way: themes let messages overlap by a pixel or two, and the one just
+    // passed must not count as the one being read
+    const index = messages.findIndex(element => element.getBoundingClientRect().bottom > top + 12);
+    return index === -1 ? null : { messages, index, cut: messages[index].getBoundingClientRect().top < top - 12 };
+}
+
+/**
+ * Puts a drawn message's top edge at the top of the chat in one go. Messages that change size
+ * after it (chat virtualizers shrink the ones out of sight) are left to the browser's scroll
+ * anchoring, which keeps the message in place without a visible jump; aligning again every frame
+ * would fight it. One check a moment later puts it right if it still drifted.
+ */
+function alignMessage(chat, message) {
+    ++settling;
+    const align = () => chat.scrollTo({ top: chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top, behavior: 'instant' });
+    align();
+    const run = settling;
+    setTimeout(() => {
+        if (run === settling && Math.abs(message.getBoundingClientRect().top - chat.getBoundingClientRect().top) > 2) {
+            align();
+        }
+    }, 250);
 }
 
 /**
@@ -234,11 +254,11 @@ async function stepMessage(direction) {
     const { messages, index, cut } = spot;
     if (direction < 0) {
         if (cut) {
-            settleAtMessage(messages[index].getAttribute('mesid'));
+            alignMessage(chat, messages[index]);
             return;
         }
         if (index > 0) {
-            settleAtMessage(messages[index - 1].getAttribute('mesid'));
+            alignMessage(chat, messages[index - 1]);
             return;
         }
         const id = Number(messages[0].getAttribute('mesid'));
@@ -249,7 +269,7 @@ async function stepMessage(direction) {
         return;
     }
     if (index < messages.length - 1) {
-        settleAtMessage(messages[index + 1].getAttribute('mesid'));
+        alignMessage(chat, messages[index + 1]);
     } else {
         scrollToBottom();
     }
@@ -398,7 +418,11 @@ function restorePosition() {
     }
     const { x, y } = anchorSpot();
     const vertical = panel.classList.contains('stqa_layout_vertical');
-    panel.classList.toggle('stqa_grow_back', open && (vertical ? y > window.innerHeight / 2 : x > window.innerWidth / 2));
+    const back = open && (vertical ? y > window.innerHeight / 2 : x > window.innerWidth / 2);
+    panel.classList.toggle('stqa_grow_back', back);
+    // A row longer than the window scrolls; it starts at the ··· end, the buttons nearest to it in sight
+    panel.scrollLeft = back && !vertical ? panel.scrollWidth : 0;
+    panel.scrollTop = back && vertical ? panel.scrollHeight : 0;
     const box = panel.getBoundingClientRect();
     const toggle = toggleOf().getBoundingClientRect();
     place(x - (toggle.left - box.left), y - (toggle.top - box.top));
@@ -454,10 +478,9 @@ function enableMoving() {
         press = null;
         panel.classList.remove('stqa_floating_dragging');
         if (dragging) {
-            // Let go: it sticks to the nearer side edge, out of the way of the messages
+            // Let go: it stays where it was dropped (kept inside the window)
             const box = panel.getBoundingClientRect();
-            const toLeft = box.left + box.width / 2 < window.innerWidth / 2;
-            place(toLeft ? EDGE : window.innerWidth, box.top);
+            place(box.left, box.top);
             saveAnchor();
             // Open, it may now have to open out the other way from ···
             open && restorePosition();
@@ -491,8 +514,9 @@ function enableMoving() {
             x: event.clientX, y: event.clientY, left: box.left, top: box.top,
             button: event.target.closest('[data-key]'), dragging: false, moved: false,
         };
+        // Only ··· picks the panel up: the buttons' row can be scrolled when it is long
         press.timer = setTimeout(() => {
-            if (press && !press.moved && !inInputBar()) {
+            if (press && !press.moved && !inInputBar() && press.button?.dataset.key === 'toggle') {
                 press.dragging = true;
                 panel.classList.add('stqa_floating_dragging');
                 navigator.vibrate?.(15);
@@ -521,7 +545,7 @@ function build() {
     const toggle = document.createElement('div');
     toggle.className = 'stqa_floating_button stqa_floating_toggle fa-solid fa-ellipsis';
     toggle.dataset.key = 'toggle';
-    toggle.title = '바로가기 펼치기/접기 (꾹 누르면 위치 이동)';
+    toggle.title = '바로가기 펼치기/접기 (꾹 누른 채 끌면 위치 이동)';
     panel.append(toggle);
     document.body.append(panel);
     enableMoving();

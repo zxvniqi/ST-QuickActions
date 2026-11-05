@@ -131,27 +131,42 @@ function start(mode) {
 }
 
 /**
- * Hides a range typed as numbers ("3-10", or one number), for the shortcut button.
+ * Hides the messages from one number to another, for the shortcut button: "[ ] 부터 [ ] 까지".
  * Hidden messages stay in the chat (ST leaves them out of the prompt); the eye on a message shows it again.
  */
 export async function askAndHideRange() {
-    const context = SillyTavern.getContext();
-    const last = context.chat.length - 1;
+    const { chat, Popup, POPUP_TYPE, POPUP_RESULT, executeSlashCommandsWithOptions } = SillyTavern.getContext();
+    const last = chat.length - 1;
     if (last < 0) {
         toastr.info('메시지가 없습니다.', TITLE);
         return;
     }
-    const answer = await context.Popup.show.input('메시지 범위 숨기기', `숨길 메시지 번호를 적습니다. 예: 3-10 (하나만이면 5)<br>0 ~ ${last}`, '', { okButton: '숨기기', cancelButton: '취소' });
-    if (answer === null || answer === false || String(answer).trim() === '') {
+    const content = document.createElement('div');
+    content.className = 'stqa_hide_range';
+    content.innerHTML = `
+        <h3>메시지 범위 숨기기</h3>
+        <div class="stqa_hide_range_row">
+            <input class="text_pole" type="number" inputmode="numeric" min="0" max="${last}" data-end="from"><span>부터</span>
+            <input class="text_pole" type="number" inputmode="numeric" min="0" max="${last}" data-end="to"><span>까지</span>
+        </div>
+        <div class="stqa_hint">메시지 번호: 0 ~ ${last}</div>`;
+    const from = content.querySelector('[data-end="from"]');
+    const to = content.querySelector('[data-end="to"]');
+    const popup = new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton: '숨기기', cancelButton: '취소' });
+    const shown = popup.show();
+    from.focus();
+    // Enter in the first box goes on to the second; in the second it hides
+    from.addEventListener('keydown', event => event.key === 'Enter' && (event.preventDefault(), to.focus()));
+    if (await shown !== POPUP_RESULT.AFFIRMATIVE) {
         return;
     }
-    const numbers = String(answer).replace(/#/g, '').split(/\s*[-~]\s*/).map(part => Number(part.trim()));
-    const [from, to = from] = numbers;
-    if (numbers.length > 2 || ![from, to].every(number => Number.isInteger(number) && number >= 0 && number <= last)) {
-        await context.Popup.show.text('없는 번호', `0 ~ ${last} 사이 번호로 적어 주세요. 예: 3-10`);
+    const values = [from.value, to.value].map(value => value.trim());
+    const numbers = values.map(Number);
+    if (values.includes('') || !numbers.every(number => Number.isInteger(number) && number >= 0 && number <= last)) {
+        await Popup.show.text('없는 번호', `두 칸 모두 0 ~ ${last} 사이 번호로 적어 주세요.`);
         return;
     }
-    await context.executeSlashCommandsWithOptions(`/hide ${Math.min(from, to)}-${Math.max(from, to)}`);
+    await executeSlashCommandsWithOptions(`/hide ${Math.min(...numbers)}-${Math.max(...numbers)}`);
 }
 
 export function applyRangeDelete() {

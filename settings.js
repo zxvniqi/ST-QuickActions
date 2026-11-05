@@ -17,6 +17,7 @@ const defaultSettings = Object.freeze({
     chatExportAll: true,
     chatQuickRename: true,
     chatReplace: true,
+    chatSearch: true,
     entryTranslate: true,
     // Prompts / world info shown translated (reading only; originals are what is saved and sent)
     translationView: false,

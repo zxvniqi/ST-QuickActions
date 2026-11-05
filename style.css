@@ -562,6 +562,48 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     flex-direction: row;
 }
 
+/* Floating and open: a row longer than the window scrolls (no scrollbar); ··· stays in sight at its end */
+#stqa_floating_panel.stqa_layout_horizontal.stqa_open {
+    max-width: calc(100vw - 8px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    scrollbar-width: none;
+}
+
+#stqa_floating_panel.stqa_layout_vertical.stqa_open {
+    max-height: calc(100vh - 8px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+    scrollbar-width: none;
+}
+
+#stqa_floating_panel.stqa_open::-webkit-scrollbar {
+    display: none;
+}
+
+#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_toggle {
+    position: sticky;
+    z-index: 1;
+    flex: none;
+    touch-action: none;
+    background: var(--SmartThemeBlurTintColor);
+    left: 0;
+    top: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_grow_back > .stqa_floating_toggle {
+    left: auto;
+    right: 0;
+    top: auto;
+    bottom: 0;
+}
+
+#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_button {
+    flex: none;
+}
+
 /* Folded: only the open button shows */
 #stqa_floating_panel:not(.stqa_open) .stqa_floating_button:not(.stqa_floating_toggle) {
     display: none;
@@ -1584,6 +1626,66 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     -webkit-touch-callout: none;
     user-select: none;
     -webkit-user-select: none;
+}
+
+/* 채팅에서 찾기: the search bar in place of the input, and the marked word */
+#stqa_search_bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 6px;
+    background: var(--SmartThemeBlurTintColor);
+    border-radius: 12px;
+}
+
+#stqa_search_bar input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
+#stqa_search_bar .stqa_search_count {
+    flex: none;
+    min-width: 2.5em;
+    font-size: 0.85em;
+    text-align: center;
+    opacity: 0.8;
+}
+
+#stqa_search_bar .menu_button {
+    flex: none;
+    width: 34px;
+    min-width: 0;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+::highlight(stqa-find) {
+    background-color: #ffe14d;
+    color: #111;
+}
+
+/* Hiding a range from the shortcuts: [ ] 부터 [ ] 까지 */
+.stqa_hide_range_row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 8px 0 4px;
+}
+
+.stqa_hide_range_row input {
+    width: 5em;
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_hide_range_row span {
+    flex: none;
 }
 
 /* Picking menu items for the shortcuts */
