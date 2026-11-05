@@ -83,6 +83,11 @@ async function renameFromList(fileName) {
     if (!picked || picked[1] === fileName) {
         return;
     }
+    // Renaming reloads the open chat: never while a reply is being written into it
+    if (document.getElementById('mes_stop')?.offsetParent) {
+        toastr.warning('답변을 만드는 중에는 이름을 바꿀 수 없습니다.', TITLE);
+        return;
+    }
     await context.renameChat(fileName, picked[1]);
     // The list shows the new name the way ST's own ✎ does it: opened again
     setTimeout(() => {

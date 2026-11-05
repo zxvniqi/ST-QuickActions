@@ -1,7 +1,8 @@
 // Selecting a character shows its chat list (with rename / export / delete / import)
 // instead of opening the latest chat.
 import { MODULE, getSettings, isOn } from './settings.js';
-import { listChats, setActiveChat, renameChat, deleteChat, exportChat, importChats } from './chat-api.js';
+import { listChats, setActiveChat, renameChat, deleteChat, exportChat } from './chat-api.js';
+import { exportAllChats, importChatFiles } from './chat-export.js';
 
 const CHARACTER_LIST_ID = 'rm_print_characters_block';
 // Classes ST puts on the character list while in bulk-edit / multi-select mode
@@ -21,6 +22,14 @@ let isPickerOpen = false;
 async function openCharacterAtChat(characterId, chatName) {
     const context = SillyTavern.getContext();
     const character = context.characters[characterId];
+    // The character already open: selecting it again would not switch chats, so the chat is
+    // opened directly (ST's own way, which saves the current one first)
+    if (!context.groupId && String(context.characterId) === String(characterId)) {
+        if (chatName && chatName !== context.getCurrentChatId()) {
+            await context.openCharacterChat(chatName);
+        }
+        return;
+    }
     if (chatName && character.chat !== chatName) {
         await setActiveChat(character, chatName);
     }
@@ -118,9 +127,10 @@ async function showChatPicker(character, initialChats) {
         <div class="stqa_picker_head">
             <img class="stqa_picker_avatar" alt="">
             <b class="stqa_picker_title"></b>
-            <label class="menu_button stqa_picker_import" title="채팅 파일 불러오기 (.jsonl / .json)">
-                <i class="fa-solid fa-file-import"></i> 불러오기
-                <input type="file" accept=".jsonl,.json" multiple hidden>
+            <div class="menu_button menu_button_icon stqa_picker_export" title="전체 내보내기: 이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다"><i class="fa-solid fa-file-zipper"></i>&#8203;</div>
+            <label class="menu_button menu_button_icon stqa_picker_import" title="불러오기: 전체 내보내기로 받은 zip 파일이나 채팅 파일(.jsonl)을 채팅 이름 그대로 불러옵니다">
+                <i class="fa-solid fa-folder-open"></i>&#8203;
+                <input type="file" accept=".zip,.jsonl" multiple hidden>
             </label>
         </div>
         <input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색...">
@@ -180,16 +190,22 @@ async function showChatPicker(character, initialChats) {
         popup.complete(POPUP_RESULT.AFFIRMATIVE);
     });
 
+    root.querySelector('.stqa_picker_export').addEventListener('click', () => exportAllChats(character).catch((error) => {
+        console.error(`[${MODULE}] Exporting chats failed`, error);
+        toastr.error('내보내지 못했습니다.', TITLE);
+    }));
     root.querySelector('.stqa_picker_import input').addEventListener('change', async (event) => {
         const files = [...event.target.files];
         event.target.value = '';
         if (files.length === 0) {
             return;
         }
-        const imported = await importChats(character, files);
-        if (imported.length > 0) {
-            toastr.success(`채팅 ${imported.length}개 불러옴`, TITLE);
-            await refresh(imported);
+        try {
+            const imported = await importChatFiles(files, character);
+            imported.length && await refresh(imported);
+        } catch (error) {
+            console.error(`[${MODULE}] Importing chats failed`, error);
+            toastr.error('불러오지 못했습니다.', TITLE);
         }
     });
 
@@ -211,18 +227,29 @@ async function openChatPicker(characterId) {
     isPickerOpen = true;
 
     const context = SillyTavern.getContext();
+    // Characters with many long chats take a while to list: say so instead of seeming stuck
+    const loadingToast = setTimeout(() => toastr.info('채팅 목록을 불러오는 중…', TITLE, { timeOut: 2000 }), 400);
     try {
         const character = context.characters[characterId];
         const chats = await listChats(character.avatar);
+        clearTimeout(loadingToast);
 
-        // No chats yet (or the list failed to load): fall back to ST's default behavior.
-        if (!chats || chats.length === 0) {
+        // The list failed: say so, rather than opening a chat the user didn't pick
+        if (!chats) {
+            toastr.error('채팅 목록을 불러오지 못했습니다. 다시 눌러 봅니다.', TITLE);
+            return;
+        }
+        // No chats yet: ST's own way starts one
+        if (chats.length === 0) {
             await context.selectCharacterById(characterId);
             return;
         }
 
         const choice = await showChatPicker(character, chats);
-        if (choice?.newChat) {
+        if (choice?.newChat && !context.groupId && String(context.characterId) === String(characterId)) {
+            // A new chat for the character already open: ST's own command
+            await context.executeSlashCommandsWithOptions('/newchat');
+        } else if (choice?.newChat) {
             await openCharacterAtChat(characterId, `${character.name} - ${context.humanizedDateTime()}`);
         } else if (choice?.chat) {
             await openCharacterAtChat(characterId, choice.chat);
@@ -231,13 +258,13 @@ async function openChatPicker(characterId) {
         console.error(`[${MODULE}] Chat picker failed`, error);
         toastr.error('채팅 목록 열기 실패', TITLE);
     } finally {
+        clearTimeout(loadingToast);
         isPickerOpen = false;
     }
 }
 
 /**
  * Capture-phase listener so it runs before ST's delegated `.character_select` handler.
- * Only clicks that would switch to a different character are taken over.
  */
 function onCharacterClickCapture(event) {
     if (!isOn('chatPicker')) {
@@ -262,10 +289,8 @@ function onCharacterClickCapture(event) {
     if (!context.characters[characterId]) {
         return;
     }
-    // Clicking the current character opens its card editor in ST; keep that.
-    if (!context.groupId && String(context.characterId) === String(characterId)) {
-        return;
-    }
+    // The character already open too: its chat list is what a tap here asks for (its card
+    // stays one tap away, on the character panel's own button)
 
     event.stopImmediatePropagation();
     event.preventDefault();

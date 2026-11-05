@@ -79,10 +79,16 @@ function makeZip(files) {
 
 const safeName = name => name.replace(/[\\/:*?"<>|]/g, '_').trim() || 'chat';
 
-async function exportAllChats() {
+/** The character open now (not a group), or none. */
+function openCharacter() {
     const context = SillyTavern.getContext();
-    const character = context.characters[context.characterId];
-    if (!character || context.groupId) {
+    return context.groupId ? null : context.characters[context.characterId];
+}
+
+/** Every chat of the character (the open one by default) in one zip file, downloaded. */
+export async function exportAllChats(character = openCharacter()) {
+    const context = SillyTavern.getContext();
+    if (!character) {
         toastr.info('캐릭터 채팅에서만 쓸 수 있습니다.', TITLE);
         return;
     }
@@ -163,13 +169,16 @@ async function readZip(buffer) {
     return files;
 }
 
-/** Chats from a zip made by 전체 내보내기 (or any zip of .jsonl) or .jsonl files, saved under their own names. */
-async function importChats(picked) {
+/**
+ * Chats from a zip made by 전체 내보내기 (or any zip of .jsonl) or .jsonl files, saved to the
+ * character (the open one by default) under their own names; a name already there gets (2).
+ * Chats already there are never written to. Returns the names saved.
+ */
+export async function importChatFiles(picked, character = openCharacter()) {
     const context = SillyTavern.getContext();
-    const character = context.characters[context.characterId];
-    if (!character || context.groupId) {
+    if (!character) {
         toastr.info('캐릭터 채팅에서만 쓸 수 있습니다.', TITLE);
-        return;
+        return [];
     }
     const chats = [];
     for (const file of picked) {
@@ -181,12 +190,12 @@ async function importChats(picked) {
     }
     if (!chats.length) {
         toastr.info('불러올 채팅(.jsonl)이 없습니다.', TITLE);
-        return;
+        return [];
     }
     const headers = context.getRequestHeaders();
     const listed = await fetch('/api/characters/chats', { method: 'POST', headers, body: JSON.stringify({ avatar_url: character.avatar, simple: true }) });
     const taken = new Set((listed.ok ? Object.values(await listed.json()) : []).map(item => String(item?.file_name ?? '').replace(/\.jsonl$/, '')));
-    let saved = 0;
+    const saved = [];
     let failed = 0;
     for (const { name, text } of chats) {
         try {
@@ -205,18 +214,14 @@ async function importChats(picked) {
                 throw new Error(`Saving failed: ${response.status}`);
             }
             taken.add(fileName);
-            saved++;
+            saved.push(fileName);
         } catch (error) {
             console.error(`[${TITLE}] Importing ${name} failed`, error);
             failed++;
         }
     }
-    failed ? toastr.warning(`${saved}개를 불러왔고, ${failed}개는 불러오지 못했습니다.`, TITLE) : toastr.success(`채팅 ${saved}개를 불러왔습니다.`, TITLE);
-    if (saved) {
-        // The chat list shows them once opened again (as ST's own ✎ does)
-        $('#option_select_chat').trigger('click');
-        $('#options').hide();
-    }
+    failed ? toastr.warning(`${saved.length}개를 불러왔고, ${failed}개는 불러오지 못했습니다.`, TITLE) : toastr.success(`채팅 ${saved.length}개를 불러왔습니다.`, TITLE);
+    return saved;
 }
 
 export function applyChatExport() {
@@ -239,7 +244,7 @@ function headerButton(id, icon, title, onClick) {
 }
 
 export function initChatExport() {
-    const anchor = document.getElementById('chat_import_button');
+    const anchor = document.getElementById('select_chat_search');
     if (anchor && !document.getElementById(BUTTON_ID)) {
         const picker = document.createElement('input');
         picker.type = 'file';
@@ -249,21 +254,28 @@ export function initChatExport() {
         picker.addEventListener('change', () => {
             const files = [...picker.files];
             picker.value = '';
-            importChats(files).catch((error) => {
+            importChatFiles(files).then((saved) => {
+                // ST's chat list shows them once opened again (as ST's own ✎ does)
+                if (saved.length && document.getElementById('shadow_select_chat_popup')?.offsetParent) {
+                    $('#option_select_chat').trigger('click');
+                    $('#options').hide();
+                }
+            }).catch((error) => {
                 console.error(`[${TITLE}] Importing chats failed`, error);
                 toastr.error('불러오지 못했습니다.', TITLE);
             });
         });
-        const exporter = headerButton(BUTTON_ID, 'fa-file-zipper', '전체 내보내기: 이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다', () => exportAllChats().catch((error) => {
+        const exporter = headerButton(BUTTON_ID, 'fa-file-zipper', '전체 내보내기: 이 캐릭터의 채팅을 모두 zip 파일 하나로 내려받습니다', () => exportAllChats(openCharacter()).catch((error) => {
             console.error(`[${TITLE}] Exporting chats failed`, error);
             toastr.error('내보내지 못했습니다.', TITLE);
         }));
         const importer = headerButton(IMPORT_ID, 'fa-folder-open', '전체 불러오기: 전체 내보내기로 받은 zip 파일(또는 .jsonl 여러 개)을 이 캐릭터에 불러옵니다', () => picker.click());
-        // One pair, so the header spreads them as a single item
+        // One pair, right before the search box: the header's first row (New Chat, Import Chat)
+        // keeps ST's own spacing, and the search box gives up the room
         const pair = document.createElement('div');
         pair.id = PAIR_ID;
         pair.append(exporter, importer, picker);
-        anchor.after(pair);
+        anchor.before(pair);
     }
     applyChatExport();
 }

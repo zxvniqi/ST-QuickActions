@@ -4,7 +4,7 @@ import { isOn } from './settings.js';
 import { addTagsToEntity, removeTagFromEntity, tags, tag_map, TAG_FOLDER_DEFAULT_TYPE } from '../../../tags.js';
 import { DEFAULT_FILTER_STATE } from '../../../filters.js';
 import { uuidv4 } from '../../../utils.js';
-import { printCharactersDebounced } from '../../../../script.js';
+import { favsToHotswap } from '../../../RossAscends-mods.js';
 import { onlyOwnChanges } from './mutations.js';
 
 const TITLE = '편의성 모음';
@@ -37,7 +37,14 @@ async function toggleFav(character) {
         $('#favorite_button').toggleClass('fav_on', fav).toggleClass('fav_off', !fav);
         $('#fav_checkbox').prop('checked', fav);
     }
-    printCharactersDebounced();
+    // Only what shows the favorite changes (redrawing the whole list is slow with many characters)
+    document.querySelectorAll(`${LIST} .character_select[data-chid]`).forEach((row) => {
+        if (characterOf(row) === character) {
+            row.classList.toggle('is_fav', fav);
+            decorate(row, row.querySelector('.stqa_char_tools')?.style.justifyContent ?? '');
+        }
+    });
+    favsToHotswap();
 }
 
 /** Tags for the characters (avatar files): tap a tag to give it to all of them, tap again to take it away. */
@@ -105,28 +112,28 @@ async function openTagPopup(avatars) {
     await new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true }).show();
 }
 
-function decorate(row) {
+/** Adds the buttons to a card (or brings its ☆ up to date); returns whether they were new. */
+function decorate(row, justify) {
     const character = characterOf(row);
     if (!character) {
-        return;
+        return false;
     }
     let tools = row.querySelector('.stqa_char_tools');
-    if (!tools) {
+    const added = !tools;
+    if (added) {
         tools = document.createElement('div');
         tools.className = 'stqa_char_tools';
         tools.innerHTML = '<div class="stqa_char_tool" data-tool="fav" title="즐겨찾기"></div><div class="stqa_char_tool fa-solid fa-tag" data-tool="tag" title="태그"></div>';
-        // Where the card's tags were; the tags go under it, smaller (CSS)
+        // Where the card's tags were, lined up the way the theme lines up the tags; the tags go
+        // under it, smaller (CSS)
         const tags = row.querySelector('.tags');
-        if (tags) {
-            tags.before(tools);
-            // Lined up the way the theme lines up the tags
-            tools.style.justifyContent = getComputedStyle(tags).justifyContent;
-        } else {
-            row.append(tools);
-        }
+        tags ? tags.before(tools) : row.append(tools);
+        tools.style.justifyContent = justify;
     }
-    const fav = isFav(character);
-    tools.querySelector('[data-tool="fav"]').className = `stqa_char_tool ${fav ? 'fa-solid stqa_on' : 'fa-regular'} fa-star`;
+    const star = tools.firstElementChild;
+    const look = `stqa_char_tool ${isFav(character) ? 'fa-solid stqa_on' : 'fa-regular'} fa-star`;
+    star.className !== look && (star.className = look);
+    return added;
 }
 
 /**
@@ -151,8 +158,21 @@ function decorateAll() {
     if (!isOn('charListTools')) {
         return;
     }
-    document.querySelectorAll(`${LIST} .character_select[data-chid]`).forEach(decorate);
-    placeTools();
+    const rows = document.querySelectorAll(`${LIST} .character_select[data-chid]`);
+    const tags = rows[0]?.querySelector('.tags');
+    // One theme for every card: its tag alignment is read once
+    const justify = tags ? getComputedStyle(tags).justifyContent : '';
+    let added = false;
+    rows.forEach(row => (added = decorate(row, justify) || added));
+    // Measuring forces a layout: only when cards got new buttons (resizes come by the observer)
+    added && placeTools();
+}
+
+// ST draws a list in several steps (cards, then their tags): one pass after it settles
+let decorateTimer = 0;
+function scheduleDecorate() {
+    clearTimeout(decorateTimer);
+    decorateTimer = setTimeout(decorateAll, 60);
 }
 
 /** Taps on the ★ / tag buttons (not openings of the character). */
@@ -186,7 +206,7 @@ export function initCharListTools() {
     // ST redraws the list (pages, filters, search): new rows get the buttons
     const list = document.querySelector(LIST);
     if (list) {
-        new MutationObserver(records => !onlyOwnChanges(records) && decorateAll()).observe(list, { childList: true, subtree: true });
+        new MutationObserver(records => !onlyOwnChanges(records) && isOn('charListTools') && scheduleDecorate()).observe(list, { childList: true, subtree: true });
         // Shown, resized or restyled by another theme: the room on a card may differ
         new ResizeObserver(placeTools).observe(list);
     }

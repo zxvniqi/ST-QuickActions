@@ -104,8 +104,10 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 }
 
 /* Layout editor: tabs */
+/* Tabs wrap onto a second row on phones; a name never breaks in the middle */
 .stqa_tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     margin: 6px 0 10px;
     padding: 3px;
@@ -114,10 +116,11 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
 }
 
 .stqa_tab {
-    flex: 1;
-    padding: 6px 4px;
+    flex: 1 0 auto;
+    padding: 6px 8px;
     border-radius: 8px;
     text-align: center;
+    white-space: nowrap;
     font-size: 0.9em;
     cursor: pointer;
     opacity: 0.7;
@@ -317,6 +320,7 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     flex: 1;
 }
 
+.stqa_picker_export,
 .stqa_picker_import {
     display: inline-flex;
     flex-direction: row;
@@ -1303,10 +1307,9 @@ details.stqa_section[open] > summary {
     flex: none;
     padding: 6px 8px;
     border-radius: 6px;
-    font-size: 0.85em;
+    font-size: 0.95em;
     opacity: 0.55;
     cursor: pointer;
-    transition: transform 0.15s;
 }
 
 .stqa_desc_toggle:hover {
@@ -1314,8 +1317,8 @@ details.stqa_section[open] > summary {
 }
 
 .stqa_desc_open .stqa_desc_toggle {
-    transform: rotate(180deg);
-    opacity: 0.9;
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor);
 }
 
 .stqa_desc[hidden] {
@@ -1327,6 +1330,7 @@ details.stqa_section[open] > summary {
     font-size: 0.86em;
     line-height: 1.45;
     opacity: 0.72;
+    white-space: pre-line;
     word-break: keep-all;
     overflow-wrap: anywhere;
 }
@@ -2135,8 +2139,8 @@ div.stqa_tr_view.stqa_tr_long {
     animation: fa-spin 1s linear infinite;
 }
 
-body:not(.stqa_entry_translate_on) .stqa_tr_icon,
-body:not(.stqa_entry_translate_on) .stqa_tr_one {
+body:not(.stqa_entry_translate_on) .stqa_tr_icons,
+body:not(.stqa_entry_translate_on) .stqa_tr_icon {
     display: none !important;
 }
 
@@ -2158,13 +2162,6 @@ body.stqa_hide_hints .toggle-description {
     margin-left: auto;
     margin-right: 4px;
 }
-/* Short word buttons (이름 / 내용) the size of the icon buttons beside them */
-.stqa_tr_word {
-    font-size: 0.85em;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
 /* Prompt edit form: the group in the middle of its bottom row */
 #stqa_prompt_form_tr {
     margin: 0 auto;
@@ -2221,4 +2218,81 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     width: auto !important;
     padding-left: 0.55em !important;
     padding-right: 0.55em !important;
+}
+
+/* Translation buttons: the icon in the middle of the button, whatever the theme's padding */
+.stqa_tr_icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+/* 이름 / 내용 translate buttons: a small 文A in the corner of the label / paragraph icon */
+.stqa_tr_badge {
+    position: relative;
+}
+
+.stqa_tr_badge::after {
+    content: "\f1ab";
+    position: absolute;
+    right: 2px;
+    bottom: 1px;
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.55em;
+    line-height: 1;
+}
+
+/* World info entry: 文A ⇄ 지우개 over ST's own ↔ ⧉ 🗑 */
+.stqa_wi_grid {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: 3px;
+    align-content: center;
+}
+
+.stqa_wi_grid > .menu_button {
+    margin: 0;
+}
+/* Translator choice under 번역 보기 */
+.stqa_translator {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+}
+
+.stqa_translator_prompt {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stqa_translator_prompt[hidden] {
+    display: none;
+}
+
+.stqa_translator_prompt small {
+    opacity: 0.75;
+}
+
+.stqa_translator_prompt textarea {
+    margin: 0;
+    resize: vertical;
+}
+
+.stqa_translator_prompt .menu_button {
+    align-self: flex-start;
+}
+
+/* Chat list header: 전체 내보내기 / 불러오기 just before the search box */
+#stqa_chat_io {
+    flex: none;
+}
+
+/* Chat picker head: export / import icons at the right */
+.stqa_picker_head .stqa_picker_export {
+    margin-left: auto;
 }

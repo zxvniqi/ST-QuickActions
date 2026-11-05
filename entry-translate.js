@@ -1,12 +1,13 @@
 // Prompts, world info and the character description read in Korean, for reading only: what is
 // saved and sent stays the original. Translations are kept in the browser (IndexedDB) by
 // original text and shown in place of the originals while "번역 보기" is on.
-//  - icons in the prompt list footer / world info toolbar: translate all there, switch
-//    original ⇄ translation everywhere, delete the translations of that list
-//  - 文A on a prompt's edit form, each world info entry and the description: that one only
-//    (translates it, or switches just it between original and translation)
+//  - prompt list (between Name and Tokens) / world info toolbar: translate the names or the
+//    contents there, switch original ⇄ translation everywhere, delete that list's translations
+//  - prompt edit form, each world info entry, the character description: translate that one,
+//    switch just it, delete its translations
 //  - tapping a translation shows that one's original (to edit it)
-// ST's own translator (its provider setting) does the translating; one job at a time.
+// Google (through ST's translator) by default, or an AI connection with a prompt of one's own
+// (settings window); one job at a time. Stored translations load only once they are shown.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
 
@@ -91,18 +92,38 @@ function chunks(text) {
     return parts;
 }
 
+export const DEFAULT_TRANSLATE_PROMPT = '다음 글을 자연스러운 한국어로 번역하세요. 줄바꿈, 마크다운, HTML 태그, {{char}} 같은 매크로와 고유명사는 그대로 두고, 설명 없이 번역문만 출력하세요.\n\n{{text}}';
+
+/** One piece through the chosen engine: Google (ST's translator) or an AI connection. */
+async function translatePiece(part) {
+    const settings = getSettings();
+    if (settings.translateEngine !== 'ai') {
+        translator ??= await import('../../translate/index.js');
+        return translator.translate(part, LANG, 'google');
+    }
+    const template = settings.translatePrompt?.trim() || DEFAULT_TRANSLATE_PROMPT;
+    // The text goes where {{text}} is (other macros are left for the text itself)
+    const prompt = template.includes('{{text}}') ? template.split('{{text}}').join(part) : `${template}\n\n${part}`;
+    const context = SillyTavern.getContext();
+    const maxTokens = Math.min(8000, Math.max(300, part.length * 2));
+    if (settings.translateProfile && context.ConnectionManagerRequestService) {
+        const result = await context.ConnectionManagerRequestService.sendRequest(settings.translateProfile, [{ role: 'user', content: prompt }], maxTokens, { stream: false, extractData: true, includePreset: false, includeInstruct: false });
+        return result?.content;
+    }
+    return context.generateRaw({ prompt, responseLength: maxTokens });
+}
+
 async function translateText(text) {
     if (cache.has(text)) {
         return cache.get(text);
     }
-    translator ??= await import('../../translate/index.js');
     const parts = [];
     for (const part of chunks(text)) {
-        const result = part.trim() ? await translator.translate(part, LANG) : part;
-        if (typeof result !== 'string') {
+        const result = part.trim() ? await translatePiece(part) : part;
+        if (typeof result !== 'string' || (part.trim() && !result.trim())) {
             throw new Error('No translation');
         }
-        parts.push(result);
+        parts.push(result.trim() ? result : part);
     }
     const translation = parts.join('\n');
     await remember(text, translation);
@@ -143,7 +164,8 @@ async function translateAll(texts) {
     if (stopAsked) {
         toastr.info(`멈췄습니다. ${done}개를 번역했습니다.`, TITLE);
     } else if (failed) {
-        toastr.warning(`${done}개를 번역했고, ${failed}개는 번역하지 못했습니다. 확장 설정의 번역(Chat Translation) 설정을 확인합니다.`, TITLE);
+        const hint = getSettings().translateEngine === 'ai' ? 'AI 연결(API)이 되어 있는지 확인합니다.' : '인터넷 연결을 확인하거나 잠시 뒤 다시 합니다.';
+        toastr.warning(`${done}개를 번역했고, ${failed}개는 번역하지 못했습니다. ${hint}`, TITLE);
     } else {
         toastr.success(`${done}개를 번역했습니다.`, TITLE);
     }
@@ -272,6 +294,11 @@ const LISTS = {
         return { names: [name], contents: [content] };
     },
     character: async () => ({ names: [], contents: fieldTexts(CHARACTER_FIELDS) }),
+    // One world info entry: the entry the tapped button is in
+    wiEntry: async (button) => {
+        const item = (await worldEntries())?.[button?.closest('.world_entry')?.getAttribute('uid')];
+        return item && { names: [item.comment], contents: [item.content] };
+    },
 };
 
 const allTexts = texts => [...(texts?.names ?? []), ...(texts?.contents ?? [])];
@@ -312,8 +339,8 @@ async function job(button, task) {
 }
 
 /** Names or contents of a list translated, then shown translated. */
-async function translatePart(list, part) {
-    const texts = await LISTS[list]();
+async function translatePart(list, part, button) {
+    const texts = await LISTS[list](button);
     if (texts) {
         await translateAll(texts[part]);
         await setView(true);
@@ -350,8 +377,8 @@ async function switchOne(texts) {
     render();
 }
 
-async function deleteList(list) {
-    const texts = allTexts(await LISTS[list]());
+async function deleteList(list, button) {
+    const texts = allTexts(await LISTS[list](button));
     await loadCache();
     const kept = [...new Set(texts)].filter(text => text && cache.has(text));
     if (!kept.length) {
@@ -377,22 +404,17 @@ async function deleteList(list) {
 
 /* ---------- buttons ---------- */
 
-// [action, icon or short word, title]
+// [action, icon, title]. 이름 / 내용: a label or a paragraph, with a small 文A in the corner (CSS)
 const LIST_BUTTONS = [
-    ['names', 'fa-heading', '이름만 번역 (보기만 바뀝니다)'],
-    ['contents', 'fa-file-lines', '내용만 번역 (보기만 바뀝니다)'],
+    ['names', 'fa-tag stqa_tr_badge', '이름 번역 (보기만 바뀝니다)'],
+    ['contents', 'fa-align-left stqa_tr_badge', '내용 번역 (보기만 바뀝니다)'],
     ['toggle', 'fa-repeat', '원문 ⇄ 번역 전환'],
-    ['delete', 'fa-eraser', '번역 지우기'],
+    ['delete', 'fa-eraser', '이 목록의 번역 지우기'],
 ];
 const ONE_BUTTONS = [
-    ['one', 'fa-language', '이 프롬프트 번역 (이름과 내용)'],
-    ['switch', 'fa-repeat', '이 프롬프트만 원문 ⇄ 번역 전환'],
-    ['delete', 'fa-eraser', '이 프롬프트의 번역 지우기'],
-];
-const DESCRIPTION_BUTTONS = [
-    ['one', 'fa-language', '설명 번역'],
-    ['switch', 'fa-repeat', '설명만 원문 ⇄ 번역 전환'],
-    ['delete', 'fa-eraser', '설명의 번역 지우기'],
+    ['one', 'fa-language', '번역 (이름과 내용)'],
+    ['switch', 'fa-repeat', '이것만 원문 ⇄ 번역 전환'],
+    ['delete', 'fa-eraser', '이것의 번역 지우기'],
 ];
 
 /**
@@ -401,16 +423,15 @@ const DESCRIPTION_BUTTONS = [
  */
 function buttonGroup(id, list, buttons, worded = false) {
     const group = document.createElement('div');
-    group.id = id;
+    if (id) {
+        group.id = id;
+    }
     group.className = 'stqa_tr_icons';
     for (const [action, look, title] of buttons) {
         const button = document.createElement('div');
-        const isIcon = look.startsWith('fa-');
-        button.className = `menu_button stqa_tr_icon${isIcon && !worded ? ` fa-solid ${look}` : ''}${worded ? ' menu_button_icon' : ''}${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
+        button.className = `menu_button stqa_tr_icon${worded ? ' menu_button_icon' : ` fa-solid ${look}`}${action === 'toggle' ? ' stqa_tr_toggle' : ''}`;
         if (worded) {
             button.innerHTML = `<i class="fa-solid ${look}"></i>&#8203;`;
-        } else if (!isIcon) {
-            button.textContent = look;
         }
         button.dataset.trList = list;
         button.dataset.trDo = action;
@@ -418,16 +439,6 @@ function buttonGroup(id, list, buttons, worded = false) {
         group.append(button);
     }
     return group;
-}
-
-function oneIcon(className, title, fields) {
-    const button = document.createElement('i');
-    button.className = `menu_button fa-solid fa-language stqa_tr_one ${className}`;
-    button.title = title;
-    if (fields) {
-        button.dataset.trFields = fields.join(' ');
-    }
-    return button;
 }
 
 function syncToggles() {
@@ -438,6 +449,22 @@ function syncToggles() {
     });
     // World info buttons only while a world info is open
     document.body.classList.toggle('stqa_wi_open', Boolean(document.getElementById('world_editor_select')?.value));
+}
+
+/** Each world info entry: 文A ⇄ 지우개 in a row above its own ↔ ⧉ 🗑 (three over three). */
+function addEntryButtons(entry) {
+    const move = entry.querySelector(':scope .move_entry_button');
+    if (!move || entry.querySelector('.stqa_wi_grid')) {
+        return;
+    }
+    const grid = document.createElement('div');
+    grid.className = 'stqa_wi_grid';
+    move.before(grid);
+    grid.append(...buttonGroup('', 'wiEntry', ONE_BUTTONS).children);
+    // ST's own three move in under them; their handlers stay with them
+    for (const own of [move, entry.querySelector('.duplicate_entry_button'), entry.querySelector('.delete_entry_button')]) {
+        own && grid.append(own);
+    }
 }
 
 function addButtons() {
@@ -459,16 +486,11 @@ function addButtons() {
     if (refreshButton && !document.getElementById('stqa_wi_tr')) {
         refreshButton.parentElement.append(buttonGroup('stqa_wi_tr', 'world', LIST_BUTTONS));
     }
-    for (const entry of document.querySelectorAll('#world_popup_entries_list .world_entry')) {
-        const move = entry.querySelector('.move_entry_button');
-        if (move && !entry.querySelector('.stqa_wi_translate')) {
-            move.before(oneIcon('stqa_wi_translate', '이 항목 번역 / 원문 전환'));
-        }
-    }
-    // Character description: translate / switch / delete, next to its Ext. Media button
+    document.querySelectorAll('#world_popup_entries_list .world_entry').forEach(addEntryButtons);
+    // Character description: next to its Ext. Media button
     const media = document.getElementById('character_open_media_overrides');
     if (media && !document.getElementById('stqa_description_tr')) {
-        media.before(buttonGroup('stqa_description_tr', 'character', DESCRIPTION_BUTTONS, true));
+        media.before(buttonGroup('stqa_description_tr', 'character', ONE_BUTTONS, true));
     }
     syncToggles();
 }
@@ -484,47 +506,40 @@ function onClick(event) {
         return;
     }
     const icon = target.closest('[data-tr-do]');
-    if (icon) {
-        event.stopPropagation();
-        const { trList: list, trDo: action } = icon.dataset;
-        if (action === 'toggle') {
-            setView(!viewOn());
-        } else if (action === 'delete') {
-            deleteList(list);
-        } else if (action === 'switch') {
-            LISTS[list]().then(texts => switchOne(allTexts(texts)));
-        } else if (action === 'one') {
-            job(icon, async () => toggleOne(allTexts(await LISTS[list]())));
-        } else {
-            job(icon, () => translatePart(list, action));
-        }
+    if (!icon) {
         return;
     }
-    const one = target.closest('.stqa_tr_one');
-    if (!one) {
-        return;
-    }
+    // Not a tap on what the button sits in (a world info entry's header folds it)
     event.stopPropagation();
-    if (one.dataset.trFields) {
-        job(one, () => toggleOne(fieldTexts(one.dataset.trFields.split(' '))));
+    const { trList: list, trDo: action } = icon.dataset;
+    if (action === 'toggle') {
+        setView(!viewOn());
+    } else if (action === 'delete') {
+        deleteList(list, icon);
+    } else if (action === 'switch') {
+        LISTS[list](icon).then(texts => switchOne(allTexts(texts)));
+    } else if (action === 'one') {
+        job(icon, async () => toggleOne(allTexts(await LISTS[list](icon))));
     } else {
-        job(one, async () => {
-            const item = (await worldEntries())?.[one.closest('.world_entry')?.getAttribute('uid')];
-            item && await toggleOne([item.comment, item.content]);
-        });
+        job(icon, () => translatePart(list, action, icon));
     }
 }
+
+/** Stored translations are needed only while some are shown. */
+const showingAny = () => viewOn() || [...itemView.values()].includes('translation');
 
 export function applyEntryTranslate() {
     document.body.classList.toggle('stqa_entry_translate_on', isOn('entryTranslate'));
     addButtons();
-    loadCache().then(render);
+    if (cache || showingAny()) {
+        loadCache().then(render);
+    }
 }
 
 export function initEntryTranslate() {
     let queued = false;
     const refresh = (records) => {
-        if (onlyOwnChanges(records) || queued) {
+        if (!isOn('entryTranslate') || onlyOwnChanges(records) || queued) {
             return;
         }
         queued = true;
@@ -532,8 +547,8 @@ export function initEntryTranslate() {
         setTimeout(() => {
             queued = false;
             addButtons();
-            render();
-        }, 30);
+            cache && render();
+        }, 50);
     };
     for (const selector of ['#world_popup_entries_list', '#completion_prompt_manager', '#completion_prompt_manager_popup']) {
         const target = document.querySelector(selector);
@@ -541,10 +556,11 @@ export function initEntryTranslate() {
     }
     document.addEventListener('click', onClick, true);
     // Forms filled in place (no new elements): look again when they are opened or switched
-    document.addEventListener('click', event => event.target.closest?.('.prompt-manager-edit-action, .prompt-manager-inspect-action, .world_entry .inline-drawer-toggle') && setTimeout(render, 50));
+    const later = () => cache && setTimeout(render, 50);
+    document.addEventListener('click', event => event.target.closest?.('.prompt-manager-edit-action, .prompt-manager-inspect-action, .world_entry .inline-drawer-toggle') && later());
     $('#world_editor_select').on('change', syncToggles);
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.CHARACTER_EDITED ?? 'character_edited', () => setTimeout(render, 50));
-    eventSource.on(eventTypes.CHAT_CHANGED, () => setTimeout(render, 50));
+    eventSource.on(eventTypes.CHARACTER_EDITED ?? 'character_edited', later);
+    eventSource.on(eventTypes.CHAT_CHANGED, later);
     applyEntryTranslate();
 }

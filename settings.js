@@ -17,6 +17,11 @@ const defaultSettings = Object.freeze({
     entryTranslate: true,
     // Prompts / world info shown translated (reading only; originals are what is saved and sent)
     translationView: false,
+    // google | ai (translateProfile: a connection profile id, '' = the connection in use)
+    translateEngine: 'google',
+    translateProfile: '',
+    // '' = the built-in prompt
+    translatePrompt: '',
     welcomeRecent: false,
     wandGrid: false,
     // {{char}} and {{user}} names swapped while on

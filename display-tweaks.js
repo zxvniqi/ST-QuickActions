@@ -22,6 +22,8 @@ function sharpen(img) {
     // Keep the thumbnail if the full picture can't be loaded
     const thumbnail = img.getAttribute('src');
     img.addEventListener('error', () => img.getAttribute('src') === full && img.setAttribute('src', thumbnail), { once: true });
+    // Big card pictures are decoded off the main thread, so scrolling doesn't stall on them
+    img.decoding = 'async';
     img.setAttribute('src', full);
 }
 

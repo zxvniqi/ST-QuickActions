@@ -6,6 +6,9 @@ import { MODULE, isOn } from './settings.js';
 const OPTION_ID = 'stqa_option_replace';
 const TITLE = '편의성 모음';
 
+/** A reply is being written (ST shows its stop button then). */
+const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
+
 /** The texts of a message that can hold the word: [holder, key] pairs. */
 function textSlots(message, swipes) {
     const slots = [[message, 'mes']];
@@ -40,6 +43,13 @@ async function openReplace() {
         toastr.info('열린 채팅이 없습니다.', TITLE);
         return;
     }
+    if (isGenerating()) {
+        toastr.info('답변을 만드는 중에는 쓸 수 없습니다.', TITLE);
+        return;
+    }
+    // The chat this window is about
+    const chatId = context.getCurrentChatId();
+    const chat = context.chat;
     const content = document.createElement('div');
     content.className = 'stqa_replace';
     content.innerHTML = `
@@ -60,6 +70,15 @@ async function openReplace() {
     const shown = popup.show();
     setTimeout(() => field('find').focus());
     if (!await shown) {
+        return;
+    }
+    // Another chat opened, or a reply started, while the window was up: nothing is touched
+    if (SillyTavern.getContext().getCurrentChatId() !== chatId || SillyTavern.getContext().chat !== chat) {
+        toastr.warning('그사이 채팅이 바뀌어서 바꾸지 않았습니다.', TITLE);
+        return;
+    }
+    if (isGenerating()) {
+        toastr.warning('답변을 만드는 중에는 바꿀 수 없습니다.', TITLE);
         return;
     }
     const word = field('find').value;
