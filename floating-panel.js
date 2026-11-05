@@ -195,6 +195,7 @@ function settleAtEnd(top) {
 function settleAtMessage(messageId) {
     const chat = document.getElementById('chat');
     const message = chat?.querySelector(`.mes[mesid="${messageId}"]`);
+    message && showForReal([message.previousElementSibling, message, message.nextElementSibling]);
     message && settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
 }
 
@@ -219,6 +220,30 @@ function messageInView(chat) {
     // passed must not count as the one being read
     const index = messages.findIndex(element => element.getBoundingClientRect().bottom > top + 12);
     return index === -1 ? null : { messages, index, cut: messages[index].getBoundingClientRect().top < top - 12 };
+}
+
+// Messages drawn in full for a moment (see showForReal), and when to let them go again
+const forced = new Set();
+let releaseTimer = null;
+
+/**
+ * Chat virtualizers (Performance Optimizer and the like) skip drawing messages out of sight
+ * (`content-visibility: auto`), giving them a made-up height until they come near. Measured
+ * then, they are in the wrong place, so a jump lands somewhere else. These messages are drawn
+ * in full for a moment before measuring; let go afterwards, they keep their real size.
+ */
+export function showForReal(elements) {
+    for (const element of elements) {
+        if (element && !forced.has(element) && getComputedStyle(element).contentVisibility === 'auto') {
+            element.style.contentVisibility = 'visible';
+            forced.add(element);
+        }
+    }
+    clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(() => {
+        forced.forEach(element => element.style.removeProperty('content-visibility'));
+        forced.clear();
+    }, 3000);
 }
 
 /**
@@ -246,12 +271,14 @@ function alignMessage(chat, message) {
  */
 async function stepMessage(direction) {
     const chat = document.getElementById('chat');
-    const spot = chat && messageInView(chat);
-    if (!spot) {
+    const first = chat && messageInView(chat);
+    if (!first) {
         toastr.info('메시지 없음', TITLE);
         return;
     }
-    const { messages, index, cut } = spot;
+    // The messages around the spot drawn for real, then the spot found again on real sizes
+    showForReal(first.messages.slice(Math.max(0, first.index - 2), first.index + 3));
+    const { messages, index, cut } = messageInView(chat);
     if (direction < 0) {
         if (cut) {
             alignMessage(chat, messages[index]);

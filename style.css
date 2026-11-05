@@ -1628,26 +1628,34 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     -webkit-user-select: none;
 }
 
-/* 채팅에서 찾기: the search bar in place of the input, and the marked word */
+/* 채팅에서 찾기: the box above the chat, the buttons in place of the input, and the marked word */
+#stqa_search_top {
+    flex: none;
+    display: flex;
+    padding: 5px 6px;
+    background: var(--SmartThemeBlurTintColor);
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+}
+
+#stqa_search_top input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+}
+
 #stqa_search_bar {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 5px;
     padding: 5px 6px;
     background: var(--SmartThemeBlurTintColor);
     border-radius: 12px;
 }
 
-#stqa_search_bar input {
-    flex: 1;
-    min-width: 0;
-    margin: 0;
-}
-
 #stqa_search_bar .stqa_search_count {
-    flex: none;
-    min-width: 2.5em;
-    font-size: 0.85em;
+    flex: 1;
+    font-size: 0.9em;
     text-align: center;
     opacity: 0.8;
 }

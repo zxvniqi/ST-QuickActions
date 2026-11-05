@@ -631,17 +631,36 @@ function detectInlineBox() {
  * themes that show the box inline get it flattened into the row, so the whole menu is one line;
  * with a "…" menu each button keeps its place relative to the others in its own box.
  */
-function applyMessageStyles() {
-    const rules = [];
+// Message rules already worked out, by the buttons messages have and the arrangement: a new
+// message with the same buttons (nearly always) costs no measuring of the page
+const messageRuleCache = new Map();
+
+function applyMessageStyles({ force = false } = {}) {
     const { order, hidden } = getLayout(MESSAGE_ROW);
+    if (force) {
+        messageRuleCache.clear();
+    }
+    const natural = naturalMessageKeys();
+    // The theme decides whether the "…" box shows inline
+    const signature = JSON.stringify([natural, order, hidden, document.getElementById('themes')?.value]);
+    if (messageRuleCache.has(signature)) {
+        const cached = messageRuleCache.get(signature);
+        if (cached !== messageRules) {
+            messageRules = cached;
+            writeStyles();
+        }
+        return;
+    }
+    const rules = [];
     const scopes = [`#chat .mes ${MESSAGE_ROW} >`, `#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} >`];
     const selectorFor = key => scopes.flatMap(scope => spotMembers(key).map(member => `${scope} .${CSS.escape(member)}`)).join(', ');
-    detectInlineBox();
     if (order.length > 0) {
+        // Measuring the theme's "…" box costs a restyle of the whole page: only with an arrangement
+        detectInlineBox();
         if (nestedBoxInline) {
             rules.push(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} { display: contents !important; }`);
         }
-        const full = arrange(order, naturalMessageKeys());
+        const full = arrange(order, natural);
         rules.push(`${scopes.map(scope => `${scope} *`).join(', ')} { order: ${full.length}; }`);
         full.forEach((key, index) => rules.push(`${selectorFor(key)} { order: ${index}; }`));
     }
@@ -651,6 +670,10 @@ function applyMessageStyles() {
         }
     }
     messageRules = rules.join('\n');
+    // A chat opened later may first be drawn without its "…" box: it is measured again then
+    if (document.querySelector(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX}`)) {
+        messageRuleCache.set(signature, messageRules);
+    }
     writeStyles();
 }
 
@@ -751,7 +774,7 @@ export function saveLayout(selector, { order, hidden, listed = order }) {
     // so one that went to the other side is that side's to hide.
     const kept = getLayout(selector).hidden.filter(key => !listed.includes(key));
     getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: unique([...hidden, ...kept]).filter(key => !lockedKeys.has(key)) };
-    findContainer(selector)?.perMessage ? applyMessageStyles() : applyContainer(selector);
+    findContainer(selector)?.perMessage ? applyMessageStyles({ force: true }) : applyContainer(selector);
 }
 
 /**
