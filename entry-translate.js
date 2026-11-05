@@ -284,7 +284,8 @@ async function toggleOne(texts) {
         return;
     }
     await loadCache();
-    const showing = present.some(text => cache.has(text) && showsTranslation(text));
+    // Only when all of it is shown translated does a tap go back to the original
+    const showing = present.every(text => cache.has(text) && showsTranslation(text));
     if (!showing) {
         await translateAll(present);
     }
@@ -442,11 +443,12 @@ export function initEntryTranslate() {
             return;
         }
         queued = true;
-        requestAnimationFrame(() => {
+        // A timer, not an animation frame: those wait while the page is in the background
+        setTimeout(() => {
             queued = false;
             addButtons();
             render();
-        });
+        }, 30);
     };
     for (const selector of ['#world_popup_entries_list', '#completion_prompt_manager', '#completion_prompt_manager_popup']) {
         const target = document.querySelector(selector);

@@ -2188,3 +2188,8 @@ body.stqa_hide_hints .toggle-description {
 .stqa_tr_icons .menu_button {
     margin: 0;
 }
+/* Description: 文A right beside Ext. Media */
+#stqa_description_translate {
+    margin-left: auto;
+    margin-right: 4px;
+}
