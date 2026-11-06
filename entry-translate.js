@@ -473,8 +473,8 @@ async function deleteList(list, button) {
 // [action, icon, title, words in the menu]. 이름 / 내용: a label or a paragraph icon with a small
 // 文A in the corner (CSS)
 const LIST_BUTTONS = [
-    ['names', 'fa-tag stqa_tr_badge', '이름 번역', '이름 번역하기'],
-    ['contents', 'fa-align-left stqa_tr_badge', '내용 번역', '내용 번역하기'],
+    ['names', 'fa-tag stqa_tr_badge', '이름 전체 번역', '이름 전체 번역하기'],
+    ['contents', 'fa-align-left stqa_tr_badge', '내용 전체 번역', '내용 전체 번역하기'],
     ['toggle', 'fa-repeat', '원문과 번역 바꿔 보기', ''],
     ['delete', 'fa-eraser', '저장한 번역 지우기', '저장한 번역 지우기'],
 ];
