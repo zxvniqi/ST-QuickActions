@@ -196,7 +196,44 @@ const LOOK = ['font', 'color', 'background-color', 'background-image', 'border',
  * A translation is shown in a stand-in that takes the box's exact place, size and look; the
  * box itself is only hidden, never written to, so whatever ST saves or sends is the original.
  */
+// Boxes whose text is watched (see watchValue)
+const watched = new WeakSet();
+let valueRender = false;
+
+/**
+ * ST fills the prompt edit form in place: opening another prompt only sets the boxes' text, with
+ * no event and no new element. A box with a stand-in is watched for that, so the stand-in shows
+ * the new prompt's translation (or steps aside) at once, never the previous prompt's.
+ */
+function watchValue(box) {
+    if (watched.has(box)) {
+        return;
+    }
+    const own = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value');
+    if (!own?.set) {
+        return;
+    }
+    watched.add(box);
+    Object.defineProperty(box, 'value', {
+        configurable: true,
+        get() {
+            return own.get.call(this);
+        },
+        set(value) {
+            own.set.call(this, value);
+            if (!valueRender) {
+                valueRender = true;
+                queueMicrotask(() => {
+                    valueRender = false;
+                    render();
+                });
+            }
+        },
+    });
+}
+
 function standIn(box, translation) {
+    watchValue(box);
     let stand = box.nextElementSibling?.classList.contains(STAND_IN) ? box.nextElementSibling : null;
     if (!stand) {
         const style = getComputedStyle(box);
@@ -443,15 +480,18 @@ async function switchOne(texts) {
     render();
 }
 
-async function deleteList(list, button) {
-    const texts = allTexts(await LISTS[list](button));
+/** Stored translations of a list: all of them, or only its names / contents (`part`). */
+async function deleteList(list, button, part = null) {
+    const found = await LISTS[list](button);
+    const texts = part ? (found?.[part] ?? []) : allTexts(found);
     await loadCache();
     const kept = [...new Set(texts)].filter(text => text && cache.has(text));
     if (!kept.length) {
         toastr.info('지울 번역이 없습니다.', TITLE);
         return;
     }
-    if (!await SillyTavern.getContext().Popup.show.confirm(`번역 ${kept.length}개 삭제`, '저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
+    const what = { names: '이름 ', contents: '내용 ' }[part] ?? '';
+    if (!await SillyTavern.getContext().Popup.show.confirm(`${what}번역 ${kept.length}개 삭제`, '저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
         return;
     }
     try {
@@ -476,7 +516,9 @@ const LIST_BUTTONS = [
     ['names', 'fa-tag stqa_tr_badge', '이름 전체 번역', '이름 전체 번역하기'],
     ['contents', 'fa-align-left stqa_tr_badge', '내용 전체 번역', '내용 전체 번역하기'],
     ['toggle', 'fa-repeat', '원문과 번역 바꿔 보기', ''],
-    ['delete', 'fa-eraser', '저장한 번역 지우기', '저장한 번역 지우기'],
+    ['deleteNames', 'fa-eraser', '이름 번역만 지우기', '이름 번역만 지우기'],
+    ['deleteContents', 'fa-eraser', '내용 번역만 지우기', '내용 번역만 지우기'],
+    ['delete', 'fa-eraser', '저장한 번역 모두 지우기', '저장한 번역 모두 지우기'],
 ];
 const ONE_BUTTONS = [
     ['one', 'fa-language', '번역하기'],
@@ -662,6 +704,8 @@ function onClick(event) {
         setView(!viewOn());
     } else if (action === 'delete') {
         deleteList(list, icon);
+    } else if (action === 'deleteNames' || action === 'deleteContents') {
+        deleteList(list, icon, action === 'deleteNames' ? 'names' : 'contents');
     } else if (action === 'switch') {
         LISTS[list](icon).then(texts => switchOne(allTexts(texts)));
     } else if (action === 'one') {
