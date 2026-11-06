@@ -118,6 +118,10 @@ async function translateText(text) {
     }
     const parts = [];
     for (const part of chunks(text)) {
+        // A long text stops between its pieces too
+        if (stopAsked) {
+            throw new Error('Stopped');
+        }
         const result = part.trim() ? await translatePiece(part) : part;
         if (typeof result !== 'string' || (part.trim() && !result.trim())) {
             throw new Error('No translation');
@@ -153,6 +157,9 @@ async function translateAll(texts) {
                 await translateText(text);
                 done++;
             } catch (error) {
+                if (stopAsked) {
+                    break;
+                }
                 console.error(`[${MODULE}] Translating failed`, error);
                 failed++;
             }
@@ -189,7 +196,44 @@ const LOOK = ['font', 'color', 'background-color', 'background-image', 'border',
  * A translation is shown in a stand-in that takes the box's exact place, size and look; the
  * box itself is only hidden, never written to, so whatever ST saves or sends is the original.
  */
+// Boxes whose text is watched (see watchValue)
+const watched = new WeakSet();
+let valueRender = false;
+
+/**
+ * ST fills the prompt edit form in place: opening another prompt only sets the boxes' text, with
+ * no event and no new element. A box with a stand-in is watched for that, so the stand-in shows
+ * the new prompt's translation (or steps aside) at once, never the previous prompt's.
+ */
+function watchValue(box) {
+    if (watched.has(box)) {
+        return;
+    }
+    const own = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value');
+    if (!own?.set) {
+        return;
+    }
+    watched.add(box);
+    Object.defineProperty(box, 'value', {
+        configurable: true,
+        get() {
+            return own.get.call(this);
+        },
+        set(value) {
+            own.set.call(this, value);
+            if (!valueRender) {
+                valueRender = true;
+                queueMicrotask(() => {
+                    valueRender = false;
+                    render();
+                });
+            }
+        },
+    });
+}
+
 function standIn(box, translation) {
+    watchValue(box);
     let stand = box.nextElementSibling?.classList.contains(STAND_IN) ? box.nextElementSibling : null;
     if (!stand) {
         const style = getComputedStyle(box);
@@ -305,9 +349,15 @@ async function setView(on) {
 
 /* ---------- what each place holds ---------- */
 
+/**
+ * The prompts the list shows: the current order's. A preset also keeps prompts the list doesn't
+ * show (other characters' orders, ones taken off the list): those aren't translated.
+ */
 async function promptTexts() {
     openai ??= await import('../../../openai.js');
-    const prompts = openai.promptManager?.serviceSettings?.prompts ?? [];
+    const manager = openai.promptManager;
+    const order = manager?.activeCharacter ? manager.getPromptOrderForCharacter(manager.activeCharacter) : [];
+    const prompts = order.map(entry => manager.getPromptById(entry.identifier)).filter(prompt => prompt && !prompt.marker);
     return { names: prompts.map(prompt => prompt.name), contents: prompts.map(prompt => prompt.content) };
 }
 
@@ -352,13 +402,19 @@ const allTexts = texts => [...(texts?.names ?? []), ...(texts?.contents ?? [])];
 
 let busy = null;
 
+// The same button, also when the list drew it anew meanwhile (it keeps its id)
+const sameButton = (a, b) => Boolean(a && b) && (a === b || (Boolean(a.id) && a.id === b.id));
+
+/** Whether this button's job is the one running (tapping it then means stop). */
+const runs = button => Boolean(busy) && sameButton(busy, button);
+
 /**
  * Runs a translating job with its button spinning. Tapping that button again stops it; any
  * other translate button meanwhile only says one is running.
  */
 async function job(button, task) {
     if (busy) {
-        if (button === busy) {
+        if (sameButton(button, busy)) {
             stopAsked = true;
             toastr.info('멈추는 중입니다. 지금 번역 중인 글까지만 마칩니다.', TITLE);
         } else {
@@ -379,6 +435,8 @@ async function job(button, task) {
         busy = null;
         stopAsked = false;
         button?.classList.remove('stqa_busy');
+        // Drawn anew meanwhile: the new one stops spinning too
+        button?.id && document.getElementById(button.id)?.classList.remove('stqa_busy');
         document.body.classList.remove('stqa_translating');
     }
 }
@@ -422,15 +480,18 @@ async function switchOne(texts) {
     render();
 }
 
-async function deleteList(list, button) {
-    const texts = allTexts(await LISTS[list](button));
+/** Stored translations of a list: all of them, or only its names / contents (`part`). */
+async function deleteList(list, button, part = null) {
+    const found = await LISTS[list](button);
+    const texts = part ? (found?.[part] ?? []) : allTexts(found);
     await loadCache();
     const kept = [...new Set(texts)].filter(text => text && cache.has(text));
     if (!kept.length) {
         toastr.info('지울 번역이 없습니다.', TITLE);
         return;
     }
-    if (!await SillyTavern.getContext().Popup.show.confirm(`번역 ${kept.length}개 삭제`, '저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
+    const what = { names: '이름 ', contents: '내용 ' }[part] ?? '';
+    if (!await SillyTavern.getContext().Popup.show.confirm(`${what}번역 ${kept.length}개 삭제`, '저장된 번역을 지웁니다. 원문은 그대로입니다.')) {
         return;
     }
     try {
@@ -452,10 +513,12 @@ async function deleteList(list, button) {
 // [action, icon, title, words in the menu]. 이름 / 내용: a label or a paragraph icon with a small
 // 文A in the corner (CSS)
 const LIST_BUTTONS = [
-    ['names', 'fa-tag stqa_tr_badge', '이름 번역', '이름 번역하기'],
-    ['contents', 'fa-align-left stqa_tr_badge', '내용 번역', '내용 번역하기'],
+    ['names', 'fa-tag stqa_tr_badge', '이름 전체 번역', '이름 전체 번역하기'],
+    ['contents', 'fa-align-left stqa_tr_badge', '내용 전체 번역', '내용 전체 번역하기'],
     ['toggle', 'fa-repeat', '원문과 번역 바꿔 보기', ''],
-    ['delete', 'fa-eraser', '저장한 번역 지우기', '저장한 번역 지우기'],
+    ['deleteNames', 'fa-eraser', '이름 번역 전체 지우기', '이름 번역 전체 지우기'],
+    ['deleteContents', 'fa-eraser', '내용 번역 전체 지우기', '내용 번역 전체 지우기'],
+    ['delete', 'fa-eraser', '저장한 번역 모두 지우기', '저장한 번역 모두 지우기'],
 ];
 const ONE_BUTTONS = [
     ['one', 'fa-language', '번역하기'],
@@ -513,6 +576,30 @@ function addEntryButtons(entry) {
     }
 }
 
+/**
+ * Prompt list: one 文A that opens the menu, right after ST's ✚ (new prompt) at the end of its
+ * tool row. ST (and extensions folding parts of the list) draw that row anew often: the button
+ * is put back right away, before the page is painted, so it never blinks out.
+ */
+function placePromptButton() {
+    if (!isOn('entryTranslate')) {
+        return;
+    }
+    const add = document.querySelector('.completion_prompt_manager_footer .fa-plus-square')
+        ?? document.querySelector('.completion_prompt_manager_footer > :last-child:not(#stqa_prompt_tr)');
+    if (add && add.nextElementSibling?.id !== 'stqa_prompt_tr') {
+        document.getElementById('stqa_prompt_tr')?.remove();
+        const button = document.createElement('div');
+        button.id = 'stqa_prompt_tr';
+        button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
+        button.title = '번역 메뉴';
+        button.dataset.trMenu = 'prompts';
+        // Still spinning while its job runs
+        button.classList.toggle('stqa_busy', runs(button));
+        add.after(button);
+    }
+}
+
 function addButtons() {
     if (!isOn('entryTranslate')) {
         return;
@@ -522,19 +609,7 @@ function addButtons() {
     if (close && !document.getElementById('stqa_prompt_form_tr')) {
         close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
-    // Prompt list: one 文A that opens the menu, right after ST's ✚ (new prompt) at the end of its
-    // tool row. ST draws that row anew often: the button is put back each time
-    const add = document.querySelector('.completion_prompt_manager_footer .fa-plus-square')
-        ?? document.querySelector('.completion_prompt_manager_footer > :last-child');
-    if (add && add.nextElementSibling?.id !== 'stqa_prompt_tr') {
-        document.getElementById('stqa_prompt_tr')?.remove();
-        const button = document.createElement('div');
-        button.id = 'stqa_prompt_tr';
-        button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
-        button.title = '번역 메뉴';
-        button.dataset.trMenu = 'prompts';
-        add.after(button);
-    }
+    placePromptButton();
     // World info: one 文A beside the page controls (no room there for four); it opens a menu
     const pages = document.getElementById('world_info_pagination');
     if (pages && !document.getElementById('stqa_wi_tr')) {
@@ -608,6 +683,11 @@ function onClick(event) {
     const menuButton = target.closest('[data-tr-menu]');
     if (menuButton) {
         event.stopPropagation();
+        // Spinning: a tap stops its job (rather than opening the menu again)
+        if (runs(menuButton)) {
+            job(menuButton);
+            return;
+        }
         toggleMenu(menuButton);
         return;
     }
@@ -624,6 +704,8 @@ function onClick(event) {
         setView(!viewOn());
     } else if (action === 'delete') {
         deleteList(list, icon);
+    } else if (action === 'deleteNames' || action === 'deleteContents') {
+        deleteList(list, icon, action === 'deleteNames' ? 'names' : 'contents');
     } else if (action === 'switch') {
         LISTS[list](icon).then(texts => switchOne(allTexts(texts)));
     } else if (action === 'one') {
@@ -647,7 +729,14 @@ export function applyEntryTranslate() {
 export function initEntryTranslate() {
     let queued = false;
     const refresh = (records) => {
-        if (!isOn('entryTranslate') || onlyOwnChanges(records) || queued) {
+        if (!isOn('entryTranslate') || onlyOwnChanges(records)) {
+            return;
+        }
+        // The list's own button, and translations already made, at once (observers run before
+        // the page is painted, so a redrawn list never shows its originals first)
+        placePromptButton();
+        cache && showingAny() && render();
+        if (queued) {
             return;
         }
         queued = true;

@@ -585,10 +585,13 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
 
 #stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_toggle {
     position: sticky;
-    z-index: 1;
+    z-index: 2;
     flex: none;
     touch-action: none;
+    /* Solid, so the buttons scrolled under it don't show through: the theme's tint laid over its
+       own colour made fully opaque (the plain tint where a browser can't work that out) */
     background: var(--SmartThemeBlurTintColor);
+    background: linear-gradient(var(--SmartThemeBlurTintColor), var(--SmartThemeBlurTintColor)), rgb(from var(--SmartThemeBlurTintColor) r g b / 1);
     left: 0;
     top: 0;
 }
@@ -598,6 +601,33 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     right: 0;
     top: auto;
     bottom: 0;
+}
+
+/* Open and scrolling: no padding on the ··· side, so ··· sits right at the edge and no sliver of
+   the buttons scrolled under it shows past it */
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_horizontal.stqa_open:not(.stqa_grow_back) {
+    padding-left: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_horizontal.stqa_open.stqa_grow_back {
+    padding-right: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_vertical.stqa_open:not(.stqa_grow_back) {
+    padding-top: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_vertical.stqa_open.stqa_grow_back {
+    padding-bottom: 0;
+}
+
+/* Open, ··· is dimmed by its icon colour, not its opacity (which would let the buttons show through) */
+#stqa_floating_panel#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_toggle {
+    opacity: 1;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_open:not(.stqa_in_flow) > .stqa_floating_toggle {
+    color: color-mix(in srgb, var(--stqa_shortcut_color, var(--SmartThemeBodyColor)) 55%, transparent);
 }
 
 #stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_button {
@@ -1683,6 +1713,65 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     color: #111;
 }
 
+/* 🔍 on a red notice: opens the error details (the notice itself still closes on a tap) */
+#toast-container > .toast-error {
+    position: relative;
+    padding-right: 44px !important;
+}
+
+#toast-container .stqa_toast_detail {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    /* The notice's own text colour (themes draw them light or dark) */
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    color: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 1;
+}
+
+/* Error details behind a red notice */
+.stqa_error_item {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    text-align: left;
+}
+
+.stqa_error_head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.85em;
+    opacity: 0.8;
+}
+
+.stqa_error_title {
+    margin-top: 2px;
+    word-break: break-word;
+}
+
+.stqa_error_detail {
+    max-height: 200px;
+    margin: 6px 0 0;
+    padding: 6px 8px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.8em;
+    background: var(--black30a, rgba(0, 0, 0, 0.15));
+    border-radius: 6px;
+}
+
 /* Hiding a range from the shortcuts: [ ] 부터 [ ] 까지 */
 .stqa_hide_range_row {
     display: flex;
@@ -2413,9 +2502,13 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     padding-right: 0.55em !important;
 }
 
-/* Themes animate every button (some with !important): the tools show at once, at full size */
+/* Themes animate everything (some with !important): the tools, and OK / Cancel making room for
+   them, show at once, in place */
 .popup-controls .stqa_qr_tools .stqa_qr_btn,
-.popup-controls .stqa_qr_tools .stqa_qr_btn > i {
+.popup-controls .stqa_qr_tools .stqa_qr_btn > i,
+.popup-controls:has(> .stqa_qr_tools),
+.popup-controls:has(> .stqa_qr_tools) > *,
+.popup-controls:has(> .stqa_qr_tools) > * > * {
     transition: none !important;
     animation: none !important;
 }

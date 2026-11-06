@@ -418,14 +418,27 @@ function isWordEdge(text, position, span) {
 }
 
 /**
- * The word at `position`, for picking a range by tapping: a word between spaces, or a single
- * character in Japanese (no spaces to tell words apart). Null on a space or punctuation.
+ * The word at `position`, for picking a range by tapping: a word between spaces, a single
+ * character in Japanese (no spaces to tell words apart), or punctuation (marks in a row, such
+ * as …… or !?, count as one). Null on a space.
  * @returns {{ start: number, end: number }|null}
  */
 export function wordAt(text, position) {
     const kind = charClass(text[position] ?? ' ');
-    if (kind === 'space' || kind === 'mark') {
+    if (kind === 'space') {
         return null;
+    }
+    if (kind === 'mark') {
+        const isMark = char => charClass(char) === 'mark';
+        let start = position;
+        let end = position + 1;
+        while (start > 0 && isMark(text[start - 1])) {
+            start--;
+        }
+        while (end < text.length && isMark(text[end])) {
+            end++;
+        }
+        return { start, end };
     }
     if (['hiragana', 'katakana', 'kanji'].includes(kind)) {
         return { start: position, end: position + 1 };

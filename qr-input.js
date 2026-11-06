@@ -193,8 +193,10 @@ function watchPopups(on) {
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
                     if (node instanceof HTMLDialogElement && node.classList.contains('popup')) {
-                        // The popup sets up its input box right after it is added
-                        setTimeout(() => onInputPopup(node));
+                        // At once, before the popup is first painted; if its input box isn't set
+                        // up yet (it may be right after being added), once more just after
+                        onInputPopup(node);
+                        node.dataset.stqaQrInput || setTimeout(() => onInputPopup(node));
                     }
                 }
             }
