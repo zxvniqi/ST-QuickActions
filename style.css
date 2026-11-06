@@ -603,6 +603,24 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     bottom: 0;
 }
 
+/* Open and scrolling: no padding on the ··· side, so ··· sits right at the edge and no sliver of
+   the buttons scrolled under it shows past it */
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_horizontal.stqa_open:not(.stqa_grow_back) {
+    padding-left: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_horizontal.stqa_open.stqa_grow_back {
+    padding-right: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_vertical.stqa_open:not(.stqa_grow_back) {
+    padding-top: 0;
+}
+
+#stqa_floating_panel#stqa_floating_panel.stqa_layout_vertical.stqa_open.stqa_grow_back {
+    padding-bottom: 0;
+}
+
 /* Open, ··· is dimmed by its icon colour, not its opacity (which would let the buttons show through) */
 #stqa_floating_panel#stqa_floating_panel:not(.stqa_in_flow) > .stqa_floating_toggle {
     opacity: 1;
