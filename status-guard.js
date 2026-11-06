@@ -5,10 +5,14 @@
 import { MODULE, isOn } from './settings.js';
 
 const CHECK_DELAY_MS = 600;
+// A panel still raw after a redraw is tried again a few times (the renderer may not have been
+// ready: a chat reloaded twice in a row, as when Sideleaf puts a message in), then left alone
+const MAX_TRIES = 3;
+const RETRY_DELAY_MS = 1500;
 // Code the frame renderer would have turned into a panel
 const PANEL_CODE = /<(?:!DOCTYPE|html|body)\b/i;
 
-// Messages already redrawn for their current text (a panel that still won't draw is left alone)
+// Messages redrawn for their current text: { text, tries }
 const redrawn = new Map();
 let timer = null;
 
@@ -37,16 +41,22 @@ async function redraw(messageId) {
         return;
     }
     const shown = message.extra?.display_text ?? message.mes;
-    if (redrawn.get(messageId) === shown) {
+    const before = redrawn.get(messageId);
+    const tries = before?.text === shown ? before.tries : 0;
+    if (tries >= MAX_TRIES) {
         return;
     }
     const remembered = message.extra?.original_text_for_translation;
     if (message.extra?.display_text && remembered && remembered !== context.substituteParams(message.mes, context.name1, message.name)) {
         return;
     }
-    redrawn.set(messageId, shown);
+    redrawn.set(messageId, { text: shown, tries: tries + 1 });
     context.updateMessageBlock(messageId, message);
     await context.eventSource.emit(context.eventTypes.MESSAGE_UPDATED, messageId);
+    // Looked at again a little later, in case the renderer wasn't ready this time
+    if (tries + 1 < MAX_TRIES) {
+        setTimeout(scheduleCheck, RETRY_DELAY_MS);
+    }
 }
 
 function check() {
@@ -85,7 +95,18 @@ export function initStatusGuard() {
     }
     const chat = document.getElementById('chat');
     if (chat) {
-        // Any redraw of messages (translation shown or hidden, more messages loaded, ...)
-        new MutationObserver(scheduleCheck).observe(chat, { childList: true, subtree: true });
+        // Any redraw of messages (translation shown or hidden, more messages loaded, ...). A
+        // message drawn anew as a whole (the chat reloaded) gets its tries back.
+        new MutationObserver((records) => {
+            for (const record of records) {
+                if (record.target !== chat) {
+                    continue;
+                }
+                for (const node of record.addedNodes) {
+                    node.classList?.contains('mes') && redrawn.delete(Number(node.getAttribute('mesid')));
+                }
+            }
+            scheduleCheck();
+        }).observe(chat, { childList: true, subtree: true });
     }
 }

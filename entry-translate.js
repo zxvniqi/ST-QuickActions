@@ -513,19 +513,17 @@ function addEntryButtons(entry) {
     }
 }
 
-function addButtons() {
+/**
+ * Prompt list: one 文A that opens the menu, right after ST's ✚ (new prompt) at the end of its
+ * tool row. ST (and extensions folding parts of the list) draw that row anew often: the button
+ * is put back right away, before the page is painted, so it never blinks out.
+ */
+function placePromptButton() {
     if (!isOn('entryTranslate')) {
         return;
     }
-    // Prompt edit form: in the middle of its bottom row (✕ on the left, ↺ 💾 on the right)
-    const close = document.getElementById('completion_prompt_manager_popup_entry_form_close');
-    if (close && !document.getElementById('stqa_prompt_form_tr')) {
-        close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
-    }
-    // Prompt list: one 文A that opens the menu, right after ST's ✚ (new prompt) at the end of its
-    // tool row. ST draws that row anew often: the button is put back each time
     const add = document.querySelector('.completion_prompt_manager_footer .fa-plus-square')
-        ?? document.querySelector('.completion_prompt_manager_footer > :last-child');
+        ?? document.querySelector('.completion_prompt_manager_footer > :last-child:not(#stqa_prompt_tr)');
     if (add && add.nextElementSibling?.id !== 'stqa_prompt_tr') {
         document.getElementById('stqa_prompt_tr')?.remove();
         const button = document.createElement('div');
@@ -535,6 +533,18 @@ function addButtons() {
         button.dataset.trMenu = 'prompts';
         add.after(button);
     }
+}
+
+function addButtons() {
+    if (!isOn('entryTranslate')) {
+        return;
+    }
+    // Prompt edit form: in the middle of its bottom row (✕ on the left, ↺ 💾 on the right)
+    const close = document.getElementById('completion_prompt_manager_popup_entry_form_close');
+    if (close && !document.getElementById('stqa_prompt_form_tr')) {
+        close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
+    }
+    placePromptButton();
     // World info: one 文A beside the page controls (no room there for four); it opens a menu
     const pages = document.getElementById('world_info_pagination');
     if (pages && !document.getElementById('stqa_wi_tr')) {
@@ -647,7 +657,12 @@ export function applyEntryTranslate() {
 export function initEntryTranslate() {
     let queued = false;
     const refresh = (records) => {
-        if (!isOn('entryTranslate') || onlyOwnChanges(records) || queued) {
+        if (!isOn('entryTranslate') || onlyOwnChanges(records)) {
+            return;
+        }
+        // The list's own button at once (observers run before the page is painted)
+        placePromptButton();
+        if (queued) {
             return;
         }
         queued = true;

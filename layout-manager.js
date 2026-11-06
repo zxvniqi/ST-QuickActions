@@ -74,6 +74,8 @@ export const LAYOUT_AREAS = Object.freeze([
     },
     {
         title: '확장 설정',
+        // Panels can go to the other column (moved there for real, see moveBetweenColumns)
+        domMove: true,
         containers: [
             { selector: '#extensions_settings', label: '왼쪽 열' },
             { selector: '#extensions_settings2', label: '오른쪽 열' },
@@ -270,8 +272,52 @@ function childKeys(container) {
  * themselves, since they all get the same value). Buttons sharing a spot get the same value
  * and so stay together in page order (script controls come right before Send / Stop).
  */
+// Panels moved to the other column, by key: the column each came from
+const movedFrom = new Map();
+
+/**
+ * Extension settings columns stack on their own (no shared row to lay items out in), so a panel
+ * put in the other column is moved there for real. Extensions find their settings by their own
+ * ids, which a move doesn't change. The column a panel came from is remembered, so one taken off
+ * the other column's list (or "처음 상태로") goes back where its extension put it.
+ */
+function moveBetweenColumns(area) {
+    const columns = area.containers.map(({ selector }) => document.querySelector(selector));
+    if (columns.some(column => !column)) {
+        return;
+    }
+    const layouts = area.containers.map(({ selector }) => getLayout(selector));
+    const findChild = key => columns.flatMap(column => [...column.children]).find(child => keyOf(child, false) === key);
+    columns.forEach((column, index) => {
+        for (const key of layouts[index].order) {
+            const element = findChild(key);
+            if (element && element.parentElement !== column) {
+                movedFrom.has(key) || movedFrom.set(key, area.containers[columns.indexOf(element.parentElement)].selector);
+                column.append(element);
+            }
+        }
+    });
+    // Moved before, listed on neither side now: back to its own column
+    for (const [key, selector] of movedFrom) {
+        if (layouts.some(layout => layout.order.includes(key))) {
+            continue;
+        }
+        const element = findChild(key);
+        const home = document.querySelector(selector);
+        if (element && home && element.parentElement !== home) {
+            home.append(element);
+        }
+        movedFrom.delete(key);
+    }
+}
+
 function applyContainer(selector) {
     const area = findArea(selector);
+    if (area?.domMove) {
+        moveBetweenColumns(area);
+        area.containers.forEach(({ selector: own }) => applyOneContainer(own));
+        return;
+    }
     if (!area?.crossMove) {
         applyOneContainer(selector);
         return;
@@ -776,13 +822,20 @@ export function listItems(selector, { natural = false } = {}) {
             sortIndex: index,
         }));
     } else {
-        const children = [...(document.querySelector(selector)?.children ?? [])];
+        const area = findArea(selector);
+        let children = [...(document.querySelector(selector)?.children ?? [])];
+        // Columns panels move between: the page's own arrangement is each panel in the column
+        // its extension put it in
+        if (natural && area?.domMove) {
+            children = area.containers.flatMap(container => [...document.querySelector(container.selector)?.children ?? []]
+                .filter(child => (movedFrom.get(keyOf(child, false)) ?? container.selector) === selector));
+        }
         const keys = children.map(element => keyOf(element, false));
         // Only what the page shows (e.g. the hidden input-bar copies of Impersonate / Continue
         // stay out); a shared spot counts when any of its buttons shows, e.g. Stop while generating.
         // Measured without this extension's rules, so items hidden here still count.
         const shown = withoutOwnRules(() => children.map(child => isMeaningful(child) && isDisplayed(child)));
-        const allKeys = childKeys(document.querySelector(selector));
+        const allKeys = natural && area?.domMove ? unique(keys) : childKeys(document.querySelector(selector));
         const listed = allKeys.filter(key => keys.some((other, index) => other === key && shown[index]));
         // The same order the stylesheet gives the page (applyContainer)
         const full = arrange(order, allKeys);

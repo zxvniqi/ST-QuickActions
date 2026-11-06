@@ -161,11 +161,14 @@ export async function openLayoutEditor() {
         for (const tab of tabs.children) {
             tab.classList.toggle('stqa_tab_active', tab.dataset.title === area.title);
         }
-        body.replaceChildren(...area.containers.map(({ selector, label }) => buildGroup(selector, label, drafts, area.crossMove ? area : null)));
-        if (area.crossMove) {
+        const sides = area.crossMove || area.domMove;
+        body.replaceChildren(...area.containers.map(({ selector, label }) => buildGroup(selector, label, drafts, sides ? area : null)));
+        if (sides) {
             const hint = document.createElement('div');
             hint.className = 'stqa_hint';
-            hint.textContent = '≡ 를 끌어 왼쪽과 오른쪽 사이로도 옮길 수 있습니다.';
+            hint.textContent = area.domMove
+                ? '≡ 를 끌어 왼쪽 열과 오른쪽 열 사이로도 옮길 수 있습니다. (폰에서는 왼쪽 열이 위, 오른쪽 열이 아래에 보입니다)'
+                : '≡ 를 끌어 왼쪽과 오른쪽 사이로도 옮길 수 있습니다.';
             body.prepend(hint);
         }
     };
@@ -199,7 +202,7 @@ export async function openLayoutEditor() {
         saveLayout(selector, {
             order: items.map(item => item.key),
             hidden: items.filter(item => item.hidden).map(item => item.key),
-            listed: area.crossMove ? area.containers.flatMap(container => drafts.get(container.selector).map(item => item.key)) : items.map(item => item.key),
+            listed: area.crossMove || area.domMove ? area.containers.flatMap(container => drafts.get(container.selector).map(item => item.key)) : items.map(item => item.key),
         });
     }
     SillyTavern.getContext().saveSettingsDebounced();
