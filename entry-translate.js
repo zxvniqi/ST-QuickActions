@@ -118,6 +118,10 @@ async function translateText(text) {
     }
     const parts = [];
     for (const part of chunks(text)) {
+        // A long text stops between its pieces too
+        if (stopAsked) {
+            throw new Error('Stopped');
+        }
         const result = part.trim() ? await translatePiece(part) : part;
         if (typeof result !== 'string' || (part.trim() && !result.trim())) {
             throw new Error('No translation');
@@ -153,6 +157,9 @@ async function translateAll(texts) {
                 await translateText(text);
                 done++;
             } catch (error) {
+                if (stopAsked) {
+                    break;
+                }
                 console.error(`[${MODULE}] Translating failed`, error);
                 failed++;
             }
@@ -305,9 +312,15 @@ async function setView(on) {
 
 /* ---------- what each place holds ---------- */
 
+/**
+ * The prompts the list shows: the current order's. A preset also keeps prompts the list doesn't
+ * show (other characters' orders, ones taken off the list): those aren't translated.
+ */
 async function promptTexts() {
     openai ??= await import('../../../openai.js');
-    const prompts = openai.promptManager?.serviceSettings?.prompts ?? [];
+    const manager = openai.promptManager;
+    const order = manager?.activeCharacter ? manager.getPromptOrderForCharacter(manager.activeCharacter) : [];
+    const prompts = order.map(entry => manager.getPromptById(entry.identifier)).filter(prompt => prompt && !prompt.marker);
     return { names: prompts.map(prompt => prompt.name), contents: prompts.map(prompt => prompt.content) };
 }
 
@@ -352,13 +365,19 @@ const allTexts = texts => [...(texts?.names ?? []), ...(texts?.contents ?? [])];
 
 let busy = null;
 
+// The same button, also when the list drew it anew meanwhile (it keeps its id)
+const sameButton = (a, b) => Boolean(a && b) && (a === b || (Boolean(a.id) && a.id === b.id));
+
+/** Whether this button's job is the one running (tapping it then means stop). */
+const runs = button => Boolean(busy) && sameButton(busy, button);
+
 /**
  * Runs a translating job with its button spinning. Tapping that button again stops it; any
  * other translate button meanwhile only says one is running.
  */
 async function job(button, task) {
     if (busy) {
-        if (button === busy) {
+        if (sameButton(button, busy)) {
             stopAsked = true;
             toastr.info('멈추는 중입니다. 지금 번역 중인 글까지만 마칩니다.', TITLE);
         } else {
@@ -379,6 +398,8 @@ async function job(button, task) {
         busy = null;
         stopAsked = false;
         button?.classList.remove('stqa_busy');
+        // Drawn anew meanwhile: the new one stops spinning too
+        button?.id && document.getElementById(button.id)?.classList.remove('stqa_busy');
         document.body.classList.remove('stqa_translating');
     }
 }
@@ -531,6 +552,8 @@ function placePromptButton() {
         button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
         button.title = '번역 메뉴';
         button.dataset.trMenu = 'prompts';
+        // Still spinning while its job runs
+        button.classList.toggle('stqa_busy', runs(button));
         add.after(button);
     }
 }
@@ -618,6 +641,11 @@ function onClick(event) {
     const menuButton = target.closest('[data-tr-menu]');
     if (menuButton) {
         event.stopPropagation();
+        // Spinning: a tap stops its job (rather than opening the menu again)
+        if (runs(menuButton)) {
+            job(menuButton);
+            return;
+        }
         toggleMenu(menuButton);
         return;
     }
@@ -660,8 +688,10 @@ export function initEntryTranslate() {
         if (!isOn('entryTranslate') || onlyOwnChanges(records)) {
             return;
         }
-        // The list's own button at once (observers run before the page is painted)
+        // The list's own button, and translations already made, at once (observers run before
+        // the page is painted, so a redrawn list never shows its originals first)
         placePromptButton();
+        cache && showingAny() && render();
         if (queued) {
             return;
         }

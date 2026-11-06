@@ -19,6 +19,7 @@ const defaultSettings = Object.freeze({
     chatReplace: true,
     chatSearch: true,
     errorLog: true,
+    vertexProfileFix: true,
     entryTranslate: true,
     // Prompts / world info shown translated (reading only; originals are what is saved and sent)
     translationView: false,
