@@ -311,6 +311,8 @@ async function deleteLastMessage() {
     const confirmed = await context.Popup.show.confirm('최근 메시지 삭제', '되돌릴 수 없음');
     if (confirmed) {
         await context.deleteLastMessage();
+        // ST's deleteLastMessage leaves the chat file as it was: saved now, so it stays deleted
+        await context.saveChat();
     }
 }
 

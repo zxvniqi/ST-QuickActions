@@ -22,6 +22,8 @@ const defaultSettings = Object.freeze({
     messageTrash: false,
     trashDays: 7,
     trashIndex: {},
+    // ST's chat backups list: the open character's only, viewed as a chat
+    backupView: true,
     errorLog: true,
     vertexProfileFix: true,
     entryTranslate: true,
@@ -48,6 +50,8 @@ const defaultSettings = Object.freeze({
     statusRealName: true,
     // Buttons on messages
     footerSwipe: true,
+    // Tapping a swipe number lists the message's swipes
+    swipeList: true,
     footerTop: true,
     // left | center | right
     footerSwipePos: 'left',

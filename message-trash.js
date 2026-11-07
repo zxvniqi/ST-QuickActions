@@ -1,7 +1,7 @@
 // 휴지통: messages deleted from a chat, whichever way (ST's delete, range delete, /cut, the last
-// message...), are kept for a while and can be put back where they were. Swipes deleted one by
-// one are not. Kept on the server (user files), one file per chat, so every device sees the same
-// trash; the settings hold only an index of those files.
+// message...), and swipes deleted one by one, are kept for a while and can be put back where they
+// were. Kept on the server (user files), one file per chat, so every device sees the same trash;
+// the settings hold only an index of those files.
 import { MODULE, getSettings, isOn } from './settings.js';
 
 const OPTION_ID = 'stqa_option_trash';
@@ -9,10 +9,14 @@ const TITLE = '편의성 모음';
 const FILE_PREFIX = 'stqa-trash-';
 const DAY = 24 * 60 * 60 * 1000;
 
-// The chat's messages as they were before the latest deletion, to tell which ones went
+// The chat's messages as they were before the latest deletion, to tell which ones went, and each
+// message's swipes (a deleted swipe is gone from the message itself)
 let shadow = [];
 let shadowKey = null;
+let swipeShadow = new Map();
 let wasOn = false;
+// Deletions our own code makes on the way to something else (not the user's)
+let paused = 0;
 // Trash files are read and written one change at a time
 let writing = Promise.resolve();
 
@@ -21,6 +25,8 @@ const queued = task => (writing = writing.then(task, task));
 const keepDays = () => Math.min(30, Math.max(1, Math.round(Number(getSettings().trashDays)) || 7));
 const save = () => SillyTavern.getContext().saveSettingsDebounced();
 const stripExtension = name => String(name ?? '').replace(/\.jsonl$/, '');
+const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
 /** The open chat: who it belongs to and its file name. */
 function openChat() {
@@ -55,6 +61,17 @@ function toBase64(text) {
 
 /** A message told apart from the others, to find the one a deleted message came after. */
 const fingerprint = message => `${message.send_date}\u0001${message.name}\u0001${String(message.mes ?? '').slice(0, 80)}`;
+
+/** The message matching a fingerprint nearest to where it was (two may look the same); -1 if none. */
+function findNear(chat, print, near) {
+    let best = -1;
+    chat.forEach((message, index) => {
+        if (fingerprint(message) === print && (best === -1 || Math.abs(index - near) < Math.abs(best - near))) {
+            best = index;
+        }
+    });
+    return best;
+}
 
 async function readTrash(key) {
     const entry = getSettings().trashIndex?.[key];
@@ -107,19 +124,48 @@ async function writeTrash(key, items, chat = null) {
     save();
 }
 
+/** Adds to a chat's trash; a failure is told (the deletion itself stands). */
+function addToTrash(key, chat, change) {
+    queued(async () => {
+        const items = await readTrash(key);
+        change(items);
+        await writeTrash(key, items, chat);
+    }).catch((error) => {
+        console.error(`[${MODULE}] Trash failed`, error);
+        toastr.error('지운 메시지를 휴지통에 옮기지 못했습니다.', TITLE);
+    });
+}
+
 // Deletions in a row (a range is deleted one message at a time) are gathered into one item
 const GATHER_MS = 300;
 let gathering = null;
 
+/** A message's swipes as they are now (kept as they were while one of them is being deleted). */
+function swipesOf(message, previous) {
+    if (previous && message.swipes.length < previous.swipes.length) {
+        return previous;
+    }
+    return { swipes: message.swipes.slice(), info: Array.isArray(message.swipe_info) ? message.swipe_info.slice() : [] };
+}
+
 function snapshot() {
-    shadow = SillyTavern.getContext().chat.slice();
+    const chat = SillyTavern.getContext().chat;
+    shadow = chat.slice();
     shadowKey = openChat()?.key ?? null;
+    const swipes = new Map();
+    for (const message of chat) {
+        if (Array.isArray(message.swipes) && message.swipes.length > 1) {
+            swipes.set(message, swipesOf(message, swipeShadow.get(message)));
+        }
+    }
+    swipeShadow = swipes;
 }
 
 /** The chat changed some other way: the snapshot follows it. */
 function remember() {
-    // Deletions being gathered: the chat as it was before them is kept until they are taken
-    if (gathering) {
+    // Off: nothing is kept, so nothing is copied either
+    if (!isOn('messageTrash') || gathering) {
+        // (Deletions being gathered: the chat as it was before them is kept until they are taken)
         return;
     }
     // Fewer messages and no deletion heard of yet: another extension reacted to a deletion before
@@ -132,6 +178,9 @@ function remember() {
 }
 
 function onDeleted() {
+    if (paused) {
+        return;
+    }
     clearTimeout(gathering);
     gathering = setTimeout(collect, GATHER_MS);
 }
@@ -163,29 +212,57 @@ function collect() {
         while (previous >= 0 && gone.has(before[previous])) {
             previous--;
         }
-        messages.push({ index, anchor: previous >= 0 ? fingerprint(before[previous]) : null, message: JSON.parse(JSON.stringify(message)) });
+        messages.push({ index, anchor: previous >= 0 ? fingerprint(before[previous]) : null, message: copy(message) });
     });
-    const item = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, deleted: Date.now(), messages };
-    queued(async () => {
-        const items = await readTrash(key);
-        items.push(item);
-        await writeTrash(key, items, chat);
-    }).catch((error) => {
-        console.error(`[${MODULE}] Trash failed`, error);
-        toastr.error('지운 메시지를 휴지통에 옮기지 못했습니다.', TITLE);
+    const item = { id: newId(), deleted: Date.now(), messages };
+    addToTrash(key, chat, items => items.push(item));
+}
+
+/**
+ * One swipe deleted: it goes to the trash, with the other swipes deleted from the same message
+ * (one item per message), and with what is needed to make the message again if it is gone by then.
+ */
+function onSwipeDeleted(data) {
+    const context = SillyTavern.getContext();
+    const message = context.chat[Number(data?.messageId)];
+    const before = message && swipeShadow.get(message);
+    const swipeId = Number(data?.swipeId);
+    if (message && Array.isArray(message.swipes)) {
+        swipeShadow.set(message, swipesOf(message));
+    }
+    const chat = openChat();
+    // What was kept must be the message just before this one deletion (one swipe more)
+    if (paused || !isOn('messageTrash') || !chat || chat.key !== shadowKey || !before || !Number.isInteger(swipeId)
+        || swipeId >= before.swipes.length || before.swipes.length !== message.swipes.length + 1) {
+        return;
+    }
+    const index = context.chat.indexOf(message);
+    const anchor = index > 0 ? fingerprint(context.chat[index - 1]) : null;
+    const swipe = { id: newId(), deleted: Date.now(), at: swipeId, text: before.swipes[swipeId], info: copy(before.info[swipeId]) };
+    const template = copy({ ...message, swipes: undefined, swipe_info: undefined, swipe_id: undefined });
+    addToTrash(chat.key, chat, (items) => {
+        const same = items.find(item => item.kind === 'swipe' && item.index === index && item.anchor === anchor && item.name === message.name);
+        if (same) {
+            same.swipes.push(swipe);
+        } else {
+            items.push({ id: newId(), kind: 'swipe', deleted: swipe.deleted, index, anchor, name: message.name, template, swipes: [swipe] });
+        }
     });
 }
 
-/** Puts trash messages back where they were in the open chat. `picks`: [{ item, messages }]. */
-async function restore(picks) {
-    const context = SillyTavern.getContext();
-    const chat = context.chat;
-    // The latest deletion first: a message deleted earlier may go back after one deleted later
-    for (const { messages } of [...picks].sort((a, b) => b.item.deleted - a.item.deleted)) {
-        restoreRuns(chat, messages);
+/** Deletions made inside `task` are not the user's: they stay out of the trash. */
+export async function withoutTrash(task) {
+    paused++;
+    try {
+        return await task();
+    } finally {
+        paused--;
+        if (!paused && isOn('messageTrash')) {
+            clearTimeout(gathering);
+            gathering = null;
+            snapshot();
+        }
     }
-    await context.saveChat();
-    await context.reloadCurrentChat();
 }
 
 function restoreRuns(chat, messages) {
@@ -199,24 +276,81 @@ function restoreRuns(chat, messages) {
     for (const run of runs) {
         let at = 0;
         if (run[0].anchor !== null) {
-            // The matching message nearest to where it was (two may look the same)
-            let best = -1;
-            chat.forEach((message, index) => {
-                if (fingerprint(message) === run[0].anchor && (best === -1 || Math.abs(index - run[0].index) < Math.abs(best - run[0].index))) {
-                    best = index;
-                }
-            });
-            at = best === -1 ? Math.min(run[0].index, chat.length) : best + 1;
+            const found = findNear(chat, run[0].anchor, run[0].index - 1);
+            at = found === -1 ? Math.min(run[0].index, chat.length) : found + 1;
         }
         chat.splice(at, 0, ...run.map(entry => entry.message));
     }
 }
 
-/** Takes picked messages (`item id:index`) out of a chat's trash; items left empty go too. */
+/**
+ * Swipes go back to the end of the message they came from; if that message is gone, they come back
+ * as a message of their own in its place.
+ */
+function restoreSwipes(chat, item, swipes) {
+    const sorted = [...swipes].sort((a, b) => a.at - b.at);
+    const found = item.anchor === null ? -1 : findNear(chat, item.anchor, item.index - 1);
+    const candidate = item.anchor === null ? chat[0] : found === -1 ? null : chat[found + 1];
+    if (candidate && candidate.name === item.name && !candidate.is_user) {
+        if (!Array.isArray(candidate.swipes) || !candidate.swipes.length) {
+            candidate.swipes = [candidate.mes];
+            candidate.swipe_info = [{ send_date: candidate.send_date, gen_started: candidate.gen_started, gen_finished: candidate.gen_finished, extra: copy(candidate.extra ?? {}) }];
+            candidate.swipe_id = 0;
+        }
+        if (!Array.isArray(candidate.swipe_info)) {
+            candidate.swipe_info = candidate.swipes.map(() => ({}));
+        }
+        for (const swipe of sorted) {
+            candidate.swipes.push(swipe.text);
+            candidate.swipe_info.push(swipe.info ?? {});
+        }
+        return;
+    }
+    const first = sorted[0].info ?? {};
+    const message = {
+        ...copy(item.template),
+        mes: sorted[0].text,
+        swipes: sorted.map(swipe => swipe.text),
+        swipe_info: sorted.map(swipe => swipe.info ?? {}),
+        swipe_id: 0,
+    };
+    first.send_date && (message.send_date = first.send_date);
+    first.extra && (message.extra = copy(first.extra));
+    const at = item.anchor === null ? 0 : found === -1 ? Math.min(item.index, chat.length) : found + 1;
+    chat.splice(at, 0, message);
+}
+
+/** Puts trash back into the open chat. `picks`: [{ item, entries }] (messages, or a message's swipes). */
+async function restore(picks) {
+    const context = SillyTavern.getContext();
+    const chat = context.chat;
+    const latestFirst = list => [...list].sort((a, b) => b.item.deleted - a.item.deleted);
+    // Messages first (swipes may belong to one of them), the latest deletion first: a message
+    // deleted earlier may go back after one deleted later
+    for (const { entries } of latestFirst(picks.filter(pick => pick.item.kind !== 'swipe'))) {
+        restoreRuns(chat, entries);
+    }
+    for (const { item, entries } of latestFirst(picks.filter(pick => pick.item.kind === 'swipe'))) {
+        restoreSwipes(chat, item, entries);
+    }
+    await context.saveChat();
+    await context.reloadCurrentChat();
+}
+
+/** An item's pickable entries: messages, or the swipes of a message. */
+const entriesOf = item => (item.kind === 'swipe' ? item.swipes : item.messages);
+const entryKey = (item, entry) => (item.kind === 'swipe' ? `${item.id}:s:${entry.id}` : `${item.id}:${entry.index}`);
+
+/** Takes picked entries out of a chat's trash; items left empty go too. */
 async function removePicked(key, picked) {
     const items = (await readTrash(key))
-        .map(item => ({ ...item, messages: item.messages.filter(entry => !picked.has(`${item.id}:${entry.index}`)) }))
-        .filter(item => item.messages.length);
+        .map((item) => {
+            const left = entriesOf(item).filter(entry => !picked.has(entryKey(item, entry)));
+            return item.kind === 'swipe'
+                ? { ...item, swipes: left, deleted: Math.min(...left.map(swipe => swipe.deleted)) }
+                : { ...item, messages: left };
+        })
+        .filter(item => entriesOf(item).length);
     await writeTrash(key, items);
 }
 
@@ -236,6 +370,22 @@ function formatTime(time) {
     const date = new Date(time);
     const pad = number => String(number).padStart(2, '0');
     return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** One message (or swipe) in full, drawn the way the chat draws it. */
+export function showFullText(title, text, message) {
+    const context = SillyTavern.getContext();
+    const view = document.createElement('div');
+    view.className = 'stqa_trash_view';
+    view.innerHTML = '<h3></h3><div class="mes_text"></div>';
+    view.querySelector('h3').textContent = title;
+    const box = view.querySelector('.mes_text');
+    if (typeof context.messageFormatting === 'function') {
+        box.innerHTML = context.messageFormatting(String(text ?? ''), message?.name ?? '', Boolean(message?.is_system), Boolean(message?.is_user), -1);
+    } else {
+        box.textContent = String(text ?? '');
+    }
+    new context.Popup(view, context.POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, allowVerticalScrolling: true }).show();
 }
 
 async function openTrash() {
@@ -287,26 +437,11 @@ async function openTrash() {
         label.querySelector('span').textContent = text;
         return label;
     };
-    // One message in full, drawn the way the chat draws it
-    const showMessage = ({ index, message }) => {
-        const context = SillyTavern.getContext();
-        const view = document.createElement('div');
-        view.className = 'stqa_trash_view';
-        view.innerHTML = '<h3></h3><div class="mes_text"></div>';
-        view.querySelector('h3').textContent = `#${index} ${message.name ?? ''}`;
-        const text = view.querySelector('.mes_text');
-        if (typeof context.messageFormatting === 'function') {
-            text.innerHTML = context.messageFormatting(String(message.mes ?? ''), message.name ?? '', Boolean(message.is_system), Boolean(message.is_user), -1);
-        } else {
-            text.textContent = String(message.mes ?? '');
-        }
-        new Popup(view, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, allowVerticalScrolling: true }).show();
-    };
     // Boxes to pick several are shown only after "여러 개 고르기"
     let picking = false;
-    const restorePicks = (picks) => change(async () => {
+    const restorePicks = picks => change(async () => {
         picking = false;
-        const picked = new Set(picks.flatMap(({ item, messages }) => messages.map(entry => `${item.id}:${entry.index}`)));
+        const picked = new Set(picks.flatMap(({ item, entries }) => entries.map(entry => entryKey(item, entry))));
         await restore(picks);
         await removePicked(chat.key, picked);
         toastr.success(`${picked.size}개를 되살렸습니다.`, TITLE);
@@ -316,19 +451,19 @@ async function openTrash() {
         const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
         const days = keepDays();
         content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 메시지를 누르면 전체 내용을 봅니다.`;
+        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지와 스와이프입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 누르면 전체 내용을 봅니다.`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         if (!items.length) {
             list.innerHTML = '<div class="stqa_hint">휴지통이 비어 있습니다.</div>';
             return;
         }
-        // Ticked messages: [item, entry, checkbox]
+        // Ticked entries: [item, entry, checkbox]
         const ticks = [];
         const restoreTicked = button('fa-rotate-left', '', () => {
             const picks = items
-                .map(item => ({ item, messages: ticks.filter(([owner, , box]) => owner === item && box.checked).map(([, entry]) => entry) }))
-                .filter(pick => pick.messages.length);
+                .map(item => ({ item, entries: ticks.filter(([owner, , box]) => owner === item && box.checked).map(([, entry]) => entry) }))
+                .filter(pick => pick.entries.length);
             picks.length && restorePicks(picks);
         });
         const count = () => {
@@ -340,11 +475,16 @@ async function openTrash() {
             const block = document.createElement('div');
             block.className = 'stqa_trash_item';
             const left = Math.max(0, Math.ceil((item.deleted + days * DAY - Date.now()) / DAY));
-            const head = tick('stqa_trash_head', `${formatTime(item.deleted)} 지움 · ${item.messages.length}개 · ${left}일 남음`);
+            const swipes = item.kind === 'swipe';
+            const what = swipes ? `#${item.index} ${item.name ?? ''}의 스와이프 ${item.swipes.length}개` : `${item.messages.length}개`;
+            const head = tick('stqa_trash_head', `${formatTime(item.deleted)} 지움 · ${what} · ${left}일 남음`);
             block.append(head);
             const own = [];
-            for (const entry of [...item.messages].sort((a, b) => a.index - b.index)) {
-                const line = tick('stqa_trash_message', `#${entry.index} ${entry.message.name ?? ''}: ${plain(entry.message.mes).slice(0, 100) || '(빈 메시지)'}`);
+            const entries = swipes ? [...item.swipes].sort((a, b) => a.deleted - b.deleted) : [...item.messages].sort((a, b) => a.index - b.index);
+            for (const entry of entries) {
+                const text = swipes ? entry.text : entry.message.mes;
+                const title = swipes ? `#${item.index} ${item.name ?? ''} · 스와이프` : `#${entry.index} ${entry.message.name ?? ''}`;
+                const line = tick('stqa_trash_message', `${swipes ? `스와이프 ${entry.at + 1}` : title}: ${plain(text).slice(0, 100) || '(빈 메시지)'}`);
                 const box = line.querySelector('input');
                 own.push(box);
                 ticks.push([item, entry, box]);
@@ -352,17 +492,17 @@ async function openTrash() {
                     head.querySelector('input').checked = own.every(other => other.checked);
                     count();
                 });
-                // Not picking: a tap shows the message instead of ticking it
+                // Not picking: a tap shows it in full instead of ticking it
                 line.addEventListener('click', (event) => {
                     if (!picking) {
                         event.preventDefault();
-                        showMessage(entry);
+                        showFullText(title, text, swipes ? item.template : entry.message);
                     }
                 });
                 block.append(line);
             }
             head.addEventListener('click', event => picking || event.preventDefault());
-            // The group's box ticks all of its messages
+            // The group's box ticks all of its entries
             head.querySelector('input').addEventListener('change', (event) => {
                 own.forEach(box => (box.checked = event.target.checked));
                 count();
@@ -370,7 +510,7 @@ async function openTrash() {
             const actions = document.createElement('div');
             actions.className = 'stqa_trash_actions';
             actions.append(
-                button('fa-rotate-left', '되살리기', () => restorePicks([{ item, messages: item.messages }])),
+                button('fa-rotate-left', '되살리기', () => restorePicks([{ item, entries: entriesOf(item) }])),
                 button('fa-trash', '바로 삭제', async () => {
                     if (await ask('바로 삭제', '되돌릴 수 없습니다.', '삭제')) {
                         await change(async () => writeTrash(chat.key, (await readTrash(chat.key)).filter(other => other.id !== item.id)));
@@ -449,6 +589,15 @@ function onRenamed({ avatarId, groupId, oldFileName, newFileName }) {
     save();
 }
 
+/** What of an item is still within its time (swipes run out one by one); null if nothing. */
+function unexpired(item, limit) {
+    if (item.kind !== 'swipe') {
+        return item.deleted > limit ? item : null;
+    }
+    const swipes = item.swipes.filter(swipe => swipe.deleted > limit);
+    return swipes.length ? { ...item, swipes, deleted: Math.min(...swipes.map(swipe => swipe.deleted)) } : null;
+}
+
 /** Items past their time are taken away (when ST starts: nothing runs while it is off). */
 function purge() {
     const limit = Date.now() - keepDays() * DAY;
@@ -456,7 +605,7 @@ function purge() {
         if (entry.oldest > limit) {
             continue;
         }
-        queued(async () => writeTrash(key, (await readTrash(key)).filter(item => item.deleted > limit)))
+        queued(async () => writeTrash(key, (await readTrash(key)).map(item => unexpired(item, limit)).filter(Boolean)))
             .catch(error => console.error(`[${MODULE}] Trash cleanup failed`, error));
     }
 }
@@ -469,10 +618,15 @@ export function applyMessageTrash() {
     }
     if (on) {
         gathering || snapshot();
-    } else if (wasOn && getSettings().messageTrash === false && Object.keys(getSettings().trashIndex ?? {}).length) {
-        // Switched off itself (not the whole extension)
-        ask('휴지통', '휴지통에 남은 메시지를 모두 지울까요? 남겨 두면 보관 기간이 지난 뒤 지워집니다.', '비우기', '남겨 두기')
-            .then(yes => yes && clearAll());
+    } else {
+        // Nothing is kept while off
+        shadow = [];
+        swipeShadow = new Map();
+        if (wasOn && getSettings().messageTrash === false && Object.keys(getSettings().trashIndex ?? {}).length) {
+            // Switched off itself (not the whole extension)
+            ask('휴지통', '휴지통에 남은 메시지를 모두 지울까요? 남겨 두면 보관 기간이 지난 뒤 지워집니다.', '비우기', '남겨 두기')
+                .then(yes => yes && clearAll());
+        }
     }
     wasOn = on;
 }
@@ -486,7 +640,9 @@ export function initMessageTrash() {
     ];
     refresh.filter(Boolean).forEach(type => eventSource.on(type, remember));
     // Before other extensions' handlers, which may report changes of their own
-    typeof eventSource.makeFirst === 'function' ? eventSource.makeFirst(eventTypes.MESSAGE_DELETED, onDeleted) : eventSource.on(eventTypes.MESSAGE_DELETED, onDeleted);
+    const first = (type, handler) => type && (typeof eventSource.makeFirst === 'function' ? eventSource.makeFirst(type, handler) : eventSource.on(type, handler));
+    first(eventTypes.MESSAGE_DELETED, onDeleted);
+    first(eventTypes.MESSAGE_SWIPE_DELETED, onSwipeDeleted);
     eventSource.on(eventTypes.CHAT_DELETED, name => forget(entry => entry.kind === 'c' && entry.chat === stripExtension(name)));
     eventSource.on(eventTypes.GROUP_CHAT_DELETED, name => forget(entry => entry.kind === 'g' && entry.chat === stripExtension(name)));
     eventSource.on(eventTypes.CHARACTER_DELETED, data => data?.character?.avatar && forget(entry => entry.kind === 'c' && entry.owner === data.character.avatar));

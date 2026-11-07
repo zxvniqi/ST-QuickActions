@@ -2747,6 +2747,15 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     cursor: pointer;
 }
 
+body.stqa_swipe_list_on #chat .swipes-counter,
+body.stqa_swipe_list_on #chat .stqa_footer_count {
+    cursor: pointer;
+}
+
+.stqa_swipe_current > span {
+    font-weight: bold;
+}
+
 .stqa_trash_view {
     text-align: left;
 }
@@ -2787,4 +2796,106 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 .stqa_trash_days input.text_pole {
     width: 4.5em;
     margin: 0;
+}
+
+/* Chat backups list and backup view */
+body.stqa_backup_view_on .chatBackupsList:not(.stqa_backup_show_all):not(.stqa_backup_no_owner) > .stqa_backup_other {
+    display: none;
+}
+
+body:not(.stqa_backup_view_on) .stqa_backup_bar,
+body:not(.stqa_backup_view_on) .stqa_backup_preview {
+    display: none;
+}
+
+.stqa_backup_bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 2px;
+}
+
+.stqa_backup_bar .menu_button {
+    margin: 0;
+}
+
+.stqa_backup_preview {
+    font-size: 0.85em;
+    opacity: 0.75;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.stqa_backup_view {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_backup_view h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_backup_tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_backup_tools .menu_button {
+    margin: 0;
+}
+
+.stqa_backup_messages {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stqa_backup_message {
+    padding: 6px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-color: var(--SmartThemeBotMesBlurTintColor);
+    cursor: pointer;
+}
+
+.stqa_backup_message.stqa_backup_user {
+    background-color: var(--SmartThemeUserMesBlurTintColor);
+}
+
+.stqa_backup_message .mes_text {
+    max-height: 8em;
+    overflow: hidden;
+}
+
+.stqa_backup_message.stqa_backup_open .mes_text {
+    max-height: none;
+}
+
+.stqa_backup_name {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    font-size: 0.9em;
+}
+
+.stqa_backup_missing,
+.stqa_backup_changed {
+    border-width: 2px;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_backup_name small {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_backup_only_differing > .stqa_backup_message:not(.stqa_backup_missing):not(.stqa_backup_changed) {
+    display: none;
 }

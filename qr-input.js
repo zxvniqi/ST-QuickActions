@@ -4,6 +4,7 @@
 //    on its last version runs the QR again with the same answers, and the new text becomes the
 //    message's next swipe instead of a new message
 import { MODULE, getSettings, isOn } from './settings.js';
+import { withoutTrash } from './message-trash.js';
 
 const HISTORY_SIZE = 3;
 const TITLE = '편의성 모음';
@@ -275,10 +276,13 @@ async function regenerateQrMessage(messageId) {
         toastr.info('QR이 새 메시지를 만들지 않았습니다.', TITLE);
         return;
     }
-    // The run's own messages go (ST's way, one by one from the end), then the text joins as a swipe
-    while (context.chat.length > before) {
-        await context.deleteLastMessage();
-    }
+    // The run's own messages go (ST's way, one by one from the end), then the text joins as a swipe;
+    // they were never the user's to keep, so not into the trash
+    await withoutTrash(async () => {
+        while (context.chat.length > before) {
+            await context.deleteLastMessage();
+        }
+    });
     if (!Array.isArray(message.swipes) || !message.swipes.length) {
         message.swipes = [message.mes];
         message.swipe_info = [{ send_date: message.send_date, gen_started: message.gen_started, gen_finished: message.gen_finished, extra: structuredClone(message.extra ?? {}) }];
