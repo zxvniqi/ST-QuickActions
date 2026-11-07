@@ -116,13 +116,19 @@ function snapshot() {
     shadowKey = openChat()?.key ?? null;
 }
 
-/** The chat changed some other way: deletions still being gathered are taken first. */
+/** The chat changed some other way: the snapshot follows it. */
 function remember() {
+    // Deletions being gathered: the chat as it was before them is kept until they are taken
     if (gathering) {
-        collect();
-    } else {
-        snapshot();
+        return;
     }
+    // Fewer messages and no deletion heard of yet: another extension reacted to a deletion before
+    // us (and reported a change); the snapshot must not take the chat without those messages
+    if (openChat()?.key === shadowKey && SillyTavern.getContext().chat.length < shadow.length) {
+        onDeleted();
+        return;
+    }
+    snapshot();
 }
 
 function onDeleted() {
@@ -143,7 +149,8 @@ function collect() {
     }
     const now = new Set(SillyTavern.getContext().chat);
     const gone = new Set(before.filter(message => !now.has(message)));
-    if (!gone.size) {
+    // Nothing of before left in a chat that has messages: it was loaded again, nothing was deleted
+    if (!gone.size || (now.size && gone.size === before.length)) {
         return;
     }
     const messages = [];
@@ -439,7 +446,8 @@ export function initMessageTrash() {
         eventTypes.USER_MESSAGE_RENDERED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.MORE_MESSAGES_LOADED,
     ];
     refresh.filter(Boolean).forEach(type => eventSource.on(type, remember));
-    eventSource.on(eventTypes.MESSAGE_DELETED, onDeleted);
+    // Before other extensions' handlers, which may report changes of their own
+    typeof eventSource.makeFirst === 'function' ? eventSource.makeFirst(eventTypes.MESSAGE_DELETED, onDeleted) : eventSource.on(eventTypes.MESSAGE_DELETED, onDeleted);
     eventSource.on(eventTypes.CHAT_DELETED, name => forget(entry => entry.kind === 'c' && entry.chat === stripExtension(name)));
     eventSource.on(eventTypes.GROUP_CHAT_DELETED, name => forget(entry => entry.kind === 'g' && entry.chat === stripExtension(name)));
     eventSource.on(eventTypes.CHARACTER_DELETED, data => data?.character?.avatar && forget(entry => entry.kind === 'c' && entry.owner === data.character.avatar));
