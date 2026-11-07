@@ -169,11 +169,20 @@ function collect() {
     });
 }
 
-/** Puts a trash item's messages back where they were in the open chat. */
-async function restore(key, item) {
+/** Puts trash messages back where they were in the open chat. `picks`: [{ item, messages }]. */
+async function restore(picks) {
     const context = SillyTavern.getContext();
     const chat = context.chat;
-    const sorted = [...item.messages].sort((a, b) => a.index - b.index);
+    // The latest deletion first: a message deleted earlier may go back after one deleted later
+    for (const { messages } of [...picks].sort((a, b) => b.item.deleted - a.item.deleted)) {
+        restoreRuns(chat, messages);
+    }
+    await context.saveChat();
+    await context.reloadCurrentChat();
+}
+
+function restoreRuns(chat, messages) {
+    const sorted = [...messages].sort((a, b) => a.index - b.index);
     // Runs of messages that were next to each other go back together, after the same message
     const runs = [];
     for (const entry of sorted) {
@@ -194,8 +203,14 @@ async function restore(key, item) {
         }
         chat.splice(at, 0, ...run.map(entry => entry.message));
     }
-    await context.saveChat();
-    await context.reloadCurrentChat();
+}
+
+/** Takes picked messages (`item id:index`) out of a chat's trash; items left empty go too. */
+async function removePicked(key, picked) {
+    const items = (await readTrash(key))
+        .map(item => ({ ...item, messages: item.messages.filter(entry => !picked.has(`${item.id}:${entry.index}`)) }))
+        .filter(item => item.messages.length);
+    await writeTrash(key, items);
 }
 
 /** A yes / no question with its own button names. */
@@ -257,38 +272,71 @@ async function openTrash() {
         await render();
     };
 
+    // A checkbox with its text (the text is set as text: messages hold anything)
+    const tick = (className, text) => {
+        const label = document.createElement('label');
+        label.className = `checkbox_label ${className}`;
+        label.innerHTML = '<input type="checkbox"><span></span>';
+        label.querySelector('span').textContent = text;
+        return label;
+    };
+    const restorePicks = (picks) => change(async () => {
+        const picked = new Set(picks.flatMap(({ item, messages }) => messages.map(entry => `${item.id}:${entry.index}`)));
+        await restore(picks);
+        await removePicked(chat.key, picked);
+        toastr.success(`${picked.size}개를 되살렸습니다.`, TITLE);
+    });
+
     const render = async () => {
         const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
         const days = keepDays();
         content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다.`;
+        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 체크해서 여러 개를 한 번에 되살릴 수 있습니다.`;
         const list = content.querySelector('.stqa_trash_items');
         if (!items.length) {
             list.innerHTML = '<div class="stqa_hint">휴지통이 비어 있습니다.</div>';
             return;
         }
+        // Ticked messages: [item, entry, checkbox]
+        const ticks = [];
+        const restoreTicked = button('fa-rotate-left', '', () => {
+            const picks = items
+                .map(item => ({ item, messages: ticks.filter(([owner, , box]) => owner === item && box.checked).map(([, entry]) => entry) }))
+                .filter(pick => pick.messages.length);
+            picks.length && restorePicks(picks);
+        });
+        const count = () => {
+            const ticked = ticks.filter(([, , box]) => box.checked).length;
+            restoreTicked.querySelector('span').textContent = `선택한 ${ticked}개 되살리기`;
+            restoreTicked.hidden = !ticked;
+        };
         for (const item of items) {
             const block = document.createElement('div');
             block.className = 'stqa_trash_item';
-            const head = document.createElement('div');
-            head.className = 'stqa_trash_head';
             const left = Math.max(0, Math.ceil((item.deleted + days * DAY - Date.now()) / DAY));
-            head.textContent = `${formatTime(item.deleted)} 지움 · ${item.messages.length}개 · ${left}일 남음`;
+            const head = tick('stqa_trash_head', `${formatTime(item.deleted)} 지움 · ${item.messages.length}개 · ${left}일 남음`);
             block.append(head);
-            for (const { index, message } of [...item.messages].sort((a, b) => a.index - b.index)) {
-                const line = document.createElement('div');
-                line.className = 'stqa_trash_message';
-                line.textContent = `#${index} ${message.name ?? ''}: ${plain(message.mes).slice(0, 100) || '(빈 메시지)'}`;
+            const own = [];
+            for (const entry of [...item.messages].sort((a, b) => a.index - b.index)) {
+                const line = tick('stqa_trash_message', `#${entry.index} ${entry.message.name ?? ''}: ${plain(entry.message.mes).slice(0, 100) || '(빈 메시지)'}`);
+                const box = line.querySelector('input');
+                own.push(box);
+                ticks.push([item, entry, box]);
+                box.addEventListener('change', () => {
+                    head.querySelector('input').checked = own.every(other => other.checked);
+                    count();
+                });
                 block.append(line);
             }
+            // The group's box ticks all of its messages
+            head.querySelector('input').addEventListener('change', (event) => {
+                own.forEach(box => (box.checked = event.target.checked));
+                count();
+            });
             const actions = document.createElement('div');
             actions.className = 'stqa_trash_actions';
             actions.append(
-                button('fa-rotate-left', '되살리기', () => change(async () => {
-                    await restore(chat.key, item);
-                    await writeTrash(chat.key, (await readTrash(chat.key)).filter(other => other.id !== item.id));
-                    toastr.success(`${item.messages.length}개를 되살렸습니다.`, TITLE);
-                })),
+                button('fa-rotate-left', '되살리기', () => restorePicks([{ item, messages: item.messages }])),
                 button('fa-trash', '바로 삭제', async () => {
                     if (await ask('바로 삭제', '되돌릴 수 없습니다.', '삭제')) {
                         await change(async () => writeTrash(chat.key, (await readTrash(chat.key)).filter(other => other.id !== item.id)));
@@ -298,7 +346,11 @@ async function openTrash() {
             block.append(actions);
             list.append(block);
         }
-        content.append(button('fa-dumpster', '휴지통 비우기', async () => {
+        count();
+        const bottom = document.createElement('div');
+        bottom.className = 'stqa_trash_bottom';
+        content.append(bottom);
+        bottom.append(restoreTicked, button('fa-dumpster', '휴지통 비우기', async () => {
             if (await ask('휴지통 비우기', '이 채팅의 휴지통을 모두 지웁니다. 되돌릴 수 없습니다.', '비우기')) {
                 await change(() => writeTrash(chat.key, []));
             }

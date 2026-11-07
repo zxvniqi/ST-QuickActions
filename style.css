@@ -2728,9 +2728,25 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 .stqa_trash_message {
     font-size: 0.85em;
     opacity: 0.85;
+    min-width: 0;
+}
+
+.stqa_trash_message > span {
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.stqa_trash_bottom {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_trash_bottom .menu_button[hidden] {
+    display: none !important;
 }
 
 .stqa_trash_actions {
@@ -2740,7 +2756,7 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 }
 
 .stqa_trash_actions .menu_button,
-.stqa_trash > .menu_button {
+.stqa_trash_bottom .menu_button {
     margin: 0;
 }
 
