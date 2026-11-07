@@ -2687,3 +2687,65 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     white-space: nowrap;
     text-overflow: ellipsis;
 }
+/* Message trash */
+.stqa_trash {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_trash h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_trash_items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stqa_trash_item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+}
+
+.stqa_trash_head {
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.stqa_trash_message {
+    font-size: 0.85em;
+    opacity: 0.85;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_trash_actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.stqa_trash_actions .menu_button,
+.stqa_trash > .menu_button {
+    margin: 0;
+}
+
+.stqa_trash_days {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_trash_days input.text_pole {
+    width: 4.5em;
+    margin: 0;
+}

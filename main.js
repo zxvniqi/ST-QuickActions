@@ -25,6 +25,7 @@ import { initChatExport, applyChatExport } from './chat-export.js';
 import { initChatName, applyChatName } from './chat-name.js';
 import { initChatReplace, applyChatReplace } from './chat-replace.js';
 import { initChatSearch, applyChatSearch } from './chat-search.js';
+import { initMessageTrash, applyMessageTrash } from './message-trash.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
 
 const TOOLBAR_POSITIONS = [
@@ -62,6 +63,7 @@ const TABS = Object.freeze([
             ['chatQuickRename', '채팅 이름 한 번에 바꾸기', 'ST 채팅 목록 창에서 채팅 이름 옆 연필 버튼 옆에 사람 모양 버튼이 생깁니다. 누르면 페르소나 이름, 페르소나 이름 + 날짜, 캐릭터 이름, 캐릭터 이름 + 날짜 중 하나를 골라 바로 바꿀 수 있습니다. 페르소나는 그 채팅에 고정해 둔 페르소나(없으면 지금 페르소나)이고, 날짜는 채팅을 만든 날입니다.'],
             ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다. ST의 "메시지 삭제"처럼 메시지마다 체크칸이 나오는데, 첫 메시지와 끝 메시지를 누르면 그 사이만 체크됩니다(ST 기본은 누른 메시지부터 끝까지). 입력창 자리에 뜨는 삭제 버튼으로 지우고, 취소 버튼으로 나옵니다.'],
             ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다. 범위 삭제처럼 첫 메시지와 끝 메시지를 눌러 고르고, 입력창 자리에 뜨는 숨기기 버튼을 누르면 그 사이 메시지를 숨깁니다. 숨긴 메시지는 채팅에 남아 있지만 AI에게 보내지 않습니다. 다시 보이게 하려면 메시지의 눈 버튼을 누릅니다. 바로가기 버튼의 "메시지 범위 숨기기"로는 몇 번부터 몇 번까지인지 번호를 적어서 숨길 수 있습니다.'],
+            ['messageTrash', '메시지 휴지통', '채팅에서 메시지를 지우면 바로 없어지지 않고 휴지통으로 옮겨집니다. 옵션 메뉴의 "휴지통"에서 지금 채팅에서 지운 메시지를 보고, 원래 자리로 되살리거나 바로 완전히 지울 수 있습니다. 메시지 삭제, 범위 삭제, 최근 메시지 삭제 등 어떤 방법으로 지워도 옮겨지고, 스와이프 하나만 지운 것은 담지 않습니다. 지운 지 아래에서 정한 날짜가 지나면 완전히 지워지며, 지난 것은 실리를 켤 때 정리합니다. 채팅을 지우면 그 채팅의 휴지통도 같이 지워집니다. 지운 메시지를 서버에 따로 보관하므로 그만큼 저장 공간을 더 씁니다. ST 기본 백업과는 별개입니다.'],
             ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 어떤 단어를 다른 단어로 한꺼번에 바꿉니다(예: 상태창의 2024를 2205로). 다른 답변(스와이프)과 번역문도 같이 바꾸며, 답변을 만드는 중에는 쓸 수 없습니다.'],
             ['chatSearch', '채팅에서 찾기', '옵션 메뉴에 "채팅에서 찾기"가 생깁니다. 누르면 채팅 위쪽(상단 바 아래)에 검색칸이, 입력창 자리에 ▲ ▼ ✕ 버튼이 뜹니다. 단어를 적으면 그 단어가 가장 아래(최근)에 나온 곳으로 이동해 형광펜을 칠하고, 지금 보는 곳은 진한 주황색으로 표시합니다. ▲ 는 다음 결과(위쪽), ▼ 는 이전 결과(아래쪽)로 가며, 한 메시지에 여러 번 나오면 그 안에서 하나씩 옮겨 갑니다. 폰에서는 엔터를 누르면 검색만 하고 키보드가 내려가며(다음 결과로는 ▲ 로 갑니다), 컴퓨터에서는 엔터를 누를 때마다 다음 결과로 갑니다. 아래 칸에는 "몇 번째 메시지 · 그 안에서 몇 번째"가 보입니다. 화면에 보이는 글에서 찾으며, 아직 불러오지 않은 옛 메시지도 찾아서 불러옵니다. ✕ 로 닫습니다.'],
             ['errorLog', '오류 알림 자세히 보기', '빨간 오류 알림에 돋보기 버튼이 생깁니다. 누르면 최근 오류 내용이 창으로 뜨고(알림 자체를 누르면 원래처럼 닫힙니다), 복사·닫기 버튼으로 복사하거나 닫을 수 있습니다. 서버가 돌려준 오류 응답(답변 생성 실패 때 API가 보낸 오류 문구 등), 화면 쪽 스크립트 오류, 오류 알림 문구를 최근 30개까지 모아 둡니다. 서버(터묵스) 화면에 찍힌 글 자체는 브라우저에서 읽을 수 없어서, 서버가 돌려준 내용까지만 보입니다. 모아 둔 내용은 새로고침하면 사라집니다.'],
@@ -132,6 +134,7 @@ function applyAll() {
     applyChatName();
     applyChatReplace();
     applyChatSearch();
+    applyMessageTrash();
     applyEntryTranslate();
 }
 
@@ -337,6 +340,19 @@ function extrasFor(key) {
                 renderChips();
             }
         }));
+    } else if (key === 'messageTrash') {
+        const days = document.createElement('label');
+        days.className = 'stqa_trash_days';
+        days.innerHTML = '<span>보관 기간</span><input class="text_pole" type="number" min="1" max="30" step="1"><span>일 (1~30)</span>';
+        const input = days.querySelector('input');
+        input.value = settings.trashDays;
+        input.addEventListener('change', () => {
+            const value = Math.min(30, Math.max(1, Math.round(Number(input.value)) || 7));
+            input.value = value;
+            settings.trashDays = value;
+            saveSettings();
+        });
+        extra.append(days);
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }
@@ -442,5 +458,6 @@ function addMenuButton() {
     initChatName();
     initChatReplace();
     initChatSearch();
+    initMessageTrash();
     initEntryTranslate();
 })();

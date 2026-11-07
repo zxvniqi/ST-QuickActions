@@ -18,6 +18,10 @@ const defaultSettings = Object.freeze({
     chatQuickRename: true,
     chatReplace: true,
     chatSearch: true,
+    // Deleted messages kept for a while (days); the trash files of chats, by chat
+    messageTrash: false,
+    trashDays: 7,
+    trashIndex: {},
     errorLog: true,
     vertexProfileFix: true,
     entryTranslate: true,
