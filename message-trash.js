@@ -287,7 +287,25 @@ async function openTrash() {
         label.querySelector('span').textContent = text;
         return label;
     };
+    // One message in full, drawn the way the chat draws it
+    const showMessage = ({ index, message }) => {
+        const context = SillyTavern.getContext();
+        const view = document.createElement('div');
+        view.className = 'stqa_trash_view';
+        view.innerHTML = '<h3></h3><div class="mes_text"></div>';
+        view.querySelector('h3').textContent = `#${index} ${message.name ?? ''}`;
+        const text = view.querySelector('.mes_text');
+        if (typeof context.messageFormatting === 'function') {
+            text.innerHTML = context.messageFormatting(String(message.mes ?? ''), message.name ?? '', Boolean(message.is_system), Boolean(message.is_user), -1);
+        } else {
+            text.textContent = String(message.mes ?? '');
+        }
+        new Popup(view, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, allowVerticalScrolling: true }).show();
+    };
+    // Boxes to pick several are shown only after "여러 개 고르기"
+    let picking = false;
     const restorePicks = (picks) => change(async () => {
+        picking = false;
         const picked = new Set(picks.flatMap(({ item, messages }) => messages.map(entry => `${item.id}:${entry.index}`)));
         await restore(picks);
         await removePicked(chat.key, picked);
@@ -298,7 +316,8 @@ async function openTrash() {
         const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
         const days = keepDays();
         content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 체크해서 여러 개를 한 번에 되살릴 수 있습니다.`;
+        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 메시지를 누르면 전체 내용을 봅니다.`;
+        content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         if (!items.length) {
             list.innerHTML = '<div class="stqa_hint">휴지통이 비어 있습니다.</div>';
@@ -333,8 +352,16 @@ async function openTrash() {
                     head.querySelector('input').checked = own.every(other => other.checked);
                     count();
                 });
+                // Not picking: a tap shows the message instead of ticking it
+                line.addEventListener('click', (event) => {
+                    if (!picking) {
+                        event.preventDefault();
+                        showMessage(entry);
+                    }
+                });
                 block.append(line);
             }
+            head.addEventListener('click', event => picking || event.preventDefault());
             // The group's box ticks all of its messages
             head.querySelector('input').addEventListener('change', (event) => {
                 own.forEach(box => (box.checked = event.target.checked));
@@ -357,7 +384,19 @@ async function openTrash() {
         const bottom = document.createElement('div');
         bottom.className = 'stqa_trash_bottom';
         content.append(bottom);
-        bottom.append(restoreTicked, button('fa-dumpster', '휴지통 비우기', async () => {
+        const pickButton = button(picking ? 'fa-xmark' : 'fa-list-check', picking ? '고르기 취소' : '여러 개 고르기', () => {
+            picking = !picking;
+            content.classList.toggle('stqa_trash_picking', picking);
+            pickButton.querySelector('i').className = `fa-solid ${picking ? 'fa-xmark' : 'fa-list-check'}`;
+            pickButton.querySelector('span').textContent = picking ? '고르기 취소' : '여러 개 고르기';
+            // Leaving picking lets go of what was ticked
+            if (!picking) {
+                ticks.forEach(([, , box]) => (box.checked = false));
+                content.querySelectorAll('.stqa_trash_head input').forEach(box => (box.checked = false));
+                count();
+            }
+        });
+        bottom.append(restoreTicked, pickButton, button('fa-dumpster', '휴지통 비우기', async () => {
             if (await ask('휴지통 비우기', '이 채팅의 휴지통을 모두 지웁니다. 되돌릴 수 없습니다.', '비우기')) {
                 await change(() => writeTrash(chat.key, []));
             }

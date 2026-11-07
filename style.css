@@ -2738,6 +2738,24 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     text-overflow: ellipsis;
 }
 
+/* The boxes show only while picking several; otherwise a message is tapped to be read */
+.stqa_trash:not(.stqa_trash_picking) .stqa_trash_items input[type="checkbox"] {
+    display: none;
+}
+
+.stqa_trash:not(.stqa_trash_picking) .stqa_trash_message {
+    cursor: pointer;
+}
+
+.stqa_trash_view {
+    text-align: left;
+}
+
+.stqa_trash_view h3 {
+    margin: 0 0 8px;
+    text-align: center;
+}
+
 .stqa_trash_bottom {
     display: flex;
     flex-wrap: wrap;
