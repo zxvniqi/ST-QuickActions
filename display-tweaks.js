@@ -27,6 +27,41 @@ function sharpen(img) {
     img.setAttribute('src', full);
 }
 
+// List pictures waiting for their full picture, and how many are downloading
+const listQueue = [];
+let listLoads = 0;
+const MAX_LIST_LOADS = 4;
+
+/**
+ * A list card keeps its thumbnail until the full picture has downloaded and decoded, so it
+ * never goes blank; a few download at a time, the first to come into view first.
+ */
+function loadListPictures() {
+    while (listLoads < MAX_LIST_LOADS && listQueue.length) {
+        const img = listQueue.shift();
+        const full = fullPictureOf(img.getAttribute('src'));
+        if (!full || !img.isConnected) {
+            continue;
+        }
+        listLoads++;
+        const picture = new Image();
+        picture.src = full;
+        picture.decode()
+            .then(() => {
+                // Not redrawn with another picture meanwhile
+                if (isOn('hdAvatars') && img.isConnected && fullPictureOf(img.getAttribute('src')) === full) {
+                    img.decoding = 'async';
+                    img.setAttribute('src', full);
+                }
+            })
+            .catch(() => {})
+            .finally(() => {
+                listLoads--;
+                loadListPictures();
+            });
+    }
+}
+
 /**
  * Chat avatars are swapped right away. Character lists can be long, so a picture there is
  * swapped only once it scrolls into view.
@@ -43,9 +78,10 @@ function onImage(img) {
         for (const entry of entries) {
             if (entry.isIntersecting) {
                 listWatcher.unobserve(entry.target);
-                isOn('hdAvatars') && sharpen(entry.target);
+                isOn('hdAvatars') && listQueue.push(entry.target);
             }
         }
+        loadListPictures();
     });
     listWatcher.observe(img);
 }

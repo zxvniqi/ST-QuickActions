@@ -58,7 +58,7 @@ async function openTagPopup(avatars) {
         const sorted = [...tags].sort((a, b) => a.name.localeCompare(b.name));
         content.innerHTML = `
             <h3></h3>
-            <div class="stqa_hint">태그를 누르면 넣고, 다시 누르면 뺍니다. 일부만 가진 태그는 점선으로 표시되며, 누르면 모두에게 넣습니다.</div>
+            <div class="stqa_hint">태그를 누르면 넣고, 다시 누르면 뺍니다.</div>
             <div class="stqa_tag_new"><input class="text_pole" type="text" maxlength="25" placeholder="새 태그 이름"><div class="menu_button"><i class="fa-solid fa-plus"></i><span>만들어 넣기</span></div></div>
             <div class="stqa_tag_chips"></div>`;
         content.querySelector('h3').textContent = avatars.length > 1 ? `태그 · ${avatars.length}명` : `태그 · ${SillyTavern.getContext().characters.find(c => c.avatar === avatars[0])?.name ?? ''}`;
