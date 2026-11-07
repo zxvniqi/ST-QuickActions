@@ -516,8 +516,8 @@ const LIST_BUTTONS = [
     ['names', 'fa-tag stqa_tr_badge', '이름 전체 번역', '이름 전체 번역하기'],
     ['contents', 'fa-align-left stqa_tr_badge', '내용 전체 번역', '내용 전체 번역하기'],
     ['toggle', 'fa-repeat', '원문과 번역 바꿔 보기', ''],
-    ['deleteNames', 'fa-eraser', '이름 번역만 지우기', '이름 번역만 지우기'],
-    ['deleteContents', 'fa-eraser', '내용 번역만 지우기', '내용 번역만 지우기'],
+    ['deleteNames', 'fa-eraser', '이름 번역 전체 지우기', '이름 번역 전체 지우기'],
+    ['deleteContents', 'fa-eraser', '내용 번역 전체 지우기', '내용 번역 전체 지우기'],
     ['delete', 'fa-eraser', '저장한 번역 모두 지우기', '저장한 번역 모두 지우기'],
 ];
 const ONE_BUTTONS = [
