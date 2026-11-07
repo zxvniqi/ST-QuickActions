@@ -557,6 +557,11 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     display: none !important;
 }
 
+/* ST lays out Options menu items with display: flex, which would show switched-off ones */
+.options-content > a[id^="stqa_option"][hidden] {
+    display: none !important;
+}
+
 #stqa_floating_panel.stqa_layout_horizontal,
 #stqa_floating_panel.stqa_in_flow {
     flex-direction: row;
