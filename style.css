@@ -2803,8 +2803,7 @@ body.stqa_backup_view_on .chatBackupsList:not(.stqa_backup_show_all):not(.stqa_b
     display: none;
 }
 
-body:not(.stqa_backup_view_on) .stqa_backup_bar,
-body:not(.stqa_backup_view_on) .stqa_backup_preview {
+body:not(.stqa_backup_view_on) .stqa_backup_bar {
     display: none;
 }
 
@@ -2818,15 +2817,6 @@ body:not(.stqa_backup_view_on) .stqa_backup_preview {
 
 .stqa_backup_bar .menu_button {
     margin: 0;
-}
-
-.stqa_backup_preview {
-    font-size: 0.85em;
-    opacity: 0.75;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    min-width: 0;
 }
 
 .stqa_backup_view {

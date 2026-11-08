@@ -1,5 +1,5 @@
 // ST's chat backups list (Chat History → Backups), made easier to use: only the open character's
-// (or group's) backups are listed, with their time, number of messages and last message, and the
+// (or group's) backups are listed, by the time they were saved instead of their file name, and the
 // eye button shows a backup as a chat, with what the chat open now lacks marked. ST's own restore
 // (a new chat, the open one untouched) and delete buttons stay as they are.
 import { MODULE, isOn } from './settings.js';
@@ -11,8 +11,6 @@ const OTHER_CLASS = 'stqa_backup_other';
 
 // Whether the other characters' backups are shown too (per list opening)
 let showAll = false;
-// Backup file name -> its last message, from ST's own backups list
-let previews = new Map();
 
 /** SHA-256 of a text (UTF-8), in hex: ST names backups of non-ASCII names with part of it. */
 function sha256(text) {
@@ -85,18 +83,7 @@ function timeOf(file) {
     return match ? `${match[1]}.${match[2]}.${match[3]} ${match[4]}:${match[5]}:${match[6]}` : file;
 }
 
-const plain = text => String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const fingerprint = message => `${message.send_date}\u0001${message.name}\u0001${message.mes}`;
-
-async function loadPreviews() {
-    try {
-        const response = await fetch('/api/backups/chat/get', { method: 'POST', headers: SillyTavern.getContext().getRequestHeaders() });
-        const list = response.ok ? await response.json() : [];
-        previews = new Map(list.map(backup => [backup.file_name, backup.mes]));
-    } catch {
-        previews = new Map();
-    }
-}
 
 /** Shows a backup as a chat; messages the open chat doesn't have (or has differently) are marked. */
 async function viewBackup(file, item) {
@@ -202,14 +189,11 @@ async function viewBackup(file, item) {
 }
 
 /** The list as ST drew it: other characters' backups hidden, the open one's made readable. */
-async function decorate(list) {
+function decorate(list) {
     const prefix = ownPrefix();
     const items = [...list.querySelectorAll(`:scope > ${ITEM}`)];
     if (!items.length) {
         return;
-    }
-    if (!previews.size) {
-        await loadPreviews();
     }
     let own = 0;
     for (const item of items) {
@@ -219,13 +203,9 @@ async function decorate(list) {
         const mine = isOwn(file, prefix);
         own += mine ? 1 : 0;
         item.classList.toggle(OTHER_CLASS, !mine);
-        if (mine && name && !item.querySelector('.stqa_backup_preview')) {
+        if (mine && name && name.title !== file) {
             name.textContent = timeOf(file);
             name.title = file;
-            const preview = document.createElement('div');
-            preview.className = 'stqa_backup_preview';
-            preview.textContent = plain(previews.get(file)).slice(0, 120);
-            name.after(preview);
         }
     }
     list.classList.toggle('stqa_backup_show_all', showAll);
@@ -281,10 +261,13 @@ function watch(list) {
             pending = false;
             if (!list.querySelector(`:scope > ${ITEM}`)) {
                 showAll = false;
-                previews = new Map();
                 return;
             }
-            decorate(list).catch(error => console.error(`[${MODULE}] Backup list failed`, error));
+            try {
+                decorate(list);
+            } catch (error) {
+                console.error(`[${MODULE}] Backup list failed`, error);
+            }
         }, 0);
     }).observe(list, { childList: true });
 }
