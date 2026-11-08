@@ -254,7 +254,8 @@ async function fillChatNames(cards, chats) {
     const worker = async () => {
         while (queue.length) {
             const [card, file] = queue.shift();
-            if (!card.isConnected) {
+            // Redrawn since (the other list was shown): not shown any more
+            if (card.dataset.stqaGone) {
                 continue;
             }
             const mark = await markOf(file);
@@ -368,6 +369,7 @@ async function openBackups() {
 
     const render = () => {
         const shown = showAll ? backups : backups.filter(backup => isOwn(backup.file_name, who.prefix));
+        content.querySelectorAll('.stqa_backup_card').forEach(card => (card.dataset.stqaGone = '1'));
         content.innerHTML = '<div class="stqa_backup_head"><h3></h3></div><div class="stqa_trash_items stqa_backup_scroll"></div>';
         content.querySelector('h3').textContent = `${showAll ? '전체' : who.name} · 총 ${shown.length}`;
         // The other characters' backups, or back to this one's
