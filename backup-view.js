@@ -160,16 +160,30 @@ function ask(title, text, okButton) {
     return new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton, cancelButton: '취소' }).show();
 }
 
+// Character -> its chats by mark, kept for the session (asked again when a mark isn't in it:
+// a chat made or renamed since)
+const chatLists = new Map();
+
 /**
  * The open character's chats by the mark each chat file carries (a backup has its chat's mark,
- * not its name). Read once per backups window; groups' chats aren't listed this way.
+ * not its name). Groups' chats aren't listed this way.
  */
-async function chatNames() {
+function chatNames(fresh = false) {
     const context = SillyTavern.getContext();
     const avatar = context.characters[context.characterId]?.avatar;
     if (context.groupId || !avatar) {
-        return new Map();
+        return Promise.resolve(new Map());
     }
+    if (!fresh && chatLists.has(avatar)) {
+        return chatLists.get(avatar);
+    }
+    const list = loadChatNames(avatar);
+    chatLists.set(avatar, list);
+    return list;
+}
+
+async function loadChatNames(avatar) {
+    const context = SillyTavern.getContext();
     try {
         const response = await fetch('/api/characters/chats', {
             method: 'POST',
@@ -248,7 +262,9 @@ async function markOf(file) {
 }
 
 /** Fills in each card's chat name, a few backups at a time (cards redrawn meanwhile are skipped). */
-async function fillChatNames(cards, chats) {
+async function fillChatNames(cards) {
+    let chats = chatNames();
+    let refreshed = false;
     // The backups are read while the chat list is still coming; remembered ones need no reading
     const queue = [...cards].sort((a, b) => Number(backupMarks.has(b[1])) - Number(backupMarks.has(a[1])));
     const worker = async () => {
@@ -259,7 +275,13 @@ async function fillChatNames(cards, chats) {
                 continue;
             }
             const mark = await markOf(file);
-            const names = await chats;
+            let names = await chats;
+            // A chat made or renamed since the list was read: read it again, once
+            if (mark && !names.has(mark) && !refreshed) {
+                refreshed = true;
+                chats = chatNames(true);
+                names = await chats;
+            }
             const line = card.querySelector('.stqa_backup_card_chat');
             if (line) {
                 line.textContent = mark ? (names.get(mark) ?? '지금은 없는 채팅') : '';
@@ -352,6 +374,8 @@ async function viewBackup(file, closeList, names) {
 async function openBackups() {
     const context = SillyTavern.getContext();
     const { Popup, POPUP_TYPE } = context;
+    // The chat list (for the chat names) comes alongside the backups list
+    chatNames();
     const response = await fetch('/api/backups/chat/get', { method: 'POST', headers: context.getRequestHeaders() });
     if (!response.ok) {
         toastr.error('백업 목록을 불러오지 못했습니다.', TITLE);
@@ -363,7 +387,6 @@ async function openBackups() {
     let popup = null;
     // Whose each backup is: worked out once, the first time the full list is shown
     let names = null;
-    let chats = null;
     const content = document.createElement('div');
     content.className = 'stqa_trash stqa_backup_list';
 
@@ -413,7 +436,7 @@ async function openBackups() {
                 actions.append(element);
             };
             // The open character's chats tell which chat one of its backups is from
-            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled(), who && isOwn(backup.file_name, who.prefix) ? (chats ??= chatNames()) : null)
+            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled(), who && isOwn(backup.file_name, who.prefix) ? chatNames() : null)
                 .catch(error => console.error(`[${MODULE}] Backup view failed`, error));
             icon('fa-eye', '보기', view);
             icon('fa-rotate-left', '새 채팅으로 불러오기', async () => {
@@ -431,7 +454,7 @@ async function openBackups() {
             list.append(card);
         }
         if (named.length) {
-            fillChatNames(named, chats ??= chatNames()).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
+            fillChatNames(named).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
         }
     };
 
