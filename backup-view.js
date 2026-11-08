@@ -226,7 +226,7 @@ async function markOf(file) {
 
 /** Fills in each card's chat name, a few backups at a time (cards redrawn meanwhile are skipped). */
 async function fillChatNames(cards, chats) {
-    const names = await chats;
+    // The backups are read while the chat list is still coming
     const queue = [...cards];
     const worker = async () => {
         while (queue.length) {
@@ -235,6 +235,7 @@ async function fillChatNames(cards, chats) {
                 continue;
             }
             const mark = await markOf(file);
+            const names = await chats;
             const line = card.querySelector('.stqa_backup_card_chat');
             if (line) {
                 line.textContent = mark ? (names.get(mark) ?? '지금은 없는 채팅') : '';
