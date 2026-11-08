@@ -1371,6 +1371,12 @@ details.stqa_section[open] > summary {
     margin: 0;
 }
 
+.stqa_tab_body {
+    max-height: 60vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .stqa_tab_body.stqa_off {
     opacity: 0.45;
     pointer-events: none;
@@ -1880,6 +1886,12 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Themes put transitions on everything (some with !important): the name shows at once */
+.stqa_wand_tip:not(#stqa_no_such_id) {
+    transition: none !important;
+    animation: none !important;
 }
 
 .stqa_wand_tip {

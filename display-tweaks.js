@@ -140,7 +140,7 @@ function expandRecentChats() {
 }
 
 const WAND_HOLD_MS = 450;
-const WAND_TIP_MS = 1500;
+const WAND_TIP_MS = 600;
 
 /**
  * A menu as icons (the wand menu, the Options menu): holding an icon shows its name in a small
@@ -164,16 +164,21 @@ function enableIconNames(menu, itemSelector, setting) {
         tip.className = 'stqa_wand_tip';
         // The name as the menu writes it (an item's title may be a longer description)
         tip.textContent = item.textContent.trim() || item.title;
+        // Placed before it is seen (themes animate every change, so it would fly in from a corner)
+        tip.style.visibility = 'hidden';
         document.body.append(tip);
         const box = item.getBoundingClientRect();
         const size = tip.getBoundingClientRect();
         tip.style.left = `${Math.min(Math.max(4, box.left + box.width / 2 - size.width / 2), window.innerWidth - size.width - 4)}px`;
         tip.style.top = `${Math.max(4, box.top - size.height - 6)}px`;
-        setTimeout(hideTip, WAND_TIP_MS);
+        tip.style.visibility = '';
     };
+    // The name stays while the finger is down, and a moment after
     const cancel = () => {
         clearTimeout(press?.timer);
         press = null;
+        const shown = tip;
+        shown && setTimeout(() => tip === shown && hideTip(), WAND_TIP_MS);
     };
     menu.addEventListener('pointerdown', (event) => {
         const item = event.target.closest(itemSelector);
@@ -189,7 +194,8 @@ function enableIconNames(menu, itemSelector, setting) {
         }, WAND_HOLD_MS);
     });
     menu.addEventListener('pointermove', (event) => {
-        if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
+        // Moving before the name shows is a scroll; once it shows, a shaking finger keeps it
+        if (press && !tip && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
             cancel();
         }
     });

@@ -58,7 +58,7 @@ async function openList(messageId) {
 
     const render = () => {
         content.innerHTML = '<h3></h3><div class="stqa_trash_items"></div>';
-        content.querySelector('h3').textContent = `#${messageId} ${message.name ?? ''} · 스와이프 ${message.swipes.length}`;
+        content.querySelector('h3').textContent = `#${messageId} ${message.name ?? ''}`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         const boxes = [];

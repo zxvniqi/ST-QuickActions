@@ -75,6 +75,25 @@ function owner() {
     return character?.avatar ? { name: character.name, prefix: `chat_${backupKey(character.avatar.replace(/\.png$/, ''))}_` } : null;
 }
 
+/** Backup file name start -> whose backups they are, for every character and group. */
+function ownerNames() {
+    const context = SillyTavern.getContext();
+    const names = new Map();
+    for (const character of context.characters) {
+        character?.avatar && names.set(`chat_${backupKey(character.avatar.replace(/\.png$/, ''))}_`, character.name);
+    }
+    for (const group of context.groups ?? []) {
+        names.set(`chat_${backupKey(String(group.id))}_`, group.name);
+    }
+    return names;
+}
+
+/** Whose backup a file is (by the start of its name, the rest being the time). */
+function ownerOf(file, names) {
+    const start = file.replace(/\d{8}-\d{6}\.jsonl$/, '');
+    return names.get(start) ?? '';
+}
+
 const isOwn = (file, prefix) => Boolean(prefix) && file.startsWith(prefix) && /^\d{8}-\d{6}\.jsonl$/.test(file.slice(prefix.length));
 const stamp = file => file.match(/(\d{8}-\d{6})\.jsonl$/)?.[1] ?? '';
 
@@ -195,18 +214,17 @@ async function viewBackup(file, closeList) {
         <div class="stqa_backup_tools"></div>
         <div class="stqa_backup_messages"></div>`;
     content.querySelector('h3').textContent = timeOf(file);
-    // How many messages, whether it is this chat's backup, and how many differ from it now
+    // How many messages differ from the chat open now (a backup of this chat only)
     const chips = content.querySelector('.stqa_backup_chips');
-    const chip = (icon, text, accent = false) => {
-        const element = document.createElement('span');
-        element.className = `stqa_backup_chip${accent ? ' stqa_backup_chip_accent' : ''}`;
-        element.innerHTML = `<i class="fa-solid ${icon}"></i> `;
-        element.append(text);
-        chips.append(element);
-    };
-    chip('fa-comment', String(messages.length));
-    chip(sameChat ? 'fa-link' : 'fa-link-slash', sameChat ? '지금 채팅' : '다른 채팅');
-    differing && chip('fa-pen-to-square', `달라짐 ${differing}`, true);
+    if (differing) {
+        const chip = document.createElement('span');
+        chip.className = 'stqa_backup_chip stqa_backup_chip_accent';
+        chip.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> ';
+        chip.append(`달라짐 ${differing}`);
+        chips.append(chip);
+    } else {
+        chips.remove();
+    }
     const list = content.querySelector('.stqa_backup_messages');
     messages.forEach((message, index) => {
         const bubble = document.createElement('div');
@@ -258,22 +276,25 @@ async function openBackups() {
     const who = owner();
     let showAll = !who;
     let popup = null;
+    // Whose each backup is: worked out once, the first time the full list is shown
+    let names = null;
     const content = document.createElement('div');
     content.className = 'stqa_trash stqa_backup_list';
 
     const render = () => {
         const shown = showAll ? backups : backups.filter(backup => isOwn(backup.file_name, who.prefix));
         content.innerHTML = '<div class="stqa_backup_head"><h3></h3></div><div class="stqa_trash_items stqa_backup_scroll"></div>';
-        content.querySelector('h3').textContent = `${showAll ? '전체' : who.name} · 백업 ${shown.length}`;
+        content.querySelector('h3').textContent = `${showAll ? '전체' : who.name} · 총 ${shown.length}`;
         // The other characters' backups, or back to this one's
         if (who) {
-            const toggle = button(showAll ? 'fa-user' : 'fa-users', showAll ? who.name : '전체', () => {
+            const toggle = button(showAll ? 'fa-user' : 'fa-users', showAll ? '현재 캐릭터' : '전체', () => {
                 showAll = !showAll;
                 render();
             });
-            toggle.title = showAll ? `${who.name}의 백업만` : '모든 캐릭터의 백업';
             content.querySelector('.stqa_backup_head').append(toggle);
         }
+        // In the full list each backup says whose it is
+        names ??= showAll ? ownerNames() : null;
         const list = content.querySelector('.stqa_trash_items');
         if (!shown.length) {
             list.innerHTML = '<div class="stqa_hint">백업이 없습니다.</div>';
@@ -283,10 +304,9 @@ async function openBackups() {
             card.className = 'stqa_trash_item stqa_backup_card';
             card.innerHTML = '<div class="stqa_backup_card_text"><b></b><small></small></div><div class="stqa_backup_card_actions"></div>';
             card.querySelector('b').textContent = timeOf(backup.file_name);
-            const own = who && isOwn(backup.file_name, who.prefix);
             const small = card.querySelector('small');
             small.innerHTML = '<i class="fa-solid fa-comment"></i> ';
-            small.append(`${backup.chat_items ?? '?'} · ${backup.file_size ?? ''}${own ? '' : ` · ${backup.file_name}`}`);
+            small.append(`${backup.chat_items ?? '?'} · ${backup.file_size ?? ''}${showAll ? ` · ${ownerOf(backup.file_name, names) || '알 수 없음'}` : ''}`);
             const actions = card.querySelector('.stqa_backup_card_actions');
             const icon = (name, title, onClick, caution = false) => {
                 const element = document.createElement('div');

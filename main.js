@@ -422,7 +422,8 @@ function buildPanel() {
 
 async function openPanel() {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
-    await new Popup(buildPanel(), POPUP_TYPE.TEXT, '', { okButton: '닫기', leftAlign: true, allowVerticalScrolling: true }).show();
+    // The tabs stay on top; the features scroll under them, so the window keeps its size
+    await new Popup(buildPanel(), POPUP_TYPE.TEXT, '', { okButton: '닫기', leftAlign: true }).show();
 }
 
 function addMenuButton() {
