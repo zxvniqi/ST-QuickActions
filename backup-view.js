@@ -178,8 +178,35 @@ function chatNames(fresh = false) {
         return chatLists.get(avatar);
     }
     const list = loadChatNames(avatar);
-    chatLists.set(avatar, list);
-    return list;
+    // Remembered on this device from last time: shown at once, while the list is read again
+    const kept = !fresh && storedChatNames(avatar);
+    chatLists.set(avatar, kept ? Promise.resolve(kept) : list);
+    list.then((names) => {
+        chatLists.set(avatar, Promise.resolve(names));
+        storeChatNames(avatar, names);
+    });
+    return chatLists.get(avatar);
+}
+
+const CHATS_KEY = 'stqa_backup_chats';
+
+function storedChatNames(avatar) {
+    try {
+        const stored = JSON.parse(localStorage.getItem(CHATS_KEY) ?? '{}')[avatar];
+        return stored ? new Map(Object.entries(stored)) : null;
+    } catch {
+        return null;
+    }
+}
+
+function storeChatNames(avatar, names) {
+    try {
+        const stored = JSON.parse(localStorage.getItem(CHATS_KEY) ?? '{}');
+        stored[avatar] = Object.fromEntries(names);
+        localStorage.setItem(CHATS_KEY, JSON.stringify(stored));
+    } catch {
+        // Only slower next time
+    }
 }
 
 async function loadChatNames(avatar) {
