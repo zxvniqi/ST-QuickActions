@@ -2876,6 +2876,17 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     min-width: 0;
 }
 
+.stqa_backup_card_chat {
+    font-size: 0.9em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_card_chat:empty {
+    display: none;
+}
+
 .stqa_backup_card_text small {
     opacity: 0.75;
     overflow: hidden;

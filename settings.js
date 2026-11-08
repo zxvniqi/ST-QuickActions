@@ -85,6 +85,8 @@ const defaultSettings = Object.freeze({
     hdAvatars: true,
     hideInputPlaceholder: false,
     hideSettingHints: true,
+    // Korean for the parts of ST's screens its translation leaves in English
+    koFill: true,
     // Per container selector: { order: string[], hidden: string[] }
     layout: {},
 });

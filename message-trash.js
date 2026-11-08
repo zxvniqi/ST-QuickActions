@@ -450,7 +450,8 @@ async function openTrash() {
     const render = async () => {
         const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
         const days = keepDays();
-        content.innerHTML = '<h3>휴지통</h3><div class="stqa_trash_items"></div>';
+        content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
+        content.querySelector('.stqa_hint').textContent = `지운 지 ${days}일이 지나면 완전히 삭제됩니다.`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         if (!items.length) {

@@ -1,7 +1,7 @@
 // ST's chat backups (Chat History → Backups), made easier to use: the button opens a window instead
 // of a long list under the chats, with only the open character's (or group's) backups, by the time
-// they were saved instead of their file name. A backup shows as a chat, with what the chat open now
-// lacks marked; restoring makes a new chat (the open one untouched), as ST's own restore does.
+// they were saved instead of their file name. A backup shows as a chat, with the name of the chat
+// it is from; restoring makes a new chat (the open one untouched), as ST's own restore does.
 import { MODULE, isOn } from './settings.js';
 import { displayPastChats, importCharacterChat } from '../../../../script.js';
 import { importGroupChat } from '../../../group-chats.js';
@@ -103,7 +103,6 @@ function timeOf(file) {
     return match ? `${match[1]}.${match[2]}.${match[3]} ${match[4]}:${match[5]}:${match[6]}` : file;
 }
 
-const fingerprint = message => `${message.send_date}\u0001${message.name}\u0001${message.mes}`;
 
 function button(icon, text, onClick, caution = false) {
     const element = document.createElement('div');
@@ -186,7 +185,67 @@ async function chatNames() {
     }
 }
 
-/** Shows a backup as a chat; messages the open chat doesn't have (or has differently) are marked. */
+// Backup file -> the mark of the chat it is from (backups never change, so read once)
+const backupMarks = new Map();
+
+/**
+ * The chat mark in a backup's first line. Only that line is read: the download is cut off as soon
+ * as it has come, so a big backup costs little more than a small one.
+ */
+async function markOf(file) {
+    if (backupMarks.has(file)) {
+        return backupMarks.get(file);
+    }
+    let mark = null;
+    try {
+        const response = await fetch('/api/backups/chat/download', {
+            method: 'POST',
+            headers: SillyTavern.getContext().getRequestHeaders(),
+            body: JSON.stringify({ name: file }),
+        });
+        if (response.ok && response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let text = '';
+            while (!text.includes('\n') && text.length < 4 * 1024 * 1024) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                text += decoder.decode(value, { stream: true });
+            }
+            reader.cancel().catch(() => {});
+            mark = JSON.parse(text.split('\n')[0])?.chat_metadata?.integrity ?? null;
+        }
+    } catch {
+        // No mark: the name stays unknown
+    }
+    backupMarks.set(file, mark);
+    return mark;
+}
+
+/** Fills in each card's chat name, a few backups at a time (cards redrawn meanwhile are skipped). */
+async function fillChatNames(cards, chats) {
+    const names = await chats;
+    const queue = [...cards];
+    const worker = async () => {
+        while (queue.length) {
+            const [card, file] = queue.shift();
+            if (!card.isConnected) {
+                continue;
+            }
+            const mark = await markOf(file);
+            const line = card.querySelector('.stqa_backup_card_chat');
+            if (line) {
+                line.textContent = mark ? (names.get(mark) ?? '지금은 없는 채팅') : '';
+                line.title = line.textContent;
+            }
+        }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+}
+
+/** Shows a backup as a chat, with the name of the chat it is from. */
 async function viewBackup(file, closeList, names) {
     const context = SillyTavern.getContext();
     const { Popup, POPUP_TYPE } = context;
@@ -213,30 +272,14 @@ async function viewBackup(file, closeList, names) {
             // A broken line
         }
     }
-    // A backup of the chat open now? (a character's backups are of all its chats) Each chat file
-    // has its own mark; older ones without it are told by their first message (made with the chat)
+    // Each chat file carries its own mark, and so do its backups
     const integrity = header?.chat_metadata?.integrity;
-    const sameChat = integrity
-        ? integrity === context.chatMetadata?.integrity
-        : Boolean(messages[0] && context.chat[0]) && fingerprint(messages[0]) === fingerprint(context.chat[0]);
-    // Compared with the chat open now: same message (time, name and text), same time and name but
-    // another text (edited since), or not there at all (deleted since)
-    const now = new Set(context.chat.map(fingerprint));
-    const nowByTime = new Set(context.chat.map(message => `${message.send_date}\u0001${message.name}`));
-    const states = messages.map((message) => {
-        if (!sameChat || now.has(fingerprint(message))) {
-            return '';
-        }
-        return nowByTime.has(`${message.send_date}\u0001${message.name}`) ? 'changed' : 'missing';
-    });
-    const differing = states.filter(Boolean).length;
 
     const content = document.createElement('div');
     content.className = 'stqa_backup_view';
     content.innerHTML = `
         <h3></h3>
         <div class="stqa_backup_chat"></div>
-        <div class="stqa_backup_chips"></div>
         <div class="stqa_backup_tools"></div>
         <div class="stqa_backup_messages"></div>`;
     content.querySelector('h3').textContent = timeOf(file);
@@ -249,24 +292,12 @@ async function viewBackup(file, closeList, names) {
     } else {
         chatLine.remove();
     }
-    // How many messages differ from the chat open now (a backup of this chat only)
-    const chips = content.querySelector('.stqa_backup_chips');
-    if (differing) {
-        const chip = document.createElement('span');
-        chip.className = 'stqa_backup_chip stqa_backup_chip_accent';
-        chip.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> ';
-        chip.append(`달라짐 ${differing}`);
-        chips.append(chip);
-    } else {
-        chips.remove();
-    }
     const list = content.querySelector('.stqa_backup_messages');
     messages.forEach((message, index) => {
         const bubble = document.createElement('div');
-        bubble.className = `stqa_backup_message${message.is_user ? ' stqa_backup_user' : ''}${states[index] ? ` stqa_backup_${states[index]}` : ''}`;
-        bubble.innerHTML = '<div class="stqa_backup_name"><b></b><small></small></div><div class="mes_text"></div>';
+        bubble.className = `stqa_backup_message${message.is_user ? ' stqa_backup_user' : ''}`;
+        bubble.innerHTML = '<div class="stqa_backup_name"><b></b></div><div class="mes_text"></div>';
         bubble.querySelector('b').textContent = `#${index} ${message.name ?? ''}`;
-        bubble.querySelector('small').textContent = states[index] === 'missing' ? '지금 채팅에 없음' : states[index] === 'changed' ? '지금과 내용 다름' : '';
         const text = bubble.querySelector('.mes_text');
         if (typeof context.messageFormatting === 'function') {
             text.innerHTML = context.messageFormatting(message.mes, message.name ?? '', Boolean(message.is_system), Boolean(message.is_user), -1);
@@ -279,13 +310,6 @@ async function viewBackup(file, closeList, names) {
     });
 
     const tools = content.querySelector('.stqa_backup_tools');
-    let onlyDiffering = false;
-    const filter = button('fa-filter', '달라진 것만', () => {
-        onlyDiffering = !onlyDiffering;
-        list.classList.toggle('stqa_backup_only_differing', onlyDiffering);
-        filter.querySelector('span').textContent = onlyDiffering ? '전체' : '달라진 것만';
-    });
-    differing && tools.append(filter);
     let popup = null;
     tools.append(button('fa-rotate-left', '새 채팅으로', async () => {
         if (await restoreBackup(file)) {
@@ -335,10 +359,13 @@ async function openBackups() {
         if (!shown.length) {
             list.innerHTML = '<div class="stqa_hint">백업이 없습니다.</div>';
         }
+        // This character's backups say which chat each one is from (filled in as they are read)
+        const named = [];
         for (const backup of shown) {
             const card = document.createElement('div');
             card.className = 'stqa_trash_item stqa_backup_card';
-            card.innerHTML = '<div class="stqa_backup_card_text"><b></b><small></small></div><div class="stqa_backup_card_actions"></div>';
+            card.innerHTML = '<div class="stqa_backup_card_text"><b></b><span class="stqa_backup_card_chat"></span><small></small></div><div class="stqa_backup_card_actions"></div>';
+            showAll || named.push([card, backup.file_name]);
             card.querySelector('b').textContent = timeOf(backup.file_name);
             const small = card.querySelector('small');
             small.innerHTML = '<i class="fa-solid fa-comment"></i> ';
@@ -371,6 +398,9 @@ async function openBackups() {
             }, true);
             card.addEventListener('click', view);
             list.append(card);
+        }
+        if (named.length && !SillyTavern.getContext().groupId) {
+            fillChatNames(named, chats ??= chatNames()).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
         }
     };
 
