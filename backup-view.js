@@ -161,8 +161,33 @@ function ask(title, text, okButton) {
     return new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton, cancelButton: '취소' }).show();
 }
 
+/**
+ * The open character's chats by the mark each chat file carries (a backup has its chat's mark,
+ * not its name). Read once per backups window; groups' chats aren't listed this way.
+ */
+async function chatNames() {
+    const context = SillyTavern.getContext();
+    const avatar = context.characters[context.characterId]?.avatar;
+    if (context.groupId || !avatar) {
+        return new Map();
+    }
+    try {
+        const response = await fetch('/api/characters/chats', {
+            method: 'POST',
+            headers: context.getRequestHeaders(),
+            body: JSON.stringify({ avatar_url: avatar, metadata: true }),
+        });
+        const chats = response.ok ? Object.values(await response.json()) : [];
+        return new Map(chats
+            .filter(chat => chat?.chat_metadata?.integrity)
+            .map(chat => [chat.chat_metadata.integrity, String(chat.file_name).replace(/\.jsonl$/, '')]));
+    } catch {
+        return new Map();
+    }
+}
+
 /** Shows a backup as a chat; messages the open chat doesn't have (or has differently) are marked. */
-async function viewBackup(file, closeList) {
+async function viewBackup(file, closeList, names) {
     const context = SillyTavern.getContext();
     const { Popup, POPUP_TYPE } = context;
     const response = await fetch('/api/backups/chat/download', {
@@ -210,10 +235,20 @@ async function viewBackup(file, closeList) {
     content.className = 'stqa_backup_view';
     content.innerHTML = `
         <h3></h3>
+        <div class="stqa_backup_chat"></div>
         <div class="stqa_backup_chips"></div>
         <div class="stqa_backup_tools"></div>
         <div class="stqa_backup_messages"></div>`;
     content.querySelector('h3').textContent = timeOf(file);
+    // Which chat it is a backup of (by the chat's mark); a chat deleted since has none left
+    const chatName = integrity ? (await names)?.get(integrity) : null;
+    const chatLine = content.querySelector('.stqa_backup_chat');
+    if (integrity && names) {
+        chatLine.innerHTML = '<i class="fa-solid fa-comments"></i> ';
+        chatLine.append(chatName ?? '지금은 없는 채팅');
+    } else {
+        chatLine.remove();
+    }
     // How many messages differ from the chat open now (a backup of this chat only)
     const chips = content.querySelector('.stqa_backup_chips');
     if (differing) {
@@ -278,6 +313,7 @@ async function openBackups() {
     let popup = null;
     // Whose each backup is: worked out once, the first time the full list is shown
     let names = null;
+    let chats = null;
     const content = document.createElement('div');
     content.className = 'stqa_trash stqa_backup_list';
 
@@ -318,7 +354,8 @@ async function openBackups() {
                 });
                 actions.append(element);
             };
-            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled())
+            // The open character's chats tell which chat one of its backups is from
+            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled(), who && isOwn(backup.file_name, who.prefix) ? (chats ??= chatNames()) : null)
                 .catch(error => console.error(`[${MODULE}] Backup view failed`, error));
             icon('fa-eye', '보기', view);
             icon('fa-rotate-left', '새 채팅으로 불러오기', async () => {

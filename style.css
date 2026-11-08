@@ -3072,6 +3072,21 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     overflow-y: auto;
 }
 
+.stqa_backup_chat {
+    text-align: center;
+    font-size: 0.9em;
+    opacity: 0.8;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The Backups button opens a window now: no arrow for a list folding open under it */
+body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-down,
+body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up {
+    display: none;
+}
+
 .stqa_backup_chips {
     display: flex;
     flex-wrap: wrap;
