@@ -56,6 +56,9 @@ export function createInlineSelect({ options, value, onChange }) {
                 }
             }
             root.classList.toggle('stqa_up', bottom - box.bottom < height + 8 && box.top - top > bottom - box.bottom);
+            // A long list opens at the chosen option
+            const chosen = list.querySelector('.stqa_selected');
+            chosen && (list.scrollTop = chosen.offsetTop - list.clientHeight / 2 + chosen.offsetHeight / 2);
         }
         open ? document.addEventListener('click', onOutside, true) : document.removeEventListener('click', onOutside, true);
     };

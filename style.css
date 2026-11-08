@@ -1923,6 +1923,13 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
 body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
     display: none;
 }
+
+/* Only the recent chats: no logo and version, nor the links and temporary chat button */
+body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderLogo,
+body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderVersionDisplay,
+body.stqa_welcome_recent #chat .welcomePanel .welcomeShortcuts {
+    display: none !important;
+}
 /* Prompt dropdown: taps go to its row, which opens the list below instead of the browser's own */
 body.stqa_preset_list_on #settings_preset_openai {
     pointer-events: none;
@@ -2881,6 +2888,10 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.stqa_backup_card_chat {
+    min-height: 1.2em;
 }
 
 .stqa_backup_card_chat:empty {

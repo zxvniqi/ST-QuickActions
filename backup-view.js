@@ -185,8 +185,30 @@ async function chatNames() {
     }
 }
 
-// Backup file -> the mark of the chat it is from (backups never change, so read once)
-const backupMarks = new Map();
+// Backup file -> the mark of the chat it is from. Backups never change, so each is read once and
+// remembered on this device (only backups made since need reading the next time)
+const MARKS_KEY = 'stqa_backup_marks';
+const backupMarks = (() => {
+    try {
+        return new Map(Object.entries(JSON.parse(localStorage.getItem(MARKS_KEY) ?? '{}')));
+    } catch {
+        return new Map();
+    }
+})();
+let marksSaveTimer = null;
+
+function saveMarks() {
+    clearTimeout(marksSaveTimer);
+    marksSaveTimer = setTimeout(() => {
+        try {
+            // Backups ST has since deleted are dropped once the list grows long
+            const entries = [...backupMarks].slice(-2000);
+            localStorage.setItem(MARKS_KEY, JSON.stringify(Object.fromEntries(entries)));
+        } catch {
+            // Only slower next time
+        }
+    }, 500);
+}
 
 /**
  * The chat mark in a backup's first line. Only that line is read: the download is cut off as soon
@@ -221,13 +243,14 @@ async function markOf(file) {
         // No mark: the name stays unknown
     }
     backupMarks.set(file, mark);
+    saveMarks();
     return mark;
 }
 
 /** Fills in each card's chat name, a few backups at a time (cards redrawn meanwhile are skipped). */
 async function fillChatNames(cards, chats) {
-    // The backups are read while the chat list is still coming
-    const queue = [...cards];
+    // The backups are read while the chat list is still coming; remembered ones need no reading
+    const queue = [...cards].sort((a, b) => Number(backupMarks.has(b[1])) - Number(backupMarks.has(a[1])));
     const worker = async () => {
         while (queue.length) {
             const [card, file] = queue.shift();
@@ -243,7 +266,8 @@ async function fillChatNames(cards, chats) {
             }
         }
     };
-    await Promise.all([worker(), worker(), worker(), worker()]);
+    // Six backups read at a time
+    await Promise.all(Array.from({ length: 6 }, worker));
 }
 
 /** Shows a backup as a chat, with the name of the chat it is from. */
@@ -366,7 +390,11 @@ async function openBackups() {
             const card = document.createElement('div');
             card.className = 'stqa_trash_item stqa_backup_card';
             card.innerHTML = '<div class="stqa_backup_card_text"><b></b><span class="stqa_backup_card_chat"></span><small></small></div><div class="stqa_backup_card_actions"></div>';
-            showAll || named.push([card, backup.file_name]);
+            if (!showAll && !context.groupId) {
+                // "…" until the chat's name is found
+                card.querySelector('.stqa_backup_card_chat').textContent = '…';
+                named.push([card, backup.file_name]);
+            }
             card.querySelector('b').textContent = timeOf(backup.file_name);
             const small = card.querySelector('small');
             small.innerHTML = '<i class="fa-solid fa-comment"></i> ';
@@ -400,7 +428,7 @@ async function openBackups() {
             card.addEventListener('click', view);
             list.append(card);
         }
-        if (named.length && !SillyTavern.getContext().groupId) {
+        if (named.length) {
             fillChatNames(named, chats ??= chatNames()).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
         }
     };

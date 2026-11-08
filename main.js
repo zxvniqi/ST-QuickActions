@@ -29,6 +29,7 @@ import { initMessageTrash, applyMessageTrash } from './message-trash.js';
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
 import { initKoFill } from './ko-fill.js';
+import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
 
 const TOOLBAR_POSITIONS = [
@@ -72,7 +73,7 @@ const TABS = Object.freeze([
             ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 어떤 단어를 다른 단어로 한꺼번에 바꿉니다(예: 상태창의 2024를 2205로). 다른 답변(스와이프)과 번역문도 같이 바꾸며, 답변을 만드는 중에는 쓸 수 없습니다.'],
             ['chatSearch', '채팅에서 찾기', '옵션 메뉴에 "채팅에서 찾기"가 생깁니다. 누르면 채팅 위쪽(상단 바 아래)에 검색칸이, 입력창 자리에 ▲ ▼ ✕ 버튼이 뜹니다. 단어를 적으면 그 단어가 가장 아래(최근)에 나온 곳으로 이동해 형광펜을 칠하고, 지금 보는 곳은 진한 주황색으로 표시합니다. ▲ 는 다음 결과(위쪽), ▼ 는 이전 결과(아래쪽)로 가며, 한 메시지에 여러 번 나오면 그 안에서 하나씩 옮겨 갑니다. 폰에서는 엔터를 누르면 검색만 하고 키보드가 내려가며(다음 결과로는 ▲ 로 갑니다), 컴퓨터에서는 엔터를 누를 때마다 다음 결과로 갑니다. 아래 칸에는 "몇 번째 메시지 · 그 안에서 몇 번째"가 보입니다. 화면에 보이는 글에서 찾으며, 아직 불러오지 않은 옛 메시지도 찾아서 불러옵니다. ✕ 로 닫습니다.'],
             ['errorLog', '오류 알림 자세히 보기', '빨간 오류 알림에 돋보기 버튼이 생깁니다. 누르면 최근 오류 내용이 창으로 뜨고(알림 자체를 누르면 원래처럼 닫힙니다), 복사·닫기 버튼으로 복사하거나 닫을 수 있습니다. 서버가 돌려준 오류 응답(답변 생성 실패 때 API가 보낸 오류 문구 등), 화면 쪽 스크립트 오류, 오류 알림 문구를 최근 30개까지 모아 둡니다. 서버(터묵스) 화면에 찍힌 글 자체는 브라우저에서 읽을 수 없어서, 서버가 돌려준 내용까지만 보입니다. 모아 둔 내용은 새로고침하면 사라집니다.'],
-            ['welcomeRecent', '시작 화면에 최근 채팅 펼치기', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지를 숨기고, 최근 채팅 목록을 모두 펼쳐서 보여 줍니다.'],
+            ['welcomeRecent', '시작 화면에 최근 채팅 펼치기', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지, ST 로고와 버전, 도움말·GitHub·Discord 링크와 임시 채팅 버튼을 숨기고, 최근 채팅 목록을 모두 펼쳐서 보여 줍니다.'],
         ],
     },
     {
@@ -350,18 +351,11 @@ function extrasFor(key) {
             }
         }));
     } else if (key === 'messageTrash') {
-        const days = document.createElement('label');
-        days.className = 'stqa_trash_days';
-        days.innerHTML = '<span>보관 기간</span><input class="text_pole" type="number" min="1" max="30" step="1"><span>일 (1~30)</span>';
-        const input = days.querySelector('input');
-        input.value = settings.trashDays;
-        input.addEventListener('change', () => {
-            const value = Math.min(30, Math.max(1, Math.round(Number(input.value)) || 7));
-            input.value = value;
-            settings.trashDays = value;
+        const days = Array.from({ length: 30 }, (_, index) => ({ value: String(index + 1), label: `보관 기간: ${index + 1}일` }));
+        select(days, String(settings.trashDays), (value) => {
+            settings.trashDays = Number(value);
             saveSettings();
         });
-        extra.append(days);
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }
@@ -447,6 +441,7 @@ function addMenuButton() {
     initSaveGuard();
     initErrorLog();
     initVertexProfileFix().catch(error => console.error(`[${MODULE}] Vertex AI profile fix failed`, error));
+    initPromptRenderFix().catch(error => console.error(`[${MODULE}] Prompt manager fix failed`, error));
     initDeleteButton();
     initChatPicker();
     initNameOverride();
