@@ -1,16 +1,12 @@
-// ST's chat backups list (Chat History → Backups), made easier to use: only the open character's
-// (or group's) backups are listed, by the time they were saved instead of their file name, and the
-// eye button shows a backup as a chat, with what the chat open now lacks marked. ST's own restore
-// (a new chat, the open one untouched) and delete buttons stay as they are.
+// ST's chat backups (Chat History → Backups), made easier to use: the button opens a window instead
+// of a long list under the chats, with only the open character's (or group's) backups, by the time
+// they were saved instead of their file name. A backup shows as a chat, with what the chat open now
+// lacks marked; restoring makes a new chat (the open one untouched), as ST's own restore does.
 import { MODULE, isOn } from './settings.js';
+import { displayPastChats, importCharacterChat } from '../../../../script.js';
+import { importGroupChat } from '../../../group-chats.js';
 
 const TITLE = '편의성 모음';
-const LIST = '.chatBackupsList';
-const ITEM = '.chatBackupsListItem';
-const OTHER_CLASS = 'stqa_backup_other';
-
-// Whether the other characters' backups are shown too (per list opening)
-let showAll = false;
 
 /** SHA-256 of a text (UTF-8), in hex: ST names backups of non-ASCII names with part of it. */
 function sha256(text) {
@@ -68,14 +64,19 @@ function backupKey(name) {
     return /[^\x20-\x7E]/.test(name) ? `${sanitized}_${sha256(name).slice(0, 8)}` : sanitized;
 }
 
-/** The start of the open character's (or group's) backup file names. */
-function ownPrefix() {
+/** The open character (or group): its name, and the start of its backup file names. */
+function owner() {
     const context = SillyTavern.getContext();
-    const owner = context.groupId ? String(context.groupId) : context.characters[context.characterId]?.avatar?.replace(/\.png$/, '');
-    return owner ? `chat_${backupKey(owner)}_` : null;
+    if (context.groupId) {
+        const group = context.groups?.find(item => String(item.id) === String(context.groupId));
+        return { name: group?.name ?? '그룹', prefix: `chat_${backupKey(String(context.groupId))}_` };
+    }
+    const character = context.characters[context.characterId];
+    return character?.avatar ? { name: character.name, prefix: `chat_${backupKey(character.avatar.replace(/\.png$/, ''))}_` } : null;
 }
 
 const isOwn = (file, prefix) => Boolean(prefix) && file.startsWith(prefix) && /^\d{8}-\d{6}\.jsonl$/.test(file.slice(prefix.length));
+const stamp = file => file.match(/(\d{8}-\d{6})\.jsonl$/)?.[1] ?? '';
 
 /** "20261107-102011" in a backup file name, as a readable time. */
 function timeOf(file) {
@@ -85,8 +86,64 @@ function timeOf(file) {
 
 const fingerprint = message => `${message.send_date}\u0001${message.name}\u0001${message.mes}`;
 
+function button(icon, text, onClick, caution = false) {
+    const element = document.createElement('div');
+    element.className = `menu_button menu_button_icon${caution ? ' caution' : ''}`;
+    element.innerHTML = `<i class="fa-solid ${icon}"></i><span></span>`;
+    element.querySelector('span').textContent = text;
+    element.addEventListener('click', onClick);
+    return element;
+}
+
+/** ST's own restore: the backup comes in as a new chat of the open character, which then opens. */
+async function restoreBackup(file) {
+    const context = SillyTavern.getContext();
+    const response = await fetch('/api/backups/chat/download', {
+        method: 'POST',
+        headers: context.getRequestHeaders(),
+        body: JSON.stringify({ name: file }),
+    });
+    if (!response.ok) {
+        toastr.error('백업을 불러오지 못했습니다.', TITLE);
+        return false;
+    }
+    const form = new FormData();
+    form.set('file_type', 'jsonl');
+    form.set('avatar', new File([await response.blob()], file, { type: 'application/octet-stream' }));
+    form.set('avatar_url', context.characters[context.characterId]?.avatar || '');
+    form.set('user_name', context.name1);
+    form.set('character_name', context.name2);
+    const result = await (context.groupId ? importGroupChat : importCharacterChat)(form, { refresh: false });
+    if (!result?.length) {
+        toastr.error('백업을 새 채팅으로 불러오지 못했습니다.', TITLE);
+        return false;
+    }
+    toastr.success(`새 채팅으로 불러왔습니다: ${result.join(', ')}`, TITLE);
+    await displayPastChats(result);
+    return true;
+}
+
+async function deleteBackup(file) {
+    const response = await fetch('/api/backups/chat/delete', {
+        method: 'POST',
+        headers: SillyTavern.getContext().getRequestHeaders(),
+        body: JSON.stringify({ name: file }),
+    });
+    response.ok || toastr.error('백업을 지우지 못했습니다.', TITLE);
+    return response.ok;
+}
+
+function ask(title, text, okButton) {
+    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
+    const content = document.createElement('div');
+    content.innerHTML = '<h3></h3><div></div>';
+    content.querySelector('h3').textContent = title;
+    content.querySelector('div').textContent = text;
+    return new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton, cancelButton: '취소' }).show();
+}
+
 /** Shows a backup as a chat; messages the open chat doesn't have (or has differently) are marked. */
-async function viewBackup(file, item) {
+async function viewBackup(file, closeList) {
     const context = SillyTavern.getContext();
     const { Popup, POPUP_TYPE } = context;
     const response = await fetch('/api/backups/chat/download', {
@@ -162,14 +219,6 @@ async function viewBackup(file, item) {
     });
 
     const tools = content.querySelector('.stqa_backup_tools');
-    const button = (icon, text, onClick) => {
-        const element = document.createElement('div');
-        element.className = 'menu_button menu_button_icon';
-        element.innerHTML = `<i class="fa-solid ${icon}"></i><span></span>`;
-        element.querySelector('span').textContent = text;
-        element.addEventListener('click', onClick);
-        return element;
-    };
     let onlyDiffering = false;
     const filter = button('fa-filter', '다른 메시지만 보기', () => {
         onlyDiffering = !onlyDiffering;
@@ -178,98 +227,103 @@ async function viewBackup(file, item) {
     });
     differing && tools.append(filter);
     let popup = null;
-    tools.append(button('fa-rotate-left', '새 채팅으로 불러오기', () => {
-        // ST's own restore: the backup comes in as a new chat, the open one stays as it is
-        popup?.completeCancelled();
-        item.querySelector('.fa-rotate-left')?.click();
+    tools.append(button('fa-rotate-left', '새 채팅으로 불러오기', async () => {
+        if (await restoreBackup(file)) {
+            popup?.completeCancelled();
+            closeList?.();
+        }
     }));
 
     popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, large: true, allowVerticalScrolling: true });
     await popup.show();
 }
 
-/** The list as ST drew it: other characters' backups hidden, the open one's made readable. */
-function decorate(list) {
-    const prefix = ownPrefix();
-    const items = [...list.querySelectorAll(`:scope > ${ITEM}`)];
-    if (!items.length) {
+/** The backups window: the open character's backups, newest first (all of them on request). */
+async function openBackups() {
+    const context = SillyTavern.getContext();
+    const { Popup, POPUP_TYPE } = context;
+    const response = await fetch('/api/backups/chat/get', { method: 'POST', headers: context.getRequestHeaders() });
+    if (!response.ok) {
+        toastr.error('백업 목록을 불러오지 못했습니다.', TITLE);
         return;
     }
-    let own = 0;
-    for (const item of items) {
-        const name = item.querySelector('.chatBackupsListItemName');
-        const file = item.dataset.stqaFile ?? name?.textContent ?? '';
-        item.dataset.stqaFile = file;
-        const mine = isOwn(file, prefix);
-        own += mine ? 1 : 0;
-        item.classList.toggle(OTHER_CLASS, !mine);
-        if (mine && name && name.title !== file) {
-            name.textContent = timeOf(file);
-            name.title = file;
+    const backups = (await response.json()).sort((a, b) => stamp(b.file_name).localeCompare(stamp(a.file_name)));
+    const who = owner();
+    let showAll = !who;
+    let popup = null;
+    const content = document.createElement('div');
+    content.className = 'stqa_trash stqa_backup_list';
+
+    const render = () => {
+        const shown = showAll ? backups : backups.filter(backup => isOwn(backup.file_name, who.prefix));
+        content.innerHTML = '<h3></h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
+        content.querySelector('h3').textContent = showAll ? '모든 백업' : `${who.name}의 백업`;
+        content.querySelector('.stqa_hint').textContent = `ST가 채팅을 저장할 때 자동으로 남긴 백업 ${shown.length}개입니다(캐릭터마다 최근 것만 남습니다). 누르면 채팅처럼 봅니다.`;
+        const list = content.querySelector('.stqa_trash_items');
+        if (!shown.length) {
+            list.innerHTML = '<div class="stqa_hint">백업이 없습니다.</div>';
         }
-    }
-    list.classList.toggle('stqa_backup_show_all', showAll);
-    let bar = list.querySelector(':scope > .stqa_backup_bar');
-    if (!bar) {
-        bar = document.createElement('div');
-        bar.className = 'stqa_backup_bar';
-        bar.innerHTML = '<span></span><div class="menu_button menu_button_icon"><i class="fa-solid fa-users"></i><span></span></div>';
-        bar.querySelector('.menu_button').addEventListener('click', () => {
-            showAll = !showAll;
-            list.classList.toggle('stqa_backup_show_all', showAll);
-            bar.querySelector('.menu_button span').textContent = showAll ? '이 캐릭터 것만 보기' : '모든 캐릭터 보기';
-        });
-        list.prepend(bar);
-    }
-    bar.querySelector(':scope > span').textContent = prefix ? `이 캐릭터의 백업 ${own}개` : '열린 채팅이 없어 모든 백업을 보여 줍니다.';
-    bar.querySelector('.menu_button span').textContent = showAll ? '이 캐릭터 것만 보기' : '모든 캐릭터 보기';
-    list.classList.toggle('stqa_backup_no_owner', !prefix);
+        for (const backup of shown) {
+            const card = document.createElement('div');
+            card.className = 'stqa_trash_item stqa_backup_card';
+            card.innerHTML = '<div class="stqa_backup_card_text"><b></b><small></small></div><div class="stqa_backup_card_actions"></div>';
+            card.querySelector('b').textContent = timeOf(backup.file_name);
+            const own = who && isOwn(backup.file_name, who.prefix);
+            card.querySelector('small').textContent = `메시지 ${backup.chat_items ?? '?'}개 · ${backup.file_size ?? ''}${own ? '' : ` · ${backup.file_name}`}`;
+            const actions = card.querySelector('.stqa_backup_card_actions');
+            const icon = (name, title, onClick, caution = false) => {
+                const element = document.createElement('div');
+                element.className = `menu_button fa-solid ${name}${caution ? ' caution' : ''}`;
+                element.title = title;
+                element.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    onClick();
+                });
+                actions.append(element);
+            };
+            icon('fa-rotate-left', '새 채팅으로 불러오기', async () => {
+                if (await restoreBackup(backup.file_name)) {
+                    popup?.completeCancelled();
+                }
+            });
+            icon('fa-trash', '백업 삭제', async () => {
+                if (await ask('백업 삭제', `${timeOf(backup.file_name)} 백업을 지웁니다. 되돌릴 수 없습니다.`, '삭제') && await deleteBackup(backup.file_name)) {
+                    backups.splice(backups.indexOf(backup), 1);
+                    render();
+                }
+            }, true);
+            card.addEventListener('click', () => viewBackup(backup.file_name, () => popup?.completeCancelled())
+                .catch(error => console.error(`[${MODULE}] Backup view failed`, error)));
+            list.append(card);
+        }
+        if (who) {
+            const bottom = document.createElement('div');
+            bottom.className = 'stqa_trash_bottom';
+            bottom.append(button(showAll ? 'fa-user' : 'fa-users', showAll ? `${who.name}의 백업만 보기` : '모든 캐릭터 보기', () => {
+                showAll = !showAll;
+                render();
+            }));
+            content.append(bottom);
+        }
+    };
+
+    render();
+    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true });
+    await popup.show();
 }
 
-/** The eye button on one of the backups shows it as a chat (ours instead of ST's text box). */
-function onListClick(event) {
+/** ST's Backups button (beside the chat search) opens our window instead of its list. */
+function onClick(event) {
     if (!isOn('backupView')) {
         return;
     }
-    const eye = event.target.closest(`${ITEM} .fa-eye`);
-    const item = eye?.closest(ITEM);
-    if (!item?.dataset.stqaFile) {
+    const target = event.target.closest('button, .menu_button');
+    if (!target?.querySelector(':scope > .fa-box-open') || target.nextElementSibling?.id !== 'select_chat_search') {
         return;
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    viewBackup(item.dataset.stqaFile, item).catch(error => console.error(`[${MODULE}] Backup view failed`, error));
-}
-
-let watcher = null;
-
-function watch(list) {
-    if (list.dataset.stqaWatched) {
-        return;
-    }
-    list.dataset.stqaWatched = '1';
-    list.addEventListener('click', onListClick, true);
-    // ST fills the list when it is opened (and empties it when closed)
-    let pending = false;
-    new MutationObserver(() => {
-        if (pending || !isOn('backupView')) {
-            return;
-        }
-        pending = true;
-        // Once ST has added all of them
-        setTimeout(() => {
-            pending = false;
-            if (!list.querySelector(`:scope > ${ITEM}`)) {
-                showAll = false;
-                return;
-            }
-            try {
-                decorate(list);
-            } catch (error) {
-                console.error(`[${MODULE}] Backup list failed`, error);
-            }
-        }, 0);
-    }).observe(list, { childList: true });
+    openBackups().catch(error => console.error(`[${MODULE}] Backups failed`, error));
 }
 
 export function applyBackupView() {
@@ -277,21 +331,6 @@ export function applyBackupView() {
 }
 
 export function initBackupView() {
-    // ST adds its list beside the chat list the first time the chat history is shown: only that
-    // box is watched until then
-    const found = document.querySelector(LIST);
-    const box = document.getElementById('select_chat_div')?.parentNode;
-    if (found) {
-        watch(found);
-    } else if (box) {
-        watcher = new MutationObserver(() => {
-            const list = box.querySelector(`:scope > ${LIST}`);
-            if (list) {
-                watcher.disconnect();
-                watch(list);
-            }
-        });
-        watcher.observe(box, { childList: true });
-    }
+    document.addEventListener('click', onClick, true);
     applyBackupView();
 }

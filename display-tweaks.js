@@ -143,11 +143,11 @@ const WAND_HOLD_MS = 450;
 const WAND_TIP_MS = 1500;
 
 /**
- * Wand menu as icons: holding an icon shows its name in a small label above it (phones show no
- * tooltips), and that press doesn't run the item. A computer shows the tooltip on hover.
+ * A menu as icons (the wand menu, the Options menu): holding an icon shows its name in a small
+ * label above it (phones show no tooltips), and that press doesn't run the item. A computer shows
+ * the tooltip on hover.
  */
-function enableWandNames() {
-    const menu = document.getElementById('extensionsMenu');
+function enableIconNames(menu, itemSelector, setting) {
     if (!menu) {
         return;
     }
@@ -176,8 +176,8 @@ function enableWandNames() {
         press = null;
     };
     menu.addEventListener('pointerdown', (event) => {
-        const item = event.target.closest('.list-group-item');
-        if (!isOn('wandGrid') || !item) {
+        const item = event.target.closest(itemSelector);
+        if (!isOn(setting) || !item) {
             return;
         }
         swallowClick = false;
@@ -204,18 +204,22 @@ function enableWandNames() {
         }
     }, true);
     menu.addEventListener('contextmenu', (event) => {
-        if (isOn('wandGrid') && event.target.closest('.list-group-item')) {
+        if (isOn(setting) && event.target.closest(itemSelector)) {
             event.preventDefault();
         }
     });
 }
 
+/** Icons only: the name stays as the tooltip. */
+function nameAsTitle(items) {
+    document.querySelectorAll(items).forEach(item => !item.title && (item.title = item.textContent.trim()));
+}
+
 export function applyDisplayTweaks() {
     document.body.classList.toggle('stqa_wand_grid', isOn('wandGrid'));
-    if (isOn('wandGrid')) {
-        // Icons only: the name stays as the tooltip
-        document.querySelectorAll('#extensionsMenu .list-group-item:not([title])').forEach(item => (item.title = item.textContent.trim()));
-    }
+    isOn('wandGrid') && nameAsTitle('#extensionsMenu .list-group-item');
+    document.body.classList.toggle('stqa_options_grid', isOn('optionsGrid'));
+    isOn('optionsGrid') && nameAsTitle('#options .options-content > a');
     document.body.classList.toggle('stqa_welcome_recent', isOn('welcomeRecent'));
     document.body.classList.toggle('stqa_hide_hints', isOn('hideSettingHints'));
     syncPlaceholder();
@@ -227,7 +231,11 @@ export function applyDisplayTweaks() {
 
 export function initDisplayTweaks() {
     watchAvatars();
-    enableWandNames();
+    enableIconNames(document.getElementById('extensionsMenu'), '.list-group-item', 'wandGrid');
+    const options = document.querySelector('#options .options-content');
+    enableIconNames(options, '.options-content > a', 'optionsGrid');
+    // Items other extensions add later get their names as tooltips too
+    options && new MutationObserver(() => isOn('optionsGrid') && nameAsTitle('#options .options-content > a')).observe(options, { childList: true });
     // ST sets the placeholder again (language, chat changes); the start screen is drawn into the chat
     const input = document.getElementById('send_textarea');
     if (input) {

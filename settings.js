@@ -36,6 +36,7 @@ const defaultSettings = Object.freeze({
     translatePrompt: '',
     welcomeRecent: false,
     wandGrid: false,
+    optionsGrid: false,
     // {{char}} and {{user}} names swapped while on
     nameSwap: false,
     deleteButton: true,

@@ -1663,6 +1663,52 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     -webkit-user-select: none;
 }
 
+/* Options menu as a grid of icons (separator lines have no place in it) */
+body.stqa_options_grid #options .options-content {
+    display: grid !important;
+    grid-template-columns: repeat(4, 44px);
+    grid-auto-rows: 40px;
+    gap: 4px;
+    padding: 6px !important;
+    width: max-content !important;
+}
+
+body.stqa_options_grid #options .options-content > hr {
+    display: none !important;
+}
+
+body.stqa_options_grid #options .options-content > a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 44px;
+    height: 40px;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 10px;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    gap: 0 !important;
+    overflow: hidden;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body.stqa_options_grid #options .options-content > a > :not([class*="fa-"]) {
+    display: none !important;
+}
+
+body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
+    width: 20px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 16px !important;
+    line-height: 20px !important;
+    text-align: center;
+}
+
 /* 채팅에서 찾기: the box above the chat, the buttons in place of the input, and the marked word */
 #stqa_search_top {
     flex: none;
@@ -2798,25 +2844,42 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     margin: 0;
 }
 
-/* Chat backups list and backup view */
-body.stqa_backup_view_on .chatBackupsList:not(.stqa_backup_show_all):not(.stqa_backup_no_owner) > .stqa_backup_other {
-    display: none;
+/* Backups window and a backup shown as a chat. Bubbles take their colors from the theme's text
+   colors (the message tints are meant over a blurred picture and can be solid black) */
+.stqa_backup_card {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
 }
 
-body:not(.stqa_backup_view_on) .stqa_backup_bar {
-    display: none;
+.stqa_backup_card_text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
 }
 
-.stqa_backup_bar {
+.stqa_backup_card_text small {
+    opacity: 0.75;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_card_actions {
+    display: flex;
+    gap: 4px;
+    flex: none;
+}
+
+.stqa_backup_card_actions .menu_button {
+    margin: 0;
+    width: 34px;
+    height: 34px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    padding: 4px 2px;
-}
-
-.stqa_backup_bar .menu_button {
-    margin: 0;
+    justify-content: center;
 }
 
 .stqa_backup_view {
@@ -2849,20 +2912,22 @@ body:not(.stqa_backup_view_on) .stqa_backup_bar {
 }
 
 .stqa_backup_message {
-    padding: 6px 8px;
+    padding: 6px 10px;
     border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 8px;
-    background-color: var(--SmartThemeBotMesBlurTintColor);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: var(--SmartThemeBodyColor);
     cursor: pointer;
 }
 
 .stqa_backup_message.stqa_backup_user {
-    background-color: var(--SmartThemeUserMesBlurTintColor);
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
 }
 
 .stqa_backup_message .mes_text {
     max-height: 8em;
     overflow: hidden;
+    color: inherit;
 }
 
 .stqa_backup_message.stqa_backup_open .mes_text {
@@ -2874,6 +2939,7 @@ body:not(.stqa_backup_view_on) .stqa_backup_bar {
     gap: 6px;
     align-items: baseline;
     font-size: 0.9em;
+    opacity: 0.85;
 }
 
 .stqa_backup_missing,
@@ -2888,4 +2954,73 @@ body:not(.stqa_backup_view_on) .stqa_backup_bar {
 
 .stqa_backup_only_differing > .stqa_backup_message:not(.stqa_backup_missing):not(.stqa_backup_changed) {
     display: none;
+}
+
+/* Swipe list: one card per swipe, the one on show marked */
+.stqa_swipe_card {
+    cursor: pointer;
+}
+
+.stqa_swipe_card.stqa_swipe_current {
+    border-width: 2px;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_swipe_card_head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+}
+
+.stqa_swipe_card_head input {
+    margin: 0;
+}
+
+.stqa_swipe_card_head .menu_button {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stqa_swipe_number {
+    font-weight: bold;
+}
+
+.stqa_swipe_now {
+    padding: 0 6px;
+    border-radius: 999px;
+    background-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBlurTintColor);
+    font-size: 0.85em;
+}
+
+.stqa_swipe_size {
+    margin-left: auto;
+    opacity: 0.6;
+}
+
+.stqa_swipe_card_text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    font-size: 0.9em;
+    line-height: 1.4;
+    opacity: 0.9;
+    word-break: break-word;
+}
+
+.stqa_swipe_list:not(.stqa_trash_picking) .stqa_swipe_card_head input {
+    display: none;
+}
+
+.stqa_swipe_list.stqa_trash_picking .stqa_swipe_card.stqa_swipe_ticked {
+    border-color: var(--SmartThemeQuoteColor);
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
 }

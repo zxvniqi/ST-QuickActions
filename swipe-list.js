@@ -3,6 +3,7 @@
 // swipe deletion, so they go to the trash like any other).
 import { MODULE, isOn } from './settings.js';
 import { deleteSwipe } from '../../../../script.js';
+import { showFullText } from './message-trash.js';
 
 const TITLE = '편의성 모음';
 const COUNTERS = '#chat .swipes-counter, #chat .stqa_footer_count';
@@ -56,7 +57,8 @@ async function openList(messageId) {
     };
 
     const render = () => {
-        content.innerHTML = '<h3></h3><div class="stqa_hint">누르면 그 스와이프로 바꿉니다.</div><div class="stqa_trash_items"></div>';
+        content.innerHTML = '<h3></h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
+        content.querySelector('.stqa_hint').textContent = picking ? '지울 스와이프를 누르세요. 하나는 남아야 합니다.' : '누르면 그 스와이프로 바꿉니다. 카드 오른쪽 위 버튼은 크게 보기입니다.';
         content.querySelector('h3').textContent = `#${messageId} ${message.name ?? ''}의 스와이프 ${message.swipes.length}개`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
@@ -86,26 +88,49 @@ async function openList(messageId) {
             deleteTicked.querySelector('span').textContent = `선택한 ${ticked}개 삭제`;
             deleteTicked.hidden = !ticked;
         };
+        const total = message.swipes.length;
         message.swipes.forEach((text, index) => {
-            const line = document.createElement('label');
-            line.className = `checkbox_label stqa_trash_message${index === (message.swipe_id ?? 0) ? ' stqa_swipe_current' : ''}`;
-            line.innerHTML = '<input type="checkbox"><span></span>';
-            line.querySelector('span').textContent = `${index + 1}${index === (message.swipe_id ?? 0) ? ' (지금)' : ''}: ${plain(text).slice(0, 100) || '(빈 스와이프)'}`;
-            const box = line.querySelector('input');
+            const current = index === (message.swipe_id ?? 0);
+            const card = document.createElement('div');
+            card.className = `stqa_trash_item stqa_swipe_card${current ? ' stqa_swipe_current' : ''}`;
+            card.innerHTML = `
+                <div class="stqa_swipe_card_head">
+                    <input type="checkbox">
+                    <span class="stqa_swipe_number"></span>
+                    ${current ? '<span class="stqa_swipe_now">지금</span>' : ''}
+                    <span class="stqa_swipe_size"></span>
+                    <div class="menu_button fa-solid fa-expand" title="크게 보기"></div>
+                </div>
+                <div class="stqa_swipe_card_text"></div>`;
+            card.querySelector('.stqa_swipe_number').textContent = `${index + 1} / ${total}`;
+            card.querySelector('.stqa_swipe_size').textContent = `${String(text ?? '').length.toLocaleString()}자`;
+            card.querySelector('.stqa_swipe_card_text').textContent = plain(text).slice(0, 400) || '(빈 스와이프)';
+            const box = card.querySelector('input');
             boxes.push(box);
-            box.addEventListener('change', count);
-            line.addEventListener('click', (event) => {
+            const sync = () => {
+                card.classList.toggle('stqa_swipe_ticked', box.checked);
+                count();
+            };
+            box.addEventListener('change', sync);
+            box.addEventListener('click', event => event.stopPropagation());
+            card.querySelector('.fa-expand').addEventListener('click', (event) => {
+                event.stopPropagation();
+                showFullText(`#${messageId} ${message.name ?? ''} · 스와이프 ${index + 1}`, text, message);
+            });
+            // Picking: a tap ticks the card; otherwise it shows that swipe in the chat
+            card.addEventListener('click', () => {
                 if (picking) {
+                    box.checked = !box.checked;
+                    sync();
                     return;
                 }
-                event.preventDefault();
                 if (blocked()) {
                     return;
                 }
                 popup?.completeCancelled();
                 goTo(messageId, index).catch(error => console.error(`[${MODULE}] Swipe failed`, error));
             });
-            list.append(line);
+            list.append(card);
         });
         count();
         const bottom = document.createElement('div');
@@ -123,7 +148,10 @@ async function openList(messageId) {
 
     render();
     popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true });
-    await popup.show();
+    const shown = popup.show();
+    // The swipe on show in sight
+    requestAnimationFrame(() => content.querySelector('.stqa_swipe_current')?.scrollIntoView({ block: 'center' }));
+    await shown;
 }
 
 function onClick(event) {
