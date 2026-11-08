@@ -1666,7 +1666,7 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
 /* Options menu as a grid of icons (separator lines have no place in it) */
 body.stqa_options_grid #options .options-content {
     display: grid !important;
-    grid-template-columns: repeat(4, 44px);
+    grid-template-columns: repeat(2, 44px);
     grid-auto-rows: 40px;
     gap: 4px;
     padding: 6px !important;
@@ -2793,6 +2793,10 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     cursor: pointer;
 }
 
+.stqa_trash_head.stqa_trash_single input[type="checkbox"] {
+    display: none;
+}
+
 body.stqa_swipe_list_on #chat .swipes-counter,
 body.stqa_swipe_list_on #chat .stqa_footer_count {
     cursor: pointer;
@@ -3023,4 +3027,54 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
 .stqa_swipe_list.stqa_trash_picking .stqa_swipe_card.stqa_swipe_ticked {
     border-color: var(--SmartThemeQuoteColor);
     background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+/* Backups window: the title and the all-characters switch on one line; the list and a backup's
+   messages scroll inside, so the window stays its own size */
+.stqa_backup_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_backup_head h3 {
+    margin: 0;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_head .menu_button {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_backup_scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_backup_view .stqa_backup_messages {
+    max-height: 62vh;
+    overflow-y: auto;
+}
+
+.stqa_backup_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_backup_chip {
+    padding: 1px 9px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    font-size: 0.85em;
+}
+
+.stqa_backup_chip_accent {
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeQuoteColor);
 }

@@ -450,8 +450,7 @@ async function openTrash() {
     const render = async () => {
         const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
         const days = keepDays();
-        content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('.stqa_hint').textContent = `이 채팅에서 지운 메시지와 스와이프입니다. 지운 지 ${days}일이 지나면 완전히 지워집니다. 누르면 전체 내용을 봅니다.`;
+        content.innerHTML = '<h3>휴지통</h3><div class="stqa_trash_items"></div>';
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         if (!items.length) {
@@ -502,6 +501,8 @@ async function openTrash() {
                 block.append(line);
             }
             head.addEventListener('click', event => picking || event.preventDefault());
+            // One entry: its own box is enough
+            head.classList.toggle('stqa_trash_single', own.length === 1);
             // The group's box ticks all of its entries
             head.querySelector('input').addEventListener('change', (event) => {
                 own.forEach(box => (box.checked = event.target.checked));

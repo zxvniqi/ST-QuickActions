@@ -57,9 +57,8 @@ async function openList(messageId) {
     };
 
     const render = () => {
-        content.innerHTML = '<h3></h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('.stqa_hint').textContent = picking ? '지울 스와이프를 누르세요. 하나는 남아야 합니다.' : '누르면 그 스와이프로 바꿉니다. 카드 오른쪽 위 버튼은 크게 보기입니다.';
-        content.querySelector('h3').textContent = `#${messageId} ${message.name ?? ''}의 스와이프 ${message.swipes.length}개`;
+        content.innerHTML = '<h3></h3><div class="stqa_trash_items"></div>';
+        content.querySelector('h3').textContent = `#${messageId} ${message.name ?? ''} · 스와이프 ${message.swipes.length}`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
         const boxes = [];

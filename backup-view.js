@@ -191,15 +191,22 @@ async function viewBackup(file, closeList) {
     content.className = 'stqa_backup_view';
     content.innerHTML = `
         <h3></h3>
-        <div class="stqa_hint"></div>
+        <div class="stqa_backup_chips"></div>
         <div class="stqa_backup_tools"></div>
         <div class="stqa_backup_messages"></div>`;
     content.querySelector('h3').textContent = timeOf(file);
-    content.querySelector('.stqa_hint').textContent = !sameChat
-        ? `메시지 ${messages.length}개 · 지금 열린 채팅이 아닌 다른 채팅의 백업이라 비교하지 않았습니다.`
-        : differing
-            ? `메시지 ${messages.length}개 · 지금 채팅의 백업 · 지금과 다른 메시지 ${differing}개 (표시된 것)`
-            : `메시지 ${messages.length}개 · 지금 채팅의 백업 · 지금 채팅에 모두 있는 메시지입니다.`;
+    // How many messages, whether it is this chat's backup, and how many differ from it now
+    const chips = content.querySelector('.stqa_backup_chips');
+    const chip = (icon, text, accent = false) => {
+        const element = document.createElement('span');
+        element.className = `stqa_backup_chip${accent ? ' stqa_backup_chip_accent' : ''}`;
+        element.innerHTML = `<i class="fa-solid ${icon}"></i> `;
+        element.append(text);
+        chips.append(element);
+    };
+    chip('fa-comment', String(messages.length));
+    chip(sameChat ? 'fa-link' : 'fa-link-slash', sameChat ? '지금 채팅' : '다른 채팅');
+    differing && chip('fa-pen-to-square', `달라짐 ${differing}`, true);
     const list = content.querySelector('.stqa_backup_messages');
     messages.forEach((message, index) => {
         const bubble = document.createElement('div');
@@ -220,21 +227,21 @@ async function viewBackup(file, closeList) {
 
     const tools = content.querySelector('.stqa_backup_tools');
     let onlyDiffering = false;
-    const filter = button('fa-filter', '다른 메시지만 보기', () => {
+    const filter = button('fa-filter', '달라진 것만', () => {
         onlyDiffering = !onlyDiffering;
         list.classList.toggle('stqa_backup_only_differing', onlyDiffering);
-        filter.querySelector('span').textContent = onlyDiffering ? '모든 메시지 보기' : '다른 메시지만 보기';
+        filter.querySelector('span').textContent = onlyDiffering ? '전체' : '달라진 것만';
     });
     differing && tools.append(filter);
     let popup = null;
-    tools.append(button('fa-rotate-left', '새 채팅으로 불러오기', async () => {
+    tools.append(button('fa-rotate-left', '새 채팅으로', async () => {
         if (await restoreBackup(file)) {
             popup?.completeCancelled();
             closeList?.();
         }
     }));
 
-    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, large: true, allowVerticalScrolling: true });
+    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true });
     await popup.show();
 }
 
@@ -256,9 +263,17 @@ async function openBackups() {
 
     const render = () => {
         const shown = showAll ? backups : backups.filter(backup => isOwn(backup.file_name, who.prefix));
-        content.innerHTML = '<h3></h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
-        content.querySelector('h3').textContent = showAll ? '모든 백업' : `${who.name}의 백업`;
-        content.querySelector('.stqa_hint').textContent = `ST가 채팅을 저장할 때 자동으로 남긴 백업 ${shown.length}개입니다(캐릭터마다 최근 것만 남습니다). 누르면 채팅처럼 봅니다.`;
+        content.innerHTML = '<div class="stqa_backup_head"><h3></h3></div><div class="stqa_trash_items stqa_backup_scroll"></div>';
+        content.querySelector('h3').textContent = `${showAll ? '전체' : who.name} · 백업 ${shown.length}`;
+        // The other characters' backups, or back to this one's
+        if (who) {
+            const toggle = button(showAll ? 'fa-user' : 'fa-users', showAll ? who.name : '전체', () => {
+                showAll = !showAll;
+                render();
+            });
+            toggle.title = showAll ? `${who.name}의 백업만` : '모든 캐릭터의 백업';
+            content.querySelector('.stqa_backup_head').append(toggle);
+        }
         const list = content.querySelector('.stqa_trash_items');
         if (!shown.length) {
             list.innerHTML = '<div class="stqa_hint">백업이 없습니다.</div>';
@@ -269,7 +284,9 @@ async function openBackups() {
             card.innerHTML = '<div class="stqa_backup_card_text"><b></b><small></small></div><div class="stqa_backup_card_actions"></div>';
             card.querySelector('b').textContent = timeOf(backup.file_name);
             const own = who && isOwn(backup.file_name, who.prefix);
-            card.querySelector('small').textContent = `메시지 ${backup.chat_items ?? '?'}개 · ${backup.file_size ?? ''}${own ? '' : ` · ${backup.file_name}`}`;
+            const small = card.querySelector('small');
+            small.innerHTML = '<i class="fa-solid fa-comment"></i> ';
+            small.append(`${backup.chat_items ?? '?'} · ${backup.file_size ?? ''}${own ? '' : ` · ${backup.file_name}`}`);
             const actions = card.querySelector('.stqa_backup_card_actions');
             const icon = (name, title, onClick, caution = false) => {
                 const element = document.createElement('div');
@@ -281,6 +298,9 @@ async function openBackups() {
                 });
                 actions.append(element);
             };
+            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled())
+                .catch(error => console.error(`[${MODULE}] Backup view failed`, error));
+            icon('fa-eye', '보기', view);
             icon('fa-rotate-left', '새 채팅으로 불러오기', async () => {
                 if (await restoreBackup(backup.file_name)) {
                     popup?.completeCancelled();
@@ -292,23 +312,13 @@ async function openBackups() {
                     render();
                 }
             }, true);
-            card.addEventListener('click', () => viewBackup(backup.file_name, () => popup?.completeCancelled())
-                .catch(error => console.error(`[${MODULE}] Backup view failed`, error)));
+            card.addEventListener('click', view);
             list.append(card);
-        }
-        if (who) {
-            const bottom = document.createElement('div');
-            bottom.className = 'stqa_trash_bottom';
-            bottom.append(button(showAll ? 'fa-user' : 'fa-users', showAll ? `${who.name}의 백업만 보기` : '모든 캐릭터 보기', () => {
-                showAll = !showAll;
-                render();
-            }));
-            content.append(bottom);
         }
     };
 
     render();
-    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true });
+    popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
     await popup.show();
 }
 
