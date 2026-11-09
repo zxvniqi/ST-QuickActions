@@ -169,32 +169,28 @@ let settling = 0;
 const scrolledByHand = (chat, spot) => Math.abs(chat.scrollTop - spot.top) > 4 && chat.scrollHeight === spot.height;
 const spotOf = chat => ({ top: chat.scrollTop, height: chat.scrollHeight });
 
-// Moves glide in for this long, easing out, from at most a screen and a half away (a far
-// target is reached in one go first, so nothing long is scrolled through)
-const GLIDE_MS = 260;
-const GLIDE_SCREENS = 1.5;
-const easeOut = p => 1 - (1 - p) ** 3;
+// The longest a move waits for the pictures where it lands
+const PICTURE_WAIT_MS = 300;
 
 /**
- * Where the glide toward `goal` is now. Made by us frame by frame (not the browser's smooth
- * scroll), so it follows a target that moves and stops the moment the user takes over.
+ * Loads and decodes the pictures of the messages a move lands on, before moving. Performance
+ * Optimizer and the like make chat pictures load only when they come near and decode later;
+ * landing on them in one go showed blank boxes that then popped in and pushed the text (a stutter).
  */
-function glider(chat) {
-    const start = performance.now();
-    let offset = null;
-    return (goal) => {
-        if (offset === null) {
-            const reach = chat.clientHeight * GLIDE_SCREENS;
-            offset = Math.max(-reach, Math.min(reach, chat.scrollTop - goal));
-        }
-        const progress = Math.min(1, (performance.now() - start) / GLIDE_MS);
-        return { top: goal + offset * (1 - easeOut(progress)), done: progress === 1 };
-    };
+function preparePictures(messages) {
+    const pictures = messages.filter(Boolean).flatMap(message => [...message.querySelectorAll('.mes_text img')]);
+    if (!pictures.length) {
+        return Promise.resolve();
+    }
+    for (const picture of pictures) {
+        picture.loading === 'lazy' && (picture.loading = 'eager');
+    }
+    const decoded = Promise.all(pictures.map(picture => picture.decode().catch(() => {})));
+    return Promise.race([decoded, new Promise(resolve => setTimeout(resolve, PICTURE_WAIT_MS))]);
 }
 
 function settle(chat, target) {
     const run = ++settling;
-    const glide = glider(chat);
     let frame = 0;
     let steady = 0;
     let last = null;
@@ -213,10 +209,9 @@ function settle(chat, target) {
             chat.removeEventListener('wheel', stopNow);
             return;
         }
-        const { top, done } = glide(target());
-        chat.scrollTo({ top, behavior: 'instant' });
+        chat.scrollTo({ top: target(), behavior: 'instant' });
         spot = spotOf(chat);
-        steady = done && chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
+        steady = chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
         last = chat.scrollTop;
         height = chat.scrollHeight;
         // Until nothing has moved for a while (about half a second), at most about 3 seconds
@@ -237,11 +232,15 @@ function settleAtEnd(top) {
 }
 
 /** The message's top edge at the top of the chat. */
-function settleAtMessage(messageId) {
+async function settleAtMessage(messageId) {
     const chat = document.getElementById('chat');
     const message = chat?.querySelector(`.mes[mesid="${messageId}"]`);
-    message && showForReal([message.previousElementSibling, message, message.nextElementSibling]);
-    message && settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
+    if (!message) {
+        return;
+    }
+    showForReal([message.previousElementSibling, message, message.nextElementSibling]);
+    await preparePictures([message, message.nextElementSibling]);
+    settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
 }
 
 async function scrollToTop() {
@@ -292,37 +291,28 @@ export function showForReal(elements) {
 }
 
 /**
- * Glides a drawn message's top edge to the top of the chat. Messages that change size after it
- * (chat virtualizers shrink the ones out of sight) are left to the browser's scroll anchoring,
- * which keeps the message in place without a visible jump; aligning again every frame after the
- * glide would fight it. One check a moment later puts it right if it still drifted.
+ * Puts a drawn message's top edge at the top of the chat in one go, once its pictures are in.
+ * Messages that change size after it (chat virtualizers shrink the ones out of sight) are left to
+ * the browser's scroll anchoring, which keeps the message in place without a visible jump;
+ * aligning again every frame would fight it. One check a moment later puts it right if it still
+ * drifted.
  */
-function alignMessage(chat, message) {
+async function alignMessage(chat, message) {
     const run = ++settling;
-    const goal = () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top;
-    const align = () => chat.scrollTo({ top: goal(), behavior: 'instant' });
-    const glide = glider(chat);
-    let spot = null;
-    const step = () => {
-        // A newer move, or the user scrolling, takes over
-        if (run !== settling || (spot && scrolledByHand(chat, spot))) {
-            return;
+    await preparePictures([message, message.nextElementSibling]);
+    // A newer move, or the user scrolling meanwhile, takes over
+    if (run !== settling) {
+        return;
+    }
+    const align = () => chat.scrollTo({ top: chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top, behavior: 'instant' });
+    align();
+    const spot = spotOf(chat);
+    setTimeout(() => {
+        // Not after the user started scrolling: that would pull the chat back
+        if (run === settling && !scrolledByHand(chat, spot) && Math.abs(message.getBoundingClientRect().top - chat.getBoundingClientRect().top) > 2) {
+            align();
         }
-        const { top, done } = glide(goal());
-        chat.scrollTo({ top, behavior: 'instant' });
-        spot = spotOf(chat);
-        if (!done) {
-            requestAnimationFrame(step);
-            return;
-        }
-        setTimeout(() => {
-            // Not after the user started scrolling: that would pull the chat back
-            if (run === settling && !scrolledByHand(chat, spot) && Math.abs(message.getBoundingClientRect().top - chat.getBoundingClientRect().top) > 2) {
-                align();
-            }
-        }, 250);
-    };
-    step();
+    }, 250);
 }
 
 /**
