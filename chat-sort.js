@@ -15,10 +15,12 @@ export const CHAT_SORTS = Object.freeze([
 // The time ST writes in chat names and headers: 2026-11-08@14h08m51s683ms (older ones: 2023-5-1 @12h 3m 4s)
 const ST_TIME = /(\d{4})-(\d{1,2})-(\d{1,2})\s?@(\d{1,2})h\s?(\d{1,2})m\s?(\d{1,2})s(?:\s?(\d+)ms)?/;
 
-function parseStTime(text) {
+/** `loose`: also ST's other message time formats (never for chat names: a name "12" is no time). */
+function parseStTime(text, loose = false) {
     const match = String(text ?? '').match(ST_TIME);
     if (!match) {
-        const time = Date.parse(text);
+        // "October 27, 2025 11:02pm", ISO, numbers
+        const time = loose && text ? SillyTavern.getContext().timestampToMoment(text)?.valueOf() : NaN;
         return Number.isFinite(time) ? time : NaN;
     }
     const [, year, month, day, hour, minute, second, ms] = match.map(Number);
@@ -44,7 +46,7 @@ async function madeTime(character, name) {
                 body: JSON.stringify({ ch_name: character.name, file_name: name, avatar_url: character.avatar }),
             });
             const lines = response.ok ? await response.json() : [];
-            time = parseStTime(lines?.[0]?.create_date ?? lines?.[1]?.send_date);
+            time = parseStTime(lines?.[0]?.create_date ?? lines?.[1]?.send_date, true);
         } catch (error) {
             console.warn(`[${MODULE}] Could not read when a chat was made`, error);
         }
