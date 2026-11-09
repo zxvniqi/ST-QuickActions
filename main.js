@@ -105,7 +105,7 @@ const TABS = Object.freeze([
             ['toggleSetChips', '빠른 전환 (항목 켜기·끄기 저장)', '프롬프트 항목 목록 위에 빠른 전환 버튼 줄이 생깁니다. "+ 빠른 전환 추가"를 누르면 지금 켜고 끈 상태를 이름 붙여 저장하고, 저장한 버튼을 누르면 언제든 그 상태로 돌아갑니다. ✎ 를 누르면 덮어쓰기·이름 바꾸기·지우기를 할 수 있고, 프롬프트마다 따로 저장됩니다.'],
             ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 볼 수 있습니다. 화면에 보이는 글만 바뀌고, 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 프롬프트 목록(도구 줄의 ✚ 버튼 옆 文A)과 월드인포(페이지 넘김 옆 文A): 누르면 이름 전체 번역하기, 내용 전체 번역하기, 원문/번역문으로 보기, 이름 번역 전체 지우기, 내용 번역 전체 지우기, 저장한 번역 모두 지우기 메뉴가 열립니다. 월드인포 버튼은 월드인포를 고른 뒤에만 보입니다.\n· 프롬프트 편집 창, 월드인포 항목, 캐릭터 설명: 文A로 그것만 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 번역을 지웁니다.\n· 번역하는 동안 누른 버튼이 돌고, 몇 개째인지 알림이 뜹니다. 돌고 있는 버튼을 다시 누르면 멈춥니다.\n· 번역문은 원래 칸과 똑같은 모양으로, 같은 자리에 글자만 바뀌어 보입니다. 원래 칸의 글은 그대로라서 저장되는 건 항상 원문입니다. 번역문을 보는 동안에는 고칠 수 없으니, 고치려면 ⇄로 원문으로 돌린 뒤 고치세요.\n· 번역 방식은 아래에서 고릅니다. 기본은 구글 번역이고, AI를 고르면 쓸 API와 번역 프롬프트를 따로 정할 수 있습니다. 연결 프로필을 고르면 그 프로필의 API만 쓰고, 프롬프트는 여기 적은 것만 씁니다.\n· 번역은 이 기기에 저장해 두고 다시 번역하지 않습니다. 다른 방식으로 다시 번역하려면 먼저 지우개로 지우세요.'],
             ['vertexProfileFix', '연결 프로필 버텍스(서비스 계정) 오류 픽스', '확장들이 연결 프로필로 따로 요청을 보낼 때(번역, 요약 등) 버텍스 AI를 서비스 계정으로 쓰면 오류가 나는 문제를 고칩니다. ST가 연결 프로필 요청에 로그인 방식을 빠뜨려 API 키 방식으로 처리되던 것을, 지금 쓰는 버텍스 설정의 로그인 방식(서비스 계정)과 프로젝트·지역으로 채워 보냅니다. 편의성 모음 번역뿐 아니라 연결 프로필을 쓰는 다른 확장에도 적용됩니다.'],
-            ['koFill', 'ST 화면 빠진 한국어 번역 채우기', 'ST를 한국어로 쓸 때 영어로 남아 있는 버튼, 메뉴, 설정 이름과 설명(API 연결, 고급 서식, 월드인포, 배경, 페르소나, 정규식 등)을 한국어로 채웁니다. ST에 이미 있는 번역은 바꾸지 않고, Top nsigma·XTC 같은 샘플러 용어나 서비스·모델 이름은 영어 그대로 둡니다. 끄면 새로고침한 뒤 영어로 돌아갑니다.'],
+            ['koFill', 'ST 한국어 번역 채우기·고치기', 'ST를 한국어로 쓸 때 영어로 남아 있는 버튼, 메뉴, 설정 이름과 설명(API 연결, 고급 서식, 월드인포, 배경, 페르소나, 정규식 등)을 한국어로 채웁니다. ST 번역 중 뜻이 틀린 것(예: "스포일러 무료 모드" → "스포일러 방지 모드", 서로 뒤바뀐 유저 접두사·접미사)도 고쳐서 보여 줍니다. Top nsigma·XTC 같은 샘플러 용어나 서비스·모델 이름은 영어 그대로 둡니다. 끄면 새로고침한 뒤 원래대로 돌아갑니다.'],
             ['hideSettingHints', 'ST 설정 설명 글씨 숨기기', 'ST 설정 항목 아래에 흐리게 붙어 있는 설명 글씨(예: "생성되는 대답을 조금씩 표시합니다…")를 모두 숨깁니다.'],
         ],
     },
@@ -351,11 +351,30 @@ function extrasFor(key) {
             }
         }));
     } else if (key === 'messageTrash') {
-        const days = Array.from({ length: 30 }, (_, index) => ({ value: String(index + 1), label: `보관 기간: ${index + 1}일` }));
-        select(days, String(settings.trashDays), (value) => {
-            settings.trashDays = Number(value);
-            saveSettings();
+        // 30 choices: a window of day buttons rather than a long list
+        const days = panelButton('fa-calendar-days', '', async () => {
+            const { Popup, POPUP_TYPE } = SillyTavern.getContext();
+            const grid = document.createElement('div');
+            grid.innerHTML = '<h3>보관 기간</h3><div class="stqa_day_grid"></div>';
+            let popup = null;
+            for (let day = 1; day <= 30; day++) {
+                const choice = document.createElement('div');
+                choice.className = `menu_button${day === settings.trashDays ? ' stqa_active' : ''}`;
+                choice.textContent = `${day}일`;
+                choice.addEventListener('click', () => {
+                    settings.trashDays = day;
+                    saveSettings();
+                    label();
+                    popup?.completeCancelled();
+                });
+                grid.querySelector('.stqa_day_grid').append(choice);
+            }
+            popup = new Popup(grid, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
+            await popup.show();
         });
+        const label = () => (days.querySelector('span').textContent = `보관 기간: ${settings.trashDays}일`);
+        label();
+        extra.append(days);
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }

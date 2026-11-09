@@ -506,6 +506,10 @@ const KO = Object.freeze({
     'Pin chat': '채팅 고정',
     'Rename chat': '채팅 이름 바꾸기',
     'Delete chat': '채팅 삭제',
+    'chat_rename_1': '채팅의 새 이름을 입력하세요:',
+    'chat_rename_2': '!!이미 있는 파일 이름을 쓰면 오류가 납니다!!',
+    'chat_rename_3': '체크포인트 채팅과의 연결이 끊어집니다.',
+    'chat_rename_4': '끝에 \'.jsonl\'은 붙이지 않아도 됩니다.',
     'Note:': '참고:',
     'this chat is temporary and will be deleted as soon as you leave it.': '이 채팅은 임시라서 나가는 즉시 지워집니다.',
     'Import from JSONL': 'JSONL에서 가져오기',
@@ -610,6 +614,137 @@ const KO = Object.freeze({
     'Summarization min length (chars)': '요약할 최소 길이 (글자)',
 });
 
+// ST's own Korean that says something else than the English (ST lets no extension replace its
+// words, so these are put on the screen over them)
+const FIXES = Object.freeze({
+    'Favorite': '즐겨찾기',
+    'Rep. Pen. Slope': '반복 페널티 기울기',
+    'Multiple swipes per generation': '한 번에 여러 스와이프 생성',
+    'Restore new chat prompt': '새 채팅 프롬프트 복원',
+    'Restore new group chat prompt': '새 그룹 채팅 프롬프트 복원',
+    'rep.pen decay': '반복 페널티 감쇠',
+    'Skew': '기울기',
+    'Do Sample': '샘플링 사용',
+    'Speculative Ngram': '추측 Ngram',
+    'Newline': '줄바꿈',
+    'Double Newline': '줄바꿈 두 번',
+    'openai_inline_image_quality_low': '낮음',
+    'openai_inline_image_quality_high': '높음',
+    'flag': '플래그',
+    'Chat Completion Source': 'Chat Completion 소스',
+    'Peek a password': '비밀번호 보기',
+    'LEGACY': '레거시',
+    'Prompt Post-Processing': '프롬프트 후처리',
+    'Simple': '간단',
+    'Search Settings': '설정 검색',
+    'Waifu Mode': '와이푸 모드',
+    'Spoiler Free Mode': '스포일러 방지 모드',
+    'Slow': '느리게',
+    'Fast': '빠르게',
+    'Backup your personas to a file': '페르소나를 파일로 백업',
+    'Restore your personas from a file': '파일에서 페르소나 복원',
+    'Alt. Greetings': '추가 첫 메시지',
+    'Join character cards (exclude muted)': '캐릭터 카드 합치기 (뮤트 제외)',
+    'Join character cards (include muted)': '캐릭터 카드 합치기 (뮤트 포함)',
+    'Join Prefix': '합칠 때 접두사',
+    'Join Suffix': '합칠 때 접미사',
+    'Bulk select all characters': '모든 캐릭터 선택',
+    'Prompt Overrides': '프롬프트 덮어쓰기',
+    '(For Chat Completion and Instruct Mode)': '(Chat Completion과 지시 모드용)',
+    'Probability': '확률',
+    'Duplicate world info entry': '월드 인포 항목 복제',
+    'close': '닫기',
+    'prompt_manager_relative': '상대 위치',
+    'Chat Negatives': '채팅 네거티브',
+    'Character Negatives': '캐릭터 네거티브',
+    'Type a message, or /? for help': '메시지 입력 (/? 도움말)',
+    'Toggle Panels': '패널 열고 닫기',
+    'Impersonate': '대신 쓰기',
+    'Quick \'Impersonate\' button': '빠른 \'대신 쓰기\' 버튼',
+    'Impersonation prompt': '대신 쓰기 프롬프트',
+    'Assistant Impersonation Prefill': '대신 쓰기 프리필',
+    'Featured Characters': '추천 캐릭터',
+    'Open Data Bank': '데이터 뱅크 열기',
+    'File per article': '문서마다 파일',
+    'Select None': '선택 해제',
+    'Character Attachments': '캐릭터 첨부 파일',
+    'Expression API': '표정 API',
+    'Output': '출력',
+    'ext_regex_output_placeholder': '비어 있음',
+    'Trim Out': '잘라내기',
+    'ext_regex_affects': '적용 대상',
+    'ext_regex_min_depth_placeholder': '제한 없음',
+    'Only Format Display': '표시에만 적용',
+    'Only Format Prompt (?)': '프롬프트에만 적용',
+    'ext_regex_only_format_prompt_desc': '채팅 기록은 그대로 두고, 요청을 보낼 때 프롬프트에만 적용합니다.',
+    'Run On Edit': '편집할 때 실행',
+    'Trigger Stable Diffusion': '이미지 생성',
+    'Source': '소스',
+    'Important:': '중요:',
+    'Sanitize prompts (recommended)': '프롬프트 정리 (권장)',
+    'Standard': '표준',
+    'Enhance': '향상',
+    'Upscale by': '업스케일 배율',
+    'Hires steps (2nd pass)': '고해상도 단계 (2차 패스)',
+    'Character-specific prompt prefix': '캐릭터별 프롬프트 접두사',
+    'Character-specific negative prompt prefix': '캐릭터별 네거티브 프롬프트 접두사',
+    'Created:': '생성일:',
+    'Display Name:': '표시 이름:',
+    'Execute': '실행',
+    'char_import_4': 'Pygmalion.chat 캐릭터 (직접 링크 또는 UUID)',
+    'Supports importing multiple characters.': '여러 캐릭터를 한 번에 가져올 수 있습니다.',
+    'User Prefix': '유저 메시지 접두사',
+    'User Suffix': '유저 메시지 접미사',
+    'Injection Position': '삽입 위치',
+    'View Stats': '통계 보기',
+    'Vectorization Source': '벡터화 소스',
+    'Chat Message Visibility (by source)': '채팅 메시지 표시 (소스별)',
+    'Narrate by paragraphs (when streaming)': '문단 단위로 읽기 (스트리밍 중)',
+});
+
+/** Same reading of data-i18n as ST's (";" between keys, "[attribute]key"), for the fixed keys only. */
+function fixElement(element) {
+    for (const key of (element.getAttribute('data-i18n') ?? '').split(';')) {
+        const attribute = key.startsWith('[') ? key.match(/\[(\S+)\](.+)/) : null;
+        const name = attribute ? attribute[2] : key;
+        if (!Object.hasOwn(FIXES, name)) {
+            continue;
+        }
+        const value = FIXES[name];
+        if (attribute) {
+            element.getAttribute(attribute[1]) !== value && element.setAttribute(attribute[1], value);
+        } else if (element.textContent !== value) {
+            element.textContent = value;
+        }
+    }
+}
+
+// A plain [data-i18n] walk with a lookup is far quicker than a selector naming every key
+function fixWithin(root) {
+    root.hasAttribute('data-i18n') && fixElement(root);
+    root.querySelectorAll('[data-i18n]').forEach(fixElement);
+}
+
+function initFixes() {
+    fixWithin(document.body);
+    // After ST's own observer (made earlier, so it runs first) has put its words in
+    new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            // Message text never carries ST's labels; streaming touches it all the time
+            if (mutation.target.closest?.('.mes_text')) {
+                continue;
+            }
+            if (mutation.type === 'attributes') {
+                fixElement(mutation.target);
+                continue;
+            }
+            for (const node of mutation.addedNodes) {
+                node.nodeType === Node.ELEMENT_NODE && fixWithin(node);
+            }
+        }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-i18n'] });
+}
+
 export function initKoFill() {
     if (!isOn('koFill') || !/^ko/i.test(getCurrentLocale() ?? '')) {
         return;
@@ -619,6 +754,7 @@ export function initKoFill() {
         addLocaleData(getCurrentLocale(), Object.fromEntries(Object.entries(KO).filter(([, value]) => value)));
         // What ST already drew is translated again with the added words
         applyLocale();
+        initFixes();
     } catch (error) {
         console.error(`[${MODULE}] Korean fill failed`, error);
     }

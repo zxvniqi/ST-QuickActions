@@ -1930,6 +1930,11 @@ body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderVersionDisplay,
 body.stqa_welcome_recent #chat .welcomePanel .welcomeShortcuts {
     display: none !important;
 }
+
+/* The settings and close buttons stay on the right with the logo and version gone */
+body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderTitle {
+    justify-content: flex-end !important;
+}
 /* Prompt dropdown: taps go to its row, which opens the list below instead of the browser's own */
 body.stqa_preset_list_on #settings_preset_openai {
     pointer-events: none;
@@ -2854,6 +2859,23 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
 .stqa_trash_actions .menu_button,
 .stqa_trash_bottom .menu_button {
     margin: 0;
+}
+
+.stqa_day_grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+}
+
+.stqa_day_grid .menu_button {
+    margin: 0;
+    justify-content: center;
+}
+
+.stqa_day_grid .menu_button.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeQuoteColor);
+    font-weight: bold;
 }
 
 .stqa_trash_days {

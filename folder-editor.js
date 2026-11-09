@@ -75,7 +75,13 @@ export async function openFolderEditor(area) {
             current.name = name.value.trim() || current.name;
             content.querySelector('.stqa_folder_tab.stqa_active span').textContent = current.name;
         });
-        box.querySelector('.stqa_folder_delete').addEventListener('click', () => {
+        box.querySelector('.stqa_folder_delete').addEventListener('click', async () => {
+            const question = document.createElement('div');
+            question.innerHTML = '<h3>폴더 삭제</h3><div></div>';
+            question.querySelector('div').textContent = `"${current.name}" 폴더를 지웁니다. 안의 항목은 지워지지 않고 폴더 밖으로 나옵니다.`;
+            if (!await new Popup(question, POPUP_TYPE.CONFIRM, '', { okButton: '삭제', cancelButton: '취소' }).show()) {
+                return;
+            }
             // Only the folder goes; its items stay where they are in the list
             folders.splice(folders.indexOf(current), 1);
             current = null;
