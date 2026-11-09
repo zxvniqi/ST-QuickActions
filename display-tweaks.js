@@ -140,14 +140,14 @@ function expandRecentChats() {
 }
 
 const WAND_HOLD_MS = 450;
-const WAND_TIP_MS = 1500;
+const WAND_TIP_MS = 600;
 
 /**
- * Wand menu as icons: holding an icon shows its name in a small label above it (phones show no
- * tooltips), and that press doesn't run the item. A computer shows the tooltip on hover.
+ * A menu as icons (the wand menu, the Options menu): holding an icon shows its name in a small
+ * label above it (phones show no tooltips), and that press doesn't run the item. A computer shows
+ * the tooltip on hover.
  */
-function enableWandNames() {
-    const menu = document.getElementById('extensionsMenu');
+function enableIconNames(menu, itemSelector, setting) {
     if (!menu) {
         return;
     }
@@ -164,20 +164,25 @@ function enableWandNames() {
         tip.className = 'stqa_wand_tip';
         // The name as the menu writes it (an item's title may be a longer description)
         tip.textContent = item.textContent.trim() || item.title;
+        // Placed before it is seen (themes animate every change, so it would fly in from a corner)
+        tip.style.visibility = 'hidden';
         document.body.append(tip);
         const box = item.getBoundingClientRect();
         const size = tip.getBoundingClientRect();
         tip.style.left = `${Math.min(Math.max(4, box.left + box.width / 2 - size.width / 2), window.innerWidth - size.width - 4)}px`;
         tip.style.top = `${Math.max(4, box.top - size.height - 6)}px`;
-        setTimeout(hideTip, WAND_TIP_MS);
+        tip.style.visibility = '';
     };
+    // The name stays while the finger is down, and a moment after
     const cancel = () => {
         clearTimeout(press?.timer);
         press = null;
+        const shown = tip;
+        shown && setTimeout(() => tip === shown && hideTip(), WAND_TIP_MS);
     };
     menu.addEventListener('pointerdown', (event) => {
-        const item = event.target.closest('.list-group-item');
-        if (!isOn('wandGrid') || !item) {
+        const item = event.target.closest(itemSelector);
+        if (!isOn(setting) || !item) {
             return;
         }
         swallowClick = false;
@@ -189,7 +194,8 @@ function enableWandNames() {
         }, WAND_HOLD_MS);
     });
     menu.addEventListener('pointermove', (event) => {
-        if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
+        // Moving before the name shows is a scroll; once it shows, a shaking finger keeps it
+        if (press && !tip && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) {
             cancel();
         }
     });
@@ -204,18 +210,22 @@ function enableWandNames() {
         }
     }, true);
     menu.addEventListener('contextmenu', (event) => {
-        if (isOn('wandGrid') && event.target.closest('.list-group-item')) {
+        if (isOn(setting) && event.target.closest(itemSelector)) {
             event.preventDefault();
         }
     });
 }
 
+/** Icons only: the name stays as the tooltip. */
+function nameAsTitle(items) {
+    document.querySelectorAll(items).forEach(item => !item.title && (item.title = item.textContent.trim()));
+}
+
 export function applyDisplayTweaks() {
     document.body.classList.toggle('stqa_wand_grid', isOn('wandGrid'));
-    if (isOn('wandGrid')) {
-        // Icons only: the name stays as the tooltip
-        document.querySelectorAll('#extensionsMenu .list-group-item:not([title])').forEach(item => (item.title = item.textContent.trim()));
-    }
+    isOn('wandGrid') && nameAsTitle('#extensionsMenu .list-group-item');
+    document.body.classList.toggle('stqa_options_grid', isOn('optionsGrid'));
+    isOn('optionsGrid') && nameAsTitle('#options .options-content > a');
     document.body.classList.toggle('stqa_welcome_recent', isOn('welcomeRecent'));
     document.body.classList.toggle('stqa_hide_hints', isOn('hideSettingHints'));
     syncPlaceholder();
@@ -227,7 +237,11 @@ export function applyDisplayTweaks() {
 
 export function initDisplayTweaks() {
     watchAvatars();
-    enableWandNames();
+    enableIconNames(document.getElementById('extensionsMenu'), '.list-group-item', 'wandGrid');
+    const options = document.querySelector('#options .options-content');
+    enableIconNames(options, '.options-content > a', 'optionsGrid');
+    // Items other extensions add later get their names as tooltips too
+    options && new MutationObserver(() => isOn('optionsGrid') && nameAsTitle('#options .options-content > a')).observe(options, { childList: true });
     // ST sets the placeholder again (language, chat changes); the start screen is drawn into the chat
     const input = document.getElementById('send_textarea');
     if (input) {

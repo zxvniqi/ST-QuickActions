@@ -91,6 +91,43 @@ export async function openPresetManager() {
         })));
     };
 
+    /** A yes / no question with its own button names (text, not markup). */
+    const ask = (title, text, okButton) => {
+        const box = document.createElement('div');
+        box.innerHTML = '<h3></h3><div></div>';
+        box.querySelector('h3').textContent = title;
+        box.querySelector('div').textContent = text;
+        return new Popup(box, POPUP_TYPE.CONFIRM, '', { okButton, cancelButton: '취소' }).show();
+    };
+
+    /** Right after a folder is made: every prompt listed to tick the ones that go in. */
+    const pickInto = async (folder) => {
+        const box = document.createElement('div');
+        box.className = 'stqa_folder_editor';
+        box.innerHTML = '<h3></h3><div class="stqa_folder_items"></div>';
+        box.querySelector('h3').textContent = `${folder.name}에 넣기`;
+        const chosen = new Set();
+        const owners = new Map(folders().flatMap(other => other.keys.map(key => [key, other.name])));
+        for (const name of orderedPresetNames()) {
+            const row = document.createElement('div');
+            row.className = 'stqa_folder_item';
+            row.innerHTML = '<i class="fa-solid fa-square stqa_folder_check"></i><span class="stqa_folder_item_label"></span><small class="stqa_folder_item_owner"></small>';
+            row.querySelector('.stqa_folder_item_label').textContent = name;
+            row.querySelector('.stqa_folder_item_owner').textContent = owners.get(name) ?? '';
+            row.addEventListener('click', () => {
+                chosen.has(name) ? chosen.delete(name) : chosen.add(name);
+                row.classList.toggle('stqa_in', chosen.has(name));
+                const check = row.querySelector('.stqa_folder_check');
+                check.classList.toggle('fa-square', !chosen.has(name));
+                check.classList.toggle('fa-square-check', chosen.has(name));
+            });
+            box.querySelector('.stqa_folder_items').append(row);
+        }
+        if (await new Popup(box, POPUP_TYPE.CONFIRM, '', { okButton: '넣기', cancelButton: '나중에', allowVerticalScrolling: true }).show() && chosen.size) {
+            moveTo(folder.id, orderedPresetNames().filter(name => chosen.has(name)));
+        }
+    };
+
     const deletePicked = async () => {
         const names = [...picked];
         const manager = getPresetManager?.('openai');
@@ -145,10 +182,12 @@ export async function openPresetManager() {
             if (name) {
                 const folder = { id: newId(), name, keys: [] };
                 storeFolders([...folders(), folder]);
-                // Ticked prompts go straight into the new folder
+                // Ticked prompts go straight into the new folder; otherwise they are picked now
                 if (picked.size) {
                     moveTo(folder.id, [...picked]);
                     picked.clear();
+                } else {
+                    await pickInto(folder);
                 }
                 view = folder.id;
                 render();
@@ -176,6 +215,9 @@ export async function openPresetManager() {
                     render();
                 }
             } else if (action === 'remove') {
+                if (!await ask('폴더 삭제', `"${folder.name}" 폴더를 지웁니다. 안의 프롬프트는 지워지지 않고 폴더 밖으로 나옵니다.`, '삭제')) {
+                    return;
+                }
                 storeFolders(folders().filter(item => item.id !== folder.id));
                 saveOrder((getSettings().presetOrder ?? []).filter(key => key !== folderKey(folder.id)));
                 view = ALL;
@@ -284,7 +326,6 @@ export async function openPresetManager() {
         }
         content.innerHTML = `
             <h3>프롬프트 관리</h3>
-            <div class="stqa_hint">바꾸는 즉시 적용됩니다. ≡ 를 끌어서 순서를 바꿉니다. 폴더도 같은 방법으로 옮기며, 폴더를 누르면 그 안의 프롬프트가 보입니다. 프롬프트를 눌러 체크한 뒤 위 줄에서 폴더로 옮기거나 삭제합니다.</div>
             <div class="stqa_folder_tabs"></div>
             <div class="stqa_manage_folderbar"></div>
             <div class="stqa_manage_actions"></div>

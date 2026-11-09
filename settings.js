@@ -18,6 +18,14 @@ const defaultSettings = Object.freeze({
     chatQuickRename: true,
     chatReplace: true,
     chatSearch: true,
+    // Deleted messages kept for a while (days); the trash files of chats, by chat
+    messageTrash: false,
+    trashDays: 7,
+    // Most items one chat's trash keeps (0: no limit)
+    trashMax: 0,
+    trashIndex: {},
+    // ST's chat backups list: the open character's only, viewed as a chat
+    backupView: true,
     errorLog: true,
     vertexProfileFix: true,
     entryTranslate: true,
@@ -30,6 +38,7 @@ const defaultSettings = Object.freeze({
     translatePrompt: '',
     welcomeRecent: false,
     wandGrid: false,
+    optionsGrid: false,
     // {{char}} and {{user}} names swapped while on
     nameSwap: false,
     deleteButton: true,
@@ -44,6 +53,8 @@ const defaultSettings = Object.freeze({
     statusRealName: true,
     // Buttons on messages
     footerSwipe: true,
+    // Tapping a swipe number lists the message's swipes
+    swipeList: true,
     footerTop: true,
     // left | center | right
     footerSwipePos: 'left',
@@ -76,6 +87,8 @@ const defaultSettings = Object.freeze({
     hdAvatars: true,
     hideInputPlaceholder: false,
     hideSettingHints: true,
+    // Korean for the parts of ST's screens its translation leaves in English
+    koFill: true,
     // Per container selector: { order: string[], hidden: string[] }
     layout: {},
 });

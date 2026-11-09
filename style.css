@@ -557,6 +557,11 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     display: none !important;
 }
 
+/* ST lays out Options menu items with display: flex, which would show switched-off ones */
+.options-content > a[id^="stqa_option"][hidden] {
+    display: none !important;
+}
+
 #stqa_floating_panel.stqa_layout_horizontal,
 #stqa_floating_panel.stqa_in_flow {
     flex-direction: row;
@@ -1366,6 +1371,12 @@ details.stqa_section[open] > summary {
     margin: 0;
 }
 
+.stqa_tab_body {
+    max-height: 60vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .stqa_tab_body.stqa_off {
     opacity: 0.45;
     pointer-events: none;
@@ -1658,6 +1669,52 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     -webkit-user-select: none;
 }
 
+/* Options menu as a grid of icons (separator lines have no place in it) */
+body.stqa_options_grid #options .options-content {
+    display: grid !important;
+    grid-template-columns: repeat(2, 44px);
+    grid-auto-rows: 40px;
+    gap: 4px;
+    padding: 6px !important;
+    width: max-content !important;
+}
+
+body.stqa_options_grid #options .options-content > hr {
+    display: none !important;
+}
+
+body.stqa_options_grid #options .options-content > a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 44px;
+    height: 40px;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 10px;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    gap: 0 !important;
+    overflow: hidden;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+body.stqa_options_grid #options .options-content > a > :not([class*="fa-"]) {
+    display: none !important;
+}
+
+body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
+    width: 20px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 16px !important;
+    line-height: 20px !important;
+    text-align: center;
+}
+
 /* 채팅에서 찾기: the box above the chat, the buttons in place of the input, and the marked word */
 #stqa_search_top {
     flex: none;
@@ -1831,6 +1888,12 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
     white-space: nowrap;
 }
 
+/* Themes put transitions on everything (some with !important): the name shows at once */
+.stqa_wand_tip:not(#stqa_no_such_id) {
+    transition: none !important;
+    animation: none !important;
+}
+
 .stqa_wand_tip {
     position: fixed;
     z-index: 100000;
@@ -1859,6 +1922,36 @@ body.stqa_wand_grid #extensionsMenu .list-group-item {
 /* Start screen: recent chats only */
 body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
     display: none;
+}
+
+/* Only the recent chats: no logo and version, nor the links and temporary chat button */
+body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderLogo,
+body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderVersionDisplay,
+body.stqa_welcome_recent #chat .welcomePanel .welcomeShortcuts {
+    display: none !important;
+}
+
+/* The settings and close buttons on the right of the "Recent Chats" title, on its line */
+body.stqa_welcome_recent #chat .welcomePanel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 10px;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > * {
+    grid-column: 1 / -1;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > .welcomeHeader {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > .welcomeHeaderTitle {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
 }
 /* Prompt dropdown: taps go to its row, which opens the list below instead of the browser's own */
 body.stqa_preset_list_on #settings_preset_openai {
@@ -2686,4 +2779,379 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+/* Message trash */
+.stqa_trash {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_trash h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_trash_items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stqa_trash_item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+}
+
+.stqa_trash_head {
+    font-weight: bold;
+    font-size: 0.9em;
+}
+
+.stqa_trash_message {
+    font-size: 0.85em;
+    opacity: 0.85;
+    min-width: 0;
+}
+
+.stqa_trash_message > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The boxes show only while picking several; otherwise a message is tapped to be read */
+.stqa_trash:not(.stqa_trash_picking) .stqa_trash_items input[type="checkbox"] {
+    display: none;
+}
+
+.stqa_trash:not(.stqa_trash_picking) .stqa_trash_message {
+    cursor: pointer;
+}
+
+.stqa_trash_head.stqa_trash_single input[type="checkbox"] {
+    display: none;
+}
+
+body.stqa_swipe_list_on #chat .swipes-counter,
+body.stqa_swipe_list_on #chat .stqa_footer_count {
+    cursor: pointer;
+}
+
+.stqa_swipe_current > span {
+    font-weight: bold;
+}
+
+.stqa_trash_view {
+    text-align: left;
+}
+
+.stqa_trash_view h3 {
+    margin: 0 0 8px;
+    text-align: center;
+}
+
+.stqa_trash_bottom {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_trash_bottom .menu_button[hidden] {
+    display: none !important;
+}
+
+.stqa_trash_actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.stqa_trash_actions .menu_button,
+.stqa_trash_bottom .menu_button {
+    margin: 0;
+}
+
+.stqa_trash_days_select {
+    width: auto;
+    margin: 0;
+}
+
+.stqa_trash_days {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_trash_days input.text_pole {
+    width: 4.5em;
+    margin: 0;
+}
+
+/* Backups window and a backup shown as a chat. Bubbles take their colors from the theme's text
+   colors (the message tints are meant over a blurred picture and can be solid black) */
+.stqa_backup_card {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.stqa_backup_card_text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.stqa_backup_card_chat {
+    font-size: 0.9em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_card_chat {
+    min-height: 1.2em;
+}
+
+.stqa_backup_card_chat:empty {
+    display: none;
+}
+
+.stqa_backup_card_text small {
+    opacity: 0.75;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_card_actions {
+    display: flex;
+    gap: 4px;
+    flex: none;
+}
+
+.stqa_backup_card_actions .menu_button {
+    margin: 0;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stqa_backup_view {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_backup_view h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_backup_tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_backup_tools .menu_button {
+    margin: 0;
+}
+
+.stqa_backup_messages {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stqa_backup_message {
+    padding: 6px 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    color: var(--SmartThemeBodyColor);
+    cursor: pointer;
+}
+
+.stqa_backup_message.stqa_backup_user {
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.stqa_backup_message .mes_text {
+    max-height: 8em;
+    overflow: hidden;
+    color: inherit;
+}
+
+.stqa_backup_message.stqa_backup_open .mes_text {
+    max-height: none;
+}
+
+.stqa_backup_name {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+.stqa_backup_missing,
+.stqa_backup_changed {
+    border-width: 2px;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_backup_name small {
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_backup_only_differing > .stqa_backup_message:not(.stqa_backup_missing):not(.stqa_backup_changed) {
+    display: none;
+}
+
+/* Swipe list: one card per swipe, the one on show marked */
+.stqa_swipe_card {
+    cursor: pointer;
+}
+
+.stqa_swipe_card.stqa_swipe_current {
+    border-width: 2px;
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_swipe_card_head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85em;
+}
+
+.stqa_swipe_card_head input {
+    margin: 0;
+}
+
+.stqa_swipe_card_head .menu_button {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stqa_swipe_number {
+    font-weight: bold;
+}
+
+.stqa_swipe_now {
+    padding: 0 6px;
+    border-radius: 999px;
+    background-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeBlurTintColor);
+    font-size: 0.85em;
+}
+
+.stqa_swipe_size {
+    margin-left: auto;
+    opacity: 0.6;
+}
+
+.stqa_swipe_card_text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    font-size: 0.9em;
+    line-height: 1.4;
+    opacity: 0.9;
+    word-break: break-word;
+}
+
+.stqa_swipe_list:not(.stqa_trash_picking) .stqa_swipe_card_head input {
+    display: none;
+}
+
+.stqa_swipe_list.stqa_trash_picking .stqa_swipe_card.stqa_swipe_ticked {
+    border-color: var(--SmartThemeQuoteColor);
+    background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+/* Backups window: the title and the all-characters switch on one line; the list and a backup's
+   messages scroll inside, so the window stays its own size */
+.stqa_backup_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_backup_head h3 {
+    margin: 0;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_backup_head .menu_button {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_backup_scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_backup_view .stqa_backup_messages {
+    max-height: 62vh;
+    overflow-y: auto;
+}
+
+.stqa_backup_chat {
+    text-align: center;
+    font-size: 0.9em;
+    opacity: 0.8;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The Backups button opens a window now: no arrow for a list folding open under it */
+body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-down,
+body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up {
+    display: none;
+}
+
+.stqa_backup_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+.stqa_backup_chip {
+    padding: 1px 9px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    font-size: 0.85em;
+}
+
+.stqa_backup_chip_accent {
+    border-color: var(--SmartThemeQuoteColor);
+    color: var(--SmartThemeQuoteColor);
 }
