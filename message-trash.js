@@ -23,6 +23,8 @@ let writing = Promise.resolve();
 const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
 const queued = task => (writing = writing.then(task, task));
 const keepDays = () => Math.min(30, Math.max(1, Math.round(Number(getSettings().trashDays)) || 7));
+// Most items one chat's trash keeps (0: no limit)
+const keepCount = () => Math.max(0, Math.round(Number(getSettings().trashMax)) || 0);
 const save = () => SillyTavern.getContext().saveSettingsDebounced();
 const stripExtension = name => String(name ?? '').replace(/\.jsonl$/, '');
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -120,8 +122,19 @@ async function writeTrash(key, items, chat = null) {
         throw new Error(`Trash not saved (${response.status})`);
     }
     entry.oldest = Math.min(...items.map(item => item.deleted));
+    entry.count = items.length;
     settings.trashIndex[key] = entry;
     save();
+}
+
+/** Over the most a trash keeps, the items deleted longest ago go (the rest keep their order). */
+function capped(items) {
+    const max = keepCount();
+    if (!max || items.length <= max) {
+        return items;
+    }
+    const kept = new Set([...items].sort((a, b) => b.deleted - a.deleted).slice(0, max));
+    return items.filter(item => kept.has(item));
 }
 
 /** Adds to a chat's trash; a failure is told (the deletion itself stands). */
@@ -129,7 +142,7 @@ function addToTrash(key, chat, change) {
     queued(async () => {
         const items = await readTrash(key);
         change(items);
-        await writeTrash(key, items, chat);
+        await writeTrash(key, capped(items), chat);
     }).catch((error) => {
         console.error(`[${MODULE}] Trash failed`, error);
         toastr.error('지운 메시지를 휴지통에 옮기지 못했습니다.', TITLE);
@@ -600,14 +613,16 @@ function unexpired(item, limit) {
     return swipes.length ? { ...item, swipes, deleted: Math.min(...swipes.map(swipe => swipe.deleted)) } : null;
 }
 
-/** Items past their time are taken away (when ST starts: nothing runs while it is off). */
-function purge() {
+/** Items past their time, or over the most kept, are taken away (when ST starts, or the most changes). */
+export function purge() {
     const limit = Date.now() - keepDays() * DAY;
+    const max = keepCount();
     for (const [key, entry] of Object.entries(getSettings().trashIndex ?? {})) {
-        if (entry.oldest > limit) {
+        // A file from before counts were kept is read once to learn its count
+        if (entry.oldest > limit && (!max || (entry.count ?? Infinity) <= max)) {
             continue;
         }
-        queued(async () => writeTrash(key, (await readTrash(key)).map(item => unexpired(item, limit)).filter(Boolean)))
+        queued(async () => writeTrash(key, capped((await readTrash(key)).map(item => unexpired(item, limit)).filter(Boolean))))
             .catch(error => console.error(`[${MODULE}] Trash cleanup failed`, error));
     }
 }

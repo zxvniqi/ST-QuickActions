@@ -21,6 +21,8 @@ const defaultSettings = Object.freeze({
     // Deleted messages kept for a while (days); the trash files of chats, by chat
     messageTrash: false,
     trashDays: 7,
+    // Most items one chat's trash keeps (0: no limit)
+    trashMax: 0,
     trashIndex: {},
     // ST's chat backups list: the open character's only, viewed as a chat
     backupView: true,

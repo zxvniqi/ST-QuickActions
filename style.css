@@ -2861,21 +2861,9 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     margin: 0;
 }
 
-.stqa_day_grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
-}
-
-.stqa_day_grid .menu_button {
+.stqa_trash_days_select {
+    width: auto;
     margin: 0;
-    justify-content: center;
-}
-
-.stqa_day_grid .menu_button.stqa_active {
-    border-color: var(--SmartThemeQuoteColor);
-    color: var(--SmartThemeQuoteColor);
-    font-weight: bold;
 }
 
 .stqa_trash_days {

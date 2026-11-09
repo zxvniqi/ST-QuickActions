@@ -25,7 +25,7 @@ import { initChatExport, applyChatExport } from './chat-export.js';
 import { initChatName, applyChatName } from './chat-name.js';
 import { initChatReplace, applyChatReplace } from './chat-replace.js';
 import { initChatSearch, applyChatSearch } from './chat-search.js';
-import { initMessageTrash, applyMessageTrash } from './message-trash.js';
+import { initMessageTrash, applyMessageTrash, purge as purgeTrash } from './message-trash.js';
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
 import { initKoFill } from './ko-fill.js';
@@ -68,7 +68,7 @@ const TABS = Object.freeze([
             ['chatQuickRename', '채팅 이름 한 번에 바꾸기', 'ST 채팅 목록 창에서 채팅 이름 옆 연필 버튼 옆에 사람 모양 버튼이 생깁니다. 누르면 페르소나 이름, 페르소나 이름 + 날짜, 캐릭터 이름, 캐릭터 이름 + 날짜 중 하나를 골라 바로 바꿀 수 있습니다. 페르소나는 그 채팅에 고정해 둔 페르소나(없으면 지금 페르소나)이고, 날짜는 채팅을 만든 날입니다.'],
             ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다. ST의 "메시지 삭제"처럼 메시지마다 체크칸이 나오는데, 첫 메시지와 끝 메시지를 누르면 그 사이만 체크됩니다(ST 기본은 누른 메시지부터 끝까지). 입력창 자리에 뜨는 삭제 버튼으로 지우고, 취소 버튼으로 나옵니다.'],
             ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다. 범위 삭제처럼 첫 메시지와 끝 메시지를 눌러 고르고, 입력창 자리에 뜨는 숨기기 버튼을 누르면 그 사이 메시지를 숨깁니다. 숨긴 메시지는 채팅에 남아 있지만 AI에게 보내지 않습니다. 다시 보이게 하려면 메시지의 눈 버튼을 누릅니다. 바로가기 버튼의 "메시지 범위 숨기기"로는 몇 번부터 몇 번까지인지 번호를 적어서 숨길 수 있습니다.'],
-            ['messageTrash', '메시지 휴지통', '채팅에서 메시지를 지우면 바로 없어지지 않고 휴지통으로 옮겨집니다. 옵션 메뉴의 "휴지통"에서 지금 채팅에서 지운 메시지를 보고, 원래 자리로 되살리거나 바로 완전히 지울 수 있습니다. 메시지 삭제, 범위 삭제, 최근 메시지 삭제 등 어떤 방법으로 지워도 옮겨집니다. 스와이프 하나만 지운 것도 담기며, 같은 메시지에서 지운 스와이프는 한 묶음으로 모입니다. 되살리면 그 메시지의 스와이프 맨 뒤에 붙고, 그 메시지가 지워지고 없으면 그 스와이프만 가진 메시지로 원래 자리에 되살아납니다. 지운 지 아래에서 정한 날짜가 지나면 완전히 지워지며, 지난 것은 실리를 켤 때 정리합니다. 채팅을 지우면 그 채팅의 휴지통도 같이 지워집니다. 지운 메시지를 서버에 따로 보관하므로 그만큼 저장 공간을 더 씁니다. ST 기본 백업과는 별개입니다.'],
+            ['messageTrash', '메시지 휴지통', '채팅에서 메시지를 지우면 바로 없어지지 않고 휴지통으로 옮겨집니다. 옵션 메뉴의 "휴지통"에서 지금 채팅에서 지운 메시지를 보고, 원래 자리로 되살리거나 바로 완전히 지울 수 있습니다. 메시지 삭제, 범위 삭제, 최근 메시지 삭제 등 어떤 방법으로 지워도 옮겨집니다. 스와이프 하나만 지운 것도 담기며, 같은 메시지에서 지운 스와이프는 한 묶음으로 모입니다. 되살리면 그 메시지의 스와이프 맨 뒤에 붙고, 그 메시지가 지워지고 없으면 그 스와이프만 가진 메시지로 원래 자리에 되살아납니다. 지운 지 아래에서 정한 날짜가 지나면 완전히 지워지며, 지난 것은 실리를 켤 때 정리합니다. 최대 개수를 정하면 채팅마다 그 개수를 넘을 때 오래된 것부터 지워집니다. 채팅을 지우면 그 채팅의 휴지통도 같이 지워집니다. 지운 메시지를 서버에 따로 보관하므로 그만큼 저장 공간을 더 씁니다. ST 기본 백업과는 별개입니다.'],
             ['backupView', '채팅 백업 캐릭터별로 보기·불러오기', 'ST 채팅 목록 창(Chat History)의 "Backups" 버튼을 누르면, 목록이 아래로 길게 펼쳐지는 대신 창으로 뜹니다. 지금 캐릭터(또는 그룹)의 백업만 최신순으로 보이고(위쪽 "전체" 버튼으로 모든 캐릭터 것도 볼 수 있습니다), 파일 이름 대신 저장 시각과 메시지 개수가 보입니다. 백업마다 보기·불러오기·삭제 버튼이 있습니다. 보기를 누르면 백업을 채팅처럼 보여 주고, 어느 채팅의 백업인지 채팅 이름도 보여 줍니다. 긴 메시지는 누르면 펼쳐집니다. 불러오기는 ST의 불러오기와 같아서, 백업이 새 채팅으로 들어오고 지금 채팅은 그대로 둡니다.'],
             ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 어떤 단어를 다른 단어로 한꺼번에 바꿉니다(예: 상태창의 2024를 2205로). 다른 답변(스와이프)과 번역문도 같이 바꾸며, 답변을 만드는 중에는 쓸 수 없습니다.'],
             ['chatSearch', '채팅에서 찾기', '옵션 메뉴에 "채팅에서 찾기"가 생깁니다. 누르면 채팅 위쪽(상단 바 아래)에 검색칸이, 입력창 자리에 ▲ ▼ ✕ 버튼이 뜹니다. 단어를 적으면 그 단어가 가장 아래(최근)에 나온 곳으로 이동해 형광펜을 칠하고, 지금 보는 곳은 진한 주황색으로 표시합니다. ▲ 는 다음 결과(위쪽), ▼ 는 이전 결과(아래쪽)로 가며, 한 메시지에 여러 번 나오면 그 안에서 하나씩 옮겨 갑니다. 폰에서는 엔터를 누르면 검색만 하고 키보드가 내려가며(다음 결과로는 ▲ 로 갑니다), 컴퓨터에서는 엔터를 누를 때마다 다음 결과로 갑니다. 아래 칸에는 "몇 번째 메시지 · 그 안에서 몇 번째"가 보입니다. 화면에 보이는 글에서 찾으며, 아직 불러오지 않은 옛 메시지도 찾아서 불러옵니다. ✕ 로 닫습니다.'],
@@ -351,30 +351,35 @@ function extrasFor(key) {
             }
         }));
     } else if (key === 'messageTrash') {
-        // 30 choices: a window of day buttons rather than a long list
-        const days = panelButton('fa-calendar-days', '', async () => {
-            const { Popup, POPUP_TYPE } = SillyTavern.getContext();
-            const grid = document.createElement('div');
-            grid.innerHTML = '<h3>보관 기간</h3><div class="stqa_day_grid"></div>';
-            let popup = null;
-            for (let day = 1; day <= 30; day++) {
-                const choice = document.createElement('div');
-                choice.className = `menu_button${day === settings.trashDays ? ' stqa_active' : ''}`;
-                choice.textContent = `${day}일`;
-                choice.addEventListener('click', () => {
-                    settings.trashDays = day;
-                    saveSettings();
-                    label();
-                    popup?.completeCancelled();
-                });
-                grid.querySelector('.stqa_day_grid').append(choice);
-            }
-            popup = new Popup(grid, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
-            await popup.show();
+        // 30 choices: the device's own option popup rather than a list unfolding in the window
+        const days = document.createElement('select');
+        days.className = 'text_pole stqa_trash_days_select';
+        for (let day = 1; day <= 30; day++) {
+            days.append(new Option(`보관 기간: ${day}일`, String(day), false, day === settings.trashDays));
+        }
+        days.addEventListener('change', () => {
+            settings.trashDays = Number(days.value);
+            saveSettings();
         });
-        const label = () => (days.querySelector('span').textContent = `보관 기간: ${settings.trashDays}일`);
-        label();
-        extra.append(days);
+        const most = document.createElement('select');
+        most.className = 'text_pole stqa_trash_days_select';
+        for (const count of [0, 10, 20, 30, 50, 100, 200]) {
+            most.append(new Option(count ? `최대 ${count}개` : '최대 개수: 제한 없음', String(count), false, count === (Number(settings.trashMax) || 0)));
+        }
+        most.addEventListener('change', async () => {
+            const before = Number(settings.trashMax) || 0;
+            const next = Number(most.value);
+            // A lower most cuts trash already kept: asked first
+            if (next && (!before || next < before)
+                && !await SillyTavern.getContext().Popup.show.confirm('휴지통', `채팅마다 ${next}개를 넘는 것은 오래된 것부터 지금 지워집니다.`)) {
+                most.value = String(before);
+                return;
+            }
+            settings.trashMax = next;
+            saveSettings();
+            purgeTrash();
+        });
+        extra.append(days, most);
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }
