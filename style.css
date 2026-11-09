@@ -1931,9 +1931,27 @@ body.stqa_welcome_recent #chat .welcomePanel .welcomeShortcuts {
     display: none !important;
 }
 
-/* The settings and close buttons stay on the right with the logo and version gone */
-body.stqa_welcome_recent #chat .welcomePanel .welcomeHeaderTitle {
-    justify-content: flex-end !important;
+/* The settings and close buttons on the right of the "Recent Chats" title, on its line */
+body.stqa_welcome_recent #chat .welcomePanel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 10px;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > * {
+    grid-column: 1 / -1;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > .welcomeHeader {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+body.stqa_welcome_recent #chat .welcomePanel > .welcomeHeaderTitle {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
 }
 /* Prompt dropdown: taps go to its row, which opens the list below instead of the browser's own */
 body.stqa_preset_list_on #settings_preset_openai {

@@ -4,6 +4,7 @@
 // translates later too, costs nothing while running, and never replaces an existing translation).
 import { MODULE, isOn } from './settings.js';
 import { addLocaleData, applyLocale, getCurrentLocale } from '../../../i18n.js';
+import { translateToasts } from './toast-ko.js';
 
 const KO = Object.freeze({
     // Presets and connection
@@ -623,9 +624,10 @@ const FIXES = Object.freeze({
     'Restore new chat prompt': '새 채팅 프롬프트 복원',
     'Restore new group chat prompt': '새 그룹 채팅 프롬프트 복원',
     'rep.pen decay': '반복 페널티 감쇠',
-    'Skew': '기울기',
-    'Do Sample': '샘플링 사용',
-    'Speculative Ngram': '추측 Ngram',
+    // Terms read better as they are than in a stiff Korean
+    'Do Sample': 'Do Sample',
+    'Speculative Ngram': 'Speculative Ngram',
+    'Skew': 'Skew',
     'Newline': '줄바꿈',
     'Double Newline': '줄바꿈 두 번',
     'openai_inline_image_quality_low': '낮음',
@@ -637,7 +639,7 @@ const FIXES = Object.freeze({
     'Prompt Post-Processing': '프롬프트 후처리',
     'Simple': '간단',
     'Search Settings': '설정 검색',
-    'Waifu Mode': '와이푸 모드',
+    'Waifu Mode': 'Waifu Mode',
     'Spoiler Free Mode': '스포일러 방지 모드',
     'Slow': '느리게',
     'Fast': '빠르게',
@@ -685,7 +687,7 @@ const FIXES = Object.freeze({
     'Standard': '표준',
     'Enhance': '향상',
     'Upscale by': '업스케일 배율',
-    'Hires steps (2nd pass)': '고해상도 단계 (2차 패스)',
+    'Hires steps (2nd pass)': 'Hires steps (2nd pass)',
     'Character-specific prompt prefix': '캐릭터별 프롬프트 접두사',
     'Character-specific negative prompt prefix': '캐릭터별 네거티브 프롬프트 접두사',
     'Created:': '생성일:',
@@ -755,6 +757,7 @@ export function initKoFill() {
         // What ST already drew is translated again with the added words
         applyLocale();
         initFixes();
+        translateToasts();
     } catch (error) {
         console.error(`[${MODULE}] Korean fill failed`, error);
     }

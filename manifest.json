@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.1.21",
+    "version": "1.1.22",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -44,6 +44,7 @@
         "swipe-list.js",
         "backup-view.js",
         "ko-fill.js",
+        "toast-ko.js",
         "prompt-render-fix.js",
         "error-log.js",
         "vertex-profile-fix.js",
