@@ -25,6 +25,7 @@ import { initChatExport, applyChatExport } from './chat-export.js';
 import { initChatName, applyChatName } from './chat-name.js';
 import { initChatReplace, applyChatReplace } from './chat-replace.js';
 import { initChatSearch, applyChatSearch } from './chat-search.js';
+import { initChatSort, applyChatSort } from './chat-sort.js';
 import { initMessageTrash, applyMessageTrash, purge as purgeTrash } from './message-trash.js';
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
@@ -65,6 +66,7 @@ const TABS = Object.freeze([
         features: [
             ['chatPicker', '캐릭터 누르면 채팅 목록부터', '캐릭터 목록이나 즐겨찾기 줄에서 캐릭터를 누르면, 마지막 채팅 대신 채팅 목록부터 보여 줍니다.\n· 목록에서 채팅을 고르거나 이름 바꾸기·내보내기·삭제를 할 수 있습니다.\n· 위쪽 아이콘으로 채팅 전체를 zip으로 내보내거나 불러옵니다.'],
             ['chatExportAll', '채팅 전체 내보내기·불러오기', '채팅 목록 창(Chat History)의 "채팅 가져오기" 옆에 아이콘 두 개가 생깁니다.\n· zip 아이콘: 그 캐릭터의 채팅 전부를 zip 하나로 받습니다.\n· 폴더 아이콘: zip이나 .jsonl 여러 개를 원래 이름 그대로 불러옵니다.\n· 이름이 겹치면 뒤에 (2)를 붙이고, 원래 채팅은 건드리지 않습니다.'],
+            ['chatSort', '채팅 목록 정렬', 'ST 채팅 목록 창(Chat History)의 검색칸 옆과 편의성 모음 채팅 목록에 정렬 버튼이 생깁니다. 누르면 최근 대화순(ST 기본), 최신순, 오래된 순 중에서 고릅니다.\n· 최신순·오래된 순은 채팅을 만든 날짜로 정렬합니다. 날짜는 채팅 이름에서 읽고, 이름에 날짜가 없으면 채팅 파일에서 한 번 읽어 옵니다.\n· 두 목록이 같은 정렬을 쓰고, 기본 순서가 아닐 때는 버튼 색이 바뀝니다.'],
             ['chatQuickRename', '채팅 이름 한 번에 바꾸기', '채팅 목록 창의 연필 옆에 사람 모양 버튼이 생깁니다.\n· 페르소나 이름, 페르소나 + 날짜, 캐릭터 이름, 캐릭터 + 날짜 중 골라 바로 바꿉니다.\n· 페르소나는 그 채팅에 고정한 것(없으면 지금 것)이고, 날짜는 채팅을 만든 날입니다.'],
             ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다.\n· 첫 메시지와 끝 메시지를 누르면 그 사이만 체크됩니다(ST 기본은 끝까지).\n· 입력창 자리의 삭제 버튼으로 지우고, 취소로 나옵니다.'],
             ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다.\n· 범위 삭제처럼 첫·끝 메시지를 눌러 고른 뒤 숨깁니다.\n· 숨긴 메시지는 채팅에 남지만 AI에게 보내지 않고, 눈 버튼으로 다시 보이게 합니다.\n· 바로가기 버튼에서는 번호를 적어서 숨깁니다.'],
@@ -147,6 +149,7 @@ function applyAll() {
     applyChatName();
     applyChatReplace();
     applyChatSearch();
+    applyChatSort();
     applyMessageTrash();
     applySwipeList();
     applyBackupView();
@@ -492,6 +495,7 @@ function addMenuButton() {
     initChatName();
     initChatReplace();
     initChatSearch();
+    initChatSort();
     initMessageTrash();
     initSwipeList();
     initBackupView();

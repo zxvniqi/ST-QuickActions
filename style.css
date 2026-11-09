@@ -276,6 +276,42 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     margin: 0;
 }
 
+.stqa_picker_searchbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_picker_searchbar .stqa_picker_search {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Chat lists' sort button: an icon with the device's own option list laid over it */
+.stqa_chat_sort {
+    position: relative;
+    flex: none;
+    margin: 0;
+}
+
+.stqa_chat_sort select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.stqa_chat_sort.stqa_active {
+    color: var(--SmartThemeQuoteColor);
+    border-color: var(--SmartThemeQuoteColor);
+}
+
+body:not(.stqa_chat_sort_on) .stqa_chat_sort {
+    display: none;
+}
+
 .stqa_chat_list {
     display: flex;
     flex-direction: column;

@@ -18,6 +18,9 @@ const defaultSettings = Object.freeze({
     chatQuickRename: true,
     chatReplace: true,
     chatSearch: true,
+    // Chat lists' order: recent (latest message, ST's) | newest | oldest (when the chat was made)
+    chatSort: true,
+    chatSortMode: 'recent',
     // Deleted messages kept for a while (days); the trash files of chats, by chat
     messageTrash: false,
     trashDays: 7,
