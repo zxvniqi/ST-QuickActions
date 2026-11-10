@@ -303,11 +303,6 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     cursor: pointer;
 }
 
-.stqa_chat_sort.stqa_active {
-    color: var(--SmartThemeQuoteColor);
-    border-color: var(--SmartThemeQuoteColor);
-}
-
 body:not(.stqa_chat_sort_on) .stqa_chat_sort {
     display: none;
 }

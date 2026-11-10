@@ -27,32 +27,67 @@ function parseStTime(text, loose = false) {
     return new Date(year, month - 1, day, hour, minute, second, ms || 0).getTime();
 }
 
-// When each chat was made, kept for the session: avatar + chat name → time (NaN: not known)
-const madeAt = new Map();
+// When chats without a date in their name were made: avatar + chat name → time (null: not
+// known). Reading it means downloading the whole chat, so it is done once and kept on this device.
+const STORE_KEY = 'stqa_chat_made_at';
+// Chats read at the same time, not to flood the server with whole chats at once
+const READS_AT_ONCE = 3;
+let madeAt = null;
 
-/** When the chat was made: from its name, else from its file's first line (read once). */
-async function madeTime(character, name) {
-    const fromName = parseStTime(name);
-    if (Number.isFinite(fromName)) {
-        return fromName;
-    }
-    const key = `${character.avatar}\u0001${name}`;
-    if (!madeAt.has(key)) {
-        let time = NaN;
+function store() {
+    if (!madeAt) {
         try {
-            const response = await fetch('/api/chats/get', {
-                method: 'POST',
-                headers: SillyTavern.getContext().getRequestHeaders(),
-                body: JSON.stringify({ ch_name: character.name, file_name: name, avatar_url: character.avatar }),
-            });
-            const lines = response.ok ? await response.json() : [];
-            time = parseStTime(lines?.[0]?.create_date ?? lines?.[1]?.send_date, true);
-        } catch (error) {
-            console.warn(`[${MODULE}] Could not read when a chat was made`, error);
+            madeAt = JSON.parse(localStorage.getItem(STORE_KEY)) ?? {};
+        } catch {
+            madeAt = {};
         }
-        madeAt.set(key, time);
     }
-    return madeAt.get(key);
+    return madeAt;
+}
+
+function keep() {
+    try {
+        localStorage.setItem(STORE_KEY, JSON.stringify(madeAt));
+    } catch {
+        // Not kept (private window, storage full): read again next time
+    }
+}
+
+async function readMadeTime(character, name) {
+    try {
+        const response = await fetch('/api/chats/get', {
+            method: 'POST',
+            headers: SillyTavern.getContext().getRequestHeaders(),
+            body: JSON.stringify({ ch_name: character.name, file_name: name, avatar_url: character.avatar }),
+        });
+        if (!response.ok) {
+            return undefined;
+        }
+        const lines = await response.json();
+        const time = parseStTime(lines?.[0]?.create_date ?? lines?.[1]?.send_date, true);
+        return Number.isFinite(time) ? time : null;
+    } catch (error) {
+        console.warn(`[${MODULE}] Could not read when a chat was made`, error);
+        return undefined;
+    }
+}
+
+/** When each chat was made (NaN: not known): from its name, else from what was read before, else read now. */
+async function madeTimes(character, names) {
+    const known = store();
+    const keyOf = name => `${character.avatar}\u0001${name}`;
+    const missing = names.filter(name => !Number.isFinite(parseStTime(name)) && !Object.hasOwn(known, keyOf(name)));
+    for (let i = 0; i < missing.length; i += READS_AT_ONCE) {
+        const batch = missing.slice(i, i + READS_AT_ONCE);
+        const times = await Promise.all(batch.map(name => readMadeTime(character, name)));
+        // A failed read (undefined) is tried again another time
+        batch.forEach((name, index) => times[index] !== undefined && (known[keyOf(name)] = times[index]));
+    }
+    missing.length && keep();
+    return names.map((name) => {
+        const fromName = parseStTime(name);
+        return Number.isFinite(fromName) ? fromName : (known[keyOf(name)] ?? NaN);
+    });
 }
 
 /** The order chosen ('recent' while the feature is off). */
@@ -70,7 +105,7 @@ export async function sortChats(chats, character, nameOf) {
     if (mode === 'recent' || !character || chats.length < 2) {
         return chats;
     }
-    const times = await Promise.all(chats.map(chat => madeTime(character, nameOf(chat))));
+    const times = await madeTimes(character, chats.map(nameOf));
     const sign = mode === 'newest' ? -1 : 1;
     return chats
         .map((chat, index) => ({ chat, index, time: times[index] }))
@@ -81,10 +116,7 @@ export async function sortChats(chats, character, nameOf) {
         .map(({ chat }) => chat);
 }
 
-/**
- * A sort button: an icon over the device's own option list. Coloured when not in ST's order.
- * `onChange` runs after the choice is saved.
- */
+/** A sort button: an icon over the device's own option list. `onChange` runs after the choice is saved. */
 export function createSortButton(onChange) {
     const button = document.createElement('label');
     button.className = 'stqa_chat_sort menu_button menu_button_icon fa-solid fa-arrow-down-wide-short';
@@ -94,7 +126,6 @@ export function createSortButton(onChange) {
     const sync = () => {
         select.value = chatSortMode();
         button.title = `정렬: ${CHAT_SORTS.find(sort => sort.value === select.value).label}`;
-        button.classList.toggle('stqa_active', select.value !== 'recent');
     };
     sync();
     select.addEventListener('change', () => {
@@ -106,19 +137,21 @@ export function createSortButton(onChange) {
     return button;
 }
 
-// ST's chat list window: its rows put in the chosen order after ST draws them
+// ST's chat list window: its rows put in the chosen order after ST draws them. The order ST drew
+// is kept, so changing the sort only moves the rows already there (nothing is fetched again).
 let observer = null;
 let sortRun = 0;
+let stOrder = [];
 
-async function sortStList() {
+async function arrangeStList() {
     const list = document.getElementById(LIST_ID);
     const context = SillyTavern.getContext();
     const character = context.groupId ? null : context.characters[context.characterId];
     const run = ++sortRun;
-    if (!list || !character || chatSortMode() === 'recent') {
+    if (!list || !character) {
         return;
     }
-    const rows = [...list.children].filter(row => row.querySelector('.select_chat_block[file_name]'));
+    const rows = stOrder.filter(row => row.parentElement === list);
     const nameOf = row => String(row.querySelector('.select_chat_block').getAttribute('file_name')).replace(/\.jsonl$/, '');
     const sorted = await sortChats(rows, character, nameOf);
     // ST drew the list again meanwhile: that drawing gets its own sorting
@@ -130,13 +163,20 @@ async function sortStList() {
     observer?.observe(list, { childList: true });
 }
 
+function onStListDrawn() {
+    const list = document.getElementById(LIST_ID);
+    stOrder = [...list.children].filter(row => row.querySelector('.select_chat_block[file_name]'));
+    if (chatSortMode() !== 'recent') {
+        arrangeStList().catch(error => console.error(`[${MODULE}] Chat sort failed`, error));
+    }
+}
+
 function addStButton() {
     const search = document.getElementById(SEARCH_ID);
     if (!search || search.parentElement.querySelector('.stqa_chat_sort')) {
         return;
     }
-    // Back to ST's order: the list is drawn again by ST's own search
-    search.after(createSortButton(() => (chatSortMode() === 'recent' ? search.dispatchEvent(new Event('input', { bubbles: true })) : sortStList())));
+    search.after(createSortButton(() => arrangeStList().catch(error => console.error(`[${MODULE}] Chat sort failed`, error))));
 }
 
 export function applyChatSort() {
@@ -148,7 +188,7 @@ export function initChatSort() {
     const list = document.getElementById(LIST_ID);
     if (list) {
         // ST draws the whole list at once (it empties it, then adds every row)
-        observer = new MutationObserver(() => sortStList().catch(error => console.error(`[${MODULE}] Chat sort failed`, error)));
+        observer = new MutationObserver(onStListDrawn);
         observer.observe(list, { childList: true });
     }
     applyChatSort();

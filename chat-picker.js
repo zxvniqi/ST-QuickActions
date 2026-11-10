@@ -142,19 +142,31 @@ async function showChatPicker(character, initialChats) {
     const listElement = root.querySelector('.stqa_chat_list');
     const searchInput = root.querySelector('.stqa_picker_search');
     const nameOf = chat => chat.name;
-    renderChatList(listElement, await sortChats(initialChats, character, nameOf), character.chat);
+    // The list as fetched (latest message first): a new sort only reorders it
+    let fetched = initialChats;
 
-    // Stale search responses are dropped by sequence number
+    // Stale search responses (and sorts) are dropped by sequence number
     let refreshSeq = 0;
-    const refresh = async (highlight = []) => {
-        const seq = ++refreshSeq;
-        const chats = await listChats(character.avatar, searchInput.value.trim());
-        const sorted = chats && await sortChats(chats, character, nameOf);
-        if (seq === refreshSeq && sorted) {
+    const show = async (highlight = []) => {
+        const seq = refreshSeq;
+        const sorted = await sortChats(fetched, character, nameOf);
+        if (seq === refreshSeq) {
             renderChatList(listElement, sorted, character.chat, highlight);
         }
     };
-    searchInput.after(createSortButton(() => refresh()));
+    const refresh = async (highlight = []) => {
+        const seq = ++refreshSeq;
+        const chats = await listChats(character.avatar, searchInput.value.trim());
+        if (seq === refreshSeq && chats) {
+            fetched = chats;
+            await show(highlight);
+        }
+    };
+    await show();
+    searchInput.after(createSortButton(() => {
+        ++refreshSeq;
+        show();
+    }));
 
     let choice = null;
     const popup = new Popup(root, POPUP_TYPE.TEXT, '', {
