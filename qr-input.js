@@ -294,13 +294,14 @@ async function answersIn() {
 const cameEmpty = (finished, added) => finished.emptyAnswer || added.some(message => !message.is_user && hasNothing(message));
 
 /** A run's own messages taken back out (ST's way, from the end); never the user's to keep. False: another chat opened. */
-async function takeBack(before) {
+async function takeBack(before, settle = true) {
     const context = SillyTavern.getContext();
     if (context.chat.length <= before) {
         return true;
     }
     const chatId = context.getCurrentChatId();
-    await answersIn();
+    // (Not needed when no extension was told of the messages: see quietRunEvents)
+    settle && await answersIn();
     // Another chat opened meanwhile: nothing there is the run's
     if (context.getCurrentChatId() !== chatId) {
         return false;
@@ -447,6 +448,23 @@ async function swapWithMotion(messageId, forward, change) {
 // While a QR message is made again, the messages its run posts stay out of sight: from this index on
 let hiddenFrom = null;
 
+/**
+ * While a QR message is made again, extensions aren't told of the messages its run posts (a
+ * translator would start on them, and they are gone a moment later): they hear of the result,
+ * as a new swipe of the message, instead.
+ */
+function quietRunEvents() {
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    const quiet = new Set([eventTypes.MESSAGE_RECEIVED, eventTypes.MESSAGE_SENT, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED].filter(Boolean));
+    const emit = eventSource.emit;
+    eventSource.emit = function (event, ...args) {
+        if (hiddenFrom !== null && quiet.has(event) && Number(args[0]) >= hiddenFrom) {
+            return Promise.resolve();
+        }
+        return emit.call(this, event, ...args);
+    };
+}
+
 function hideRunMessages() {
     if (hiddenFrom === null) {
         return;
@@ -559,7 +577,7 @@ async function regenerateQrMessage(messageId) {
                 break;
             }
             // The run's own messages go; the text joins the message as its new version
-            if (!await takeBack(before)) {
+            if (!await takeBack(before, false)) {
                 return;
             }
             if (!empty) {
@@ -687,6 +705,7 @@ export function initQrInput() {
         return;
     }
     watchAnswers();
+    quietRunEvents();
     const execute = QuickReplySet.prototype.executeWithOptions;
     QuickReplySet.prototype.executeWithOptions = async function (qr, options = {}) {
         // Auto-run QRs and QRs started by another QR (/run) belong to the run around them
