@@ -276,6 +276,30 @@ function watchAnswers() {
     };
 }
 
+/**
+ * What /gen (and /genraw) hand on to the rest of the QR ({{pipe}}): empty means the AI gave
+ * nothing usable, also when all it wrote was reasoning, which ST strips off.
+ */
+function watchGenResults() {
+    const commands = SillyTavern.getContext().SlashCommandParser?.commands ?? {};
+    for (const name of ['gen', 'genraw']) {
+        const command = commands[name];
+        if (!command || typeof command.callback !== 'function' || command.stqaWatched) {
+            continue;
+        }
+        const callback = command.callback;
+        command.callback = async function (...args) {
+            const current = run;
+            const result = await callback.apply(this, args);
+            if (current && typeof result === 'string' && !result.trim()) {
+                current.emptyAnswer = true;
+            }
+            return result;
+        };
+        command.stqaWatched = true;
+    }
+}
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
@@ -362,7 +386,8 @@ async function afterRun(started, chatId, finished, attempt) {
     // The run's answers read through first
     await Promise.all(finished.reads);
     const added = context.chat.slice(started);
-    if (isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
+    // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
+    if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
         const limit = retryLimit();
         if (!await takeBack(started)) {
             return false;
@@ -559,8 +584,13 @@ async function regenerateQrMessage(messageId) {
             const before = context.chat.length;
             hiddenFrom = before;
             replay = mark.answers.map(answer => ({ ...answer }));
+            let failed = false;
             try {
                 await set.executeWithOptions(qr, {});
+            } catch (error) {
+                // Stopped, or the API failed (ST tells of that itself)
+                console.warn(`[${MODULE}] The QR run ended early`, error);
+                failed = true;
             } finally {
                 replay = null;
             }
@@ -571,9 +601,13 @@ async function regenerateQrMessage(messageId) {
             await Promise.all(lastRun?.reads ?? []);
             const added = context.chat.slice(before);
             const candidate = madeMessage(added);
+            // Stopped by the user, or nothing made: back to the version before, quietly
+            if (failed || lastRun?.stopped) {
+                await takeBack(before, false);
+                break;
+            }
             const empty = isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (candidate && hasNothing(candidate)));
             if (!candidate && !empty) {
-                toastr.info('QR이 새 메시지를 만들지 않았습니다.', TITLE);
                 break;
             }
             // The run's own messages go; the text joins the message as its new version
@@ -717,6 +751,7 @@ export function initQrInput() {
         // Again with the same answers while its AI answer comes back empty (see afterRun)
         for (let attempt = 0, answers = null; ; attempt++) {
             watchAnswers();
+            watchGenResults();
             run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, reads: [] };
             const started = context.chat.length;
             const replaying = Boolean(answers);
@@ -757,6 +792,8 @@ export function initQrInput() {
     for (const event of [eventTypes.CHAT_CHANGED, eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_UPDATED]) {
         event && eventSource.on(event, () => setTimeout(refreshQrMessage));
     }
+    // The stop button pressed while a QR runs: the run counts as stopped, not as an empty answer
+    eventSource.on(eventTypes.GENERATION_STOPPED, () => run && (run.stopped = true));
     // Messages added or taken away (any way: replies, /sendas, /comment, deleting): only the
     // chat's own children are watched
     const chat = document.getElementById('chat');
