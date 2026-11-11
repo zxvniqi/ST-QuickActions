@@ -792,8 +792,14 @@ export function initQrInput() {
     for (const event of [eventTypes.CHAT_CHANGED, eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_UPDATED]) {
         event && eventSource.on(event, () => setTimeout(refreshQrMessage));
     }
-    // The stop button pressed while a QR runs: the run counts as stopped, not as an empty answer
+    // The stop button pressed while a QR runs: the run counts as stopped, not as an empty answer,
+    // and the error the cut-off /gen raises isn't shown (the user stopped it)
     eventSource.on(eventTypes.GENERATION_STOPPED, () => run && (run.stopped = true));
+    const showError = toastr.error;
+    toastr.error = function (...args) {
+        // (An empty toast in its place, so code clearing "its" toast doesn't clear them all)
+        return run?.stopped ? $() : showError.apply(this, args);
+    };
     // Messages added or taken away (any way: replies, /sendas, /comment, deleting): only the
     // chat's own children are watched
     const chat = document.getElementById('chat');
