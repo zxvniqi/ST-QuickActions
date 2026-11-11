@@ -44,7 +44,10 @@ function addButtons() {
         const button = document.createElement('span');
         button.className = `${BUTTON_CLASS} fa-solid fa-ellipsis fa-xs`;
         button.title = '더 보기';
-        const edit = controls.querySelector('.prompt-manager-edit-action');
+        // Always in front of the pencil's place (ST keeps an empty slot there when there is no
+        // pencil), so it lines up from row to row
+        const slots = [...controls.children];
+        const edit = controls.querySelector('.prompt-manager-edit-action') ?? (slots.length >= 3 ? slots.at(-2) : null);
         edit ? edit.before(button) : controls.prepend(button);
     }
 }
