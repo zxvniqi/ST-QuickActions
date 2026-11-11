@@ -525,6 +525,22 @@ const ONE_BUTTONS = [
     ['switch', 'fa-repeat', '원문과 번역 바꿔 보기'],
     ['delete', 'fa-eraser', '번역 지우기'],
 ];
+// One item with a name and a content: its 文A and eraser ask which part, as a menu
+// [action:part, icon, words in the menu]
+const PART_MENUS = {
+    one: [
+        ['one:names', 'fa-tag', '이름만 번역'],
+        ['one:contents', 'fa-align-left', '내용만 번역'],
+        ['one:all', 'fa-language', '전체 번역'],
+    ],
+    delete: [
+        ['delete:names', 'fa-eraser', '이름 번역만 지우기'],
+        ['delete:contents', 'fa-eraser', '내용 번역만 지우기'],
+        ['delete:all', 'fa-eraser', '번역 전체 지우기'],
+    ],
+};
+// The single items that have both
+const PARTED = new Set(['promptForm', 'wiEntry']);
 
 /**
  * A group of buttons for a place, made to sit among ST's own toolbar buttons. `worded`: built
@@ -647,8 +663,11 @@ function onOutsideMenu(event) {
     }
 }
 
-/** The four list actions as a small menu under (or above) the button, worded so each is clear. */
-function toggleMenu(button) {
+/**
+ * A small menu under (or above) the button, worded so each choice is clear: a list's actions,
+ * or (`rows`: [action, icon, words]) which part of one item.
+ */
+function toggleMenu(button, rows = LIST_BUTTONS.map(([action, icon, , label]) => [action, icon, label])) {
     if (menu) {
         const same = menuOwner === button;
         closeMenu();
@@ -660,7 +679,7 @@ function toggleMenu(button) {
     menu = document.createElement('div');
     // ST keeps its side panels open for taps on its own kinds of lists; this is one
     menu.className = 'stqa_tr_menu list-group select2-results';
-    for (const [action, icon, , label] of LIST_BUTTONS) {
+    for (const [action, icon, label] of rows) {
         const row = document.createElement('div');
         row.className = 'list-group-item';
         row.dataset.trDo = action;
@@ -698,18 +717,29 @@ function onClick(event) {
     }
     // Not a tap on what the button sits in (a world info entry's header folds it)
     event.stopPropagation();
-    const { trList: list, trDo: action } = item ? { trList: menuOwner.dataset.trMenu, trDo: item.dataset.trDo } : icon.dataset;
+    const { trList: list, trDo: choice } = item ? { trList: menuOwner.dataset.trMenu ?? menuOwner.dataset.trList, trDo: item.dataset.trDo } : icon.dataset;
     item && closeMenu();
+    // 'one:names' → one, names ('all' or none: the whole item)
+    const [action, part] = choice.split(':');
+    const scope = part && part !== 'all' ? part : null;
+    if (!item && PART_MENUS[action] && PARTED.has(list)) {
+        // Spinning: a tap stops its job (rather than opening the menu)
+        runs(icon) ? job(icon) : toggleMenu(icon, PART_MENUS[action]);
+        return;
+    }
     if (action === 'toggle') {
         setView(!viewOn());
     } else if (action === 'delete') {
-        deleteList(list, icon);
+        deleteList(list, icon, scope);
     } else if (action === 'deleteNames' || action === 'deleteContents') {
         deleteList(list, icon, action === 'deleteNames' ? 'names' : 'contents');
     } else if (action === 'switch') {
         LISTS[list](icon).then(texts => switchOne(allTexts(texts)));
     } else if (action === 'one') {
-        job(icon, async () => toggleOne(allTexts(await LISTS[list](icon))));
+        job(icon, async () => {
+            const texts = await LISTS[list](icon);
+            await toggleOne(scope ?(texts?.[scope] ?? []) : allTexts(texts));
+        });
     } else {
         job(icon, () => translatePart(list, action, icon));
     }

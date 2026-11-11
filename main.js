@@ -30,7 +30,7 @@ import { initMessageTrash, applyMessageTrash, purge as purgeTrash } from './mess
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
 import { initKoFill } from './ko-fill.js';
-import { EMPTY_REPLY_MODES, initEmptyReply } from './empty-reply.js';
+import { MAX_RETRIES, retryLimit, initEmptyReply } from './empty-reply.js';
 import { initPromptCopy, applyPromptCopy } from './prompt-copy.js';
 import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
@@ -60,7 +60,7 @@ const TABS = Object.freeze([
             ['swipeList', '스와이프 목록', '스와이프 번호(2/3)를 누르면 그 메시지의 스와이프가 카드로 뜹니다.\n· 카드에는 번호, 글자 수, 앞부분이 보이고, 보고 있는 것은 "지금"으로 표시됩니다.\n· 카드를 누르면 그 스와이프로 바뀌고, 오른쪽 위 버튼으로 전체를 봅니다.\n· "여러 개 고르기"로 한 번에 지울 수 있습니다(하나는 남습니다).\n· 휴지통이 켜져 있으면 지운 스와이프도 휴지통으로 갑니다.'],
             ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 갑니다. 위치는 아래에서 고릅니다.'],
             ['selectionTools', '드래그해서 수정·삭제', '글자를 드래그해 고르면 "수정"·"삭제" 버튼이 뜹니다.\n· 수정은 고른 부분만 고치는 창을 엽니다.\n· 삭제는 고른 부분만 지우고, 뜨는 알림을 누르면 되돌립니다.\n· 번역된 메시지면 원문의 같은 부분도 함께 바뀝니다.\n· 버튼 위치는 아래에서 고릅니다.'],
-            ['emptyReplyDelete', '빈 답변 자동 삭제', '오류 등으로 답변이 아무것도 없이 오면 그 메시지(스와이프면 그 스와이프만)를 지우고 알림을 띄웁니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 지웁니다.\n· 직접 멈춘 생성은 건드리지 않습니다.\n· 아래에서 "지우고 다시 생성"을 고르면 한 번만 다시 생성합니다(또 비어 있으면 지우기만 합니다).'],
+            ['emptyReplyDelete', '빈 답변 자동 삭제', '오류 등으로 답변이 아무것도 없이 오면 그 메시지(스와이프면 그 스와이프만)를 지우고 알림을 띄웁니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 지웁니다.\n· 직접 멈춘 생성은 건드리지 않습니다.\n· 아래 칸에 적은 횟수만큼 다시 생성합니다(0이면 지우기만, 최대 10번). 그만큼 해도 비어 있으면 멈추고 알려 줍니다.'],
             ['keepStatusPanels', '상태창 렌더링 픽스', '주점 도우미(Tavern Helper) 상태창이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다. 번역문은 그대로 둡니다.'],
         ],
     },
@@ -107,8 +107,8 @@ const TABS = Object.freeze([
         features: [
             ['presetFolders', '프롬프트 폴더·관리', '프롬프트(프리셋) 선택 칸을 누르면 폴더로 정리된 목록이 열립니다.\n· 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지웁니다.'],
             ['toggleSetChips', '빠른 전환 (항목 켜기·끄기 저장)', '프롬프트 항목 목록 위에 빠른 전환 버튼 줄이 생깁니다.\n· "+ 빠른 전환 추가"로 지금 켜고 끈 상태를 이름 붙여 저장합니다.\n· 저장한 버튼을 누르면 그 상태로 돌아갑니다.\n· ✎ 로 덮어쓰기·이름 바꾸기·지우기를 하고, 프롬프트마다 따로 저장됩니다.'],
-            ['promptCopy', '프롬프트 항목 복사', '프롬프트 항목 목록의 연필 옆에 복사 버튼이 생깁니다. 누르면 그 항목의 사본이 바로 아래에 들어갑니다.\n· 내용과 설정(역할, 위치, 깊이 등)이 그대로 복사되고, 이름 뒤에 "(복사)"가 붙습니다.\n· 사본은 꺼진 채로 들어가니, 쓰려면 켜 주세요.\n· 마커 항목(채팅 기록, 캐릭터 설명 등)은 복사할 수 없습니다.'],
-            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
+            ['promptCopy', '프롬프트 항목 메뉴 (···)', '프롬프트 항목 목록의 연필 옆에 ··· 버튼이 생깁니다. 누르면 복사, 맨 위로, 맨 아래로, 삭제가 뜹니다.\n· 복사: 사본이 바로 아래에 꺼진 채로 들어가고, 이름 뒤에 "(복사)"가 붙습니다. 마커 항목(채팅 기록, 캐릭터 설명 등)은 복사할 수 없습니다.\n· 삭제: 목록에서 빼는 것(연결 끊기)이 아니라 항목을 아예 지웁니다. 지우기 전에 묻고, 되돌릴 수 없습니다. ST 기본 항목은 지울 수 없습니다.'],
+            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다. 프롬프트 편집 창과 월드인포 항목은 文A·지우개를 누르면 이름만, 내용만, 전체 중에서 고릅니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
         ],
     },
     {
@@ -323,10 +323,19 @@ function extrasFor(key) {
             applyMessageToolSettings();
         });
     } else if (key === 'emptyReplyDelete') {
-        select(EMPTY_REPLY_MODES, settings.emptyReplyMode, (value) => {
-            settings.emptyReplyMode = value;
+        // 다시 생성 [n]번: typed in (0: only deleted)
+        const label = document.createElement('label');
+        label.className = 'stqa_retry_count';
+        label.innerHTML = '<i class="fa-solid fa-rotate-right"></i><input type="number" class="text_pole" inputmode="numeric"><span>번</span>';
+        label.title = '다시 생성 횟수 (0: 지우기만)';
+        const input = label.querySelector('input');
+        Object.assign(input, { min: 0, max: MAX_RETRIES, step: 1, value: String(retryLimit()) });
+        input.addEventListener('change', () => {
+            settings.emptyReplyRetries = Math.min(MAX_RETRIES, Math.max(0, Math.floor(Number(input.value)) || 0));
+            input.value = String(settings.emptyReplyRetries);
             saveSettings();
         });
+        extra.append(label);
     } else if (key === 'entryTranslate') {
         extra.append(translatorControls(settings));
     } else if (key === 'qrBar') {

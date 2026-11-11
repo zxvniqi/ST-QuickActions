@@ -1,6 +1,6 @@
 // A reply that came back with nothing at all (an API error, an empty answer) is deleted, with a
-// notice. Only when there is truly nothing: no text, no reasoning, no picture or file. Optionally
-// generated once more (once only, so a failing API doesn't go round and round).
+// notice. Only when there is truly nothing: no text, no reasoning, no picture or file. Then
+// generated again up to the number of times set (never endlessly, for an API that keeps failing).
 import { MODULE, getSettings, isOn } from './settings.js';
 import { withoutTrash } from './message-trash.js';
 
@@ -9,16 +9,19 @@ const TITLE = '편의성 모음';
 const WATCHED = ['normal', 'regenerate', 'swipe'];
 // After the generation ends: ST saves and draws the reply first
 const SETTLE_MS = 400;
+export const MAX_RETRIES = 10;
 
-export const EMPTY_REPLY_MODES = Object.freeze([
-    { value: 'delete', label: '지우기만' },
-    { value: 'retry', label: '지우고 다시 생성 (1번)' },
-]);
+/** How many times an empty reply is generated again (0: only deleted). */
+export function retryLimit() {
+    const count = Math.floor(Number(getSettings().emptyReplyRetries));
+    return Number.isFinite(count) ? Math.min(MAX_RETRIES, Math.max(0, count)) : 0;
+}
 
-// The generation being watched: { type, chatId, last, tokens, stopped, retried }
+// The generation being watched: { type, chatId, last, tokens, stopped, attempt }
 let watch = null;
-// The next generation is the retry made here (not retried again)
-let retrying = false;
+// A retry asked for here: which one, and when (a generation starting soon after is it)
+let retrying = null;
+const RETRY_START_MS = 3000;
 
 function onStarted(type, _params, dryRun) {
     type ||= 'normal';
@@ -26,8 +29,8 @@ function onStarted(type, _params, dryRun) {
         return;
     }
     const context = SillyTavern.getContext();
-    watch = { type, chatId: context.getCurrentChatId(), last: context.chat.at(-1), tokens: false, stopped: false, retried: retrying };
-    retrying = false;
+    watch = { type, chatId: context.getCurrentChatId(), last: context.chat.at(-1), tokens: false, stopped: false, attempt: retrying && Date.now() - retrying.at < RETRY_START_MS ? retrying.attempt : 0 };
+    retrying = null;
 }
 
 const isGenerating = () => {
@@ -61,15 +64,23 @@ async function check(current, streamFailed) {
         return;
     }
     const swipes = Array.isArray(message.swipes) ? message.swipes.length : 0;
-    const retry = getSettings().emptyReplyMode === 'retry' && !current.retried;
+    const limit = retryLimit();
+    const next = current.attempt + 1;
+    const retry = next <= limit;
     await withoutTrash(() => (swipes > 1
         ? context.deleteMessage(id, message.swipe_id ?? swipes - 1, false)
         : context.deleteMessage(id, undefined, false, false)));
-    toastr.info(retry ? '빈 답변을 지우고 다시 생성합니다.' : '빈 답변을 지웠습니다.', TITLE);
+    if (retry) {
+        toastr.info(`빈 답변을 지우고 다시 생성합니다. (${next}/${limit})`, TITLE);
+    } else if (current.attempt) {
+        toastr.warning(`빈 답변을 지웠습니다. 다시 생성 ${limit}번도 모두 비어 있었습니다.`, TITLE);
+    } else {
+        toastr.info('빈 답변을 지웠습니다.', TITLE);
+    }
     if (!retry) {
         return;
     }
-    retrying = true;
+    retrying = { attempt: next, at: Date.now() };
     const last = chat.at(-1);
     if (swipes > 1 && last === message) {
         // The swipe before it is shown now: one more swipe to the right makes a new one
@@ -78,8 +89,6 @@ async function check(current, streamFailed) {
         // 'regenerate' leaves what is typed in the input bar alone
         await context.generate('regenerate');
     }
-    // The click or call did not start a generation: the flag must not stick to a later one
-    setTimeout(() => (retrying = false), 1000);
 }
 
 function onEnded() {

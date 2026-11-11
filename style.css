@@ -2788,6 +2788,14 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     width: 1.2em;
     text-align: center;
 }
+
+.stqa_prompt_menu .stqa_danger {
+    color: var(--warning, #e5534b);
+}
+
+.stqa_prompt_more {
+    cursor: pointer;
+}
 .stqa_translator_ai {
     display: flex;
     flex-direction: column;
@@ -2913,6 +2921,18 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
 .stqa_trash_days_select {
     width: auto;
     margin: 0;
+}
+
+.stqa_retry_count {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_retry_count input {
+    width: 4em;
+    margin: 0;
+    text-align: center;
 }
 
 .stqa_trash_days {

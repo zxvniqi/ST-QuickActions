@@ -21,10 +21,10 @@ const defaultSettings = Object.freeze({
     // Chat lists' order: recent (latest message, ST's) | newest | oldest (when the chat was made)
     chatSort: true,
     chatSortMode: 'recent',
-    // A reply that came back with nothing at all is deleted; delete | retry (generated once more)
+    // A reply that came back with nothing at all is deleted, then generated again up to this many times
     emptyReplyDelete: true,
-    emptyReplyMode: 'delete',
-    // A copy button on each prompt of the prompt list (the copy goes right below it)
+    emptyReplyRetries: 0,
+    // A ··· menu on each prompt of the prompt list: copy, to the top / bottom, delete
     promptCopy: true,
     // Deleted messages kept for a while (days); the trash files of chats, by chat
     messageTrash: false,
