@@ -25,10 +25,13 @@ import { initChatExport, applyChatExport } from './chat-export.js';
 import { initChatName, applyChatName } from './chat-name.js';
 import { initChatReplace, applyChatReplace } from './chat-replace.js';
 import { initChatSearch, applyChatSearch } from './chat-search.js';
+import { initChatSort, applyChatSort } from './chat-sort.js';
 import { initMessageTrash, applyMessageTrash, purge as purgeTrash } from './message-trash.js';
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
 import { initKoFill } from './ko-fill.js';
+import { MAX_RETRIES, retryLimit, initEmptyReply } from './empty-reply.js';
+import { initPromptCopy, applyPromptCopy } from './prompt-copy.js';
 import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
 
@@ -57,6 +60,7 @@ const TABS = Object.freeze([
             ['swipeList', '스와이프 목록', '스와이프 번호(2/3)를 누르면 그 메시지의 스와이프가 카드로 뜹니다.\n· 카드에는 번호, 글자 수, 앞부분이 보이고, 보고 있는 것은 "지금"으로 표시됩니다.\n· 카드를 누르면 그 스와이프로 바뀌고, 오른쪽 위 버튼으로 전체를 봅니다.\n· "여러 개 고르기"로 한 번에 지울 수 있습니다(하나는 남습니다).\n· 휴지통이 켜져 있으면 지운 스와이프도 휴지통으로 갑니다.'],
             ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 갑니다. 위치는 아래에서 고릅니다.'],
             ['selectionTools', '드래그해서 수정·삭제', '글자를 드래그해 고르면 "수정"·"삭제" 버튼이 뜹니다.\n· 수정은 고른 부분만 고치는 창을 엽니다.\n· 삭제는 고른 부분만 지우고, 뜨는 알림을 누르면 되돌립니다.\n· 번역된 메시지면 원문의 같은 부분도 함께 바뀝니다.\n· 버튼 위치는 아래에서 고릅니다.'],
+            ['emptyReplyDelete', '빈 답변 자동 삭제·재생성', '오류 등으로 답변이 아무것도 없이 오면 그 메시지(스와이프면 그 스와이프만)를 지우고 알림을 띄웁니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 지웁니다.\n· 직접 멈춘 생성은 건드리지 않습니다.\n· 아래 칸에 적은 횟수만큼 다시 생성합니다(0이면 지우기만, 최대 10번). 그만큼 해도 비어 있으면 멈추고 알려 줍니다.'],
             ['keepStatusPanels', '상태창 렌더링 픽스', '주점 도우미(Tavern Helper) 상태창이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다. 번역문은 그대로 둡니다.'],
         ],
     },
@@ -65,6 +69,7 @@ const TABS = Object.freeze([
         features: [
             ['chatPicker', '캐릭터 누르면 채팅 목록부터', '캐릭터 목록이나 즐겨찾기 줄에서 캐릭터를 누르면, 마지막 채팅 대신 채팅 목록부터 보여 줍니다.\n· 목록에서 채팅을 고르거나 이름 바꾸기·내보내기·삭제를 할 수 있습니다.\n· 위쪽 아이콘으로 채팅 전체를 zip으로 내보내거나 불러옵니다.'],
             ['chatExportAll', '채팅 전체 내보내기·불러오기', '채팅 목록 창(Chat History)의 "채팅 가져오기" 옆에 아이콘 두 개가 생깁니다.\n· zip 아이콘: 그 캐릭터의 채팅 전부를 zip 하나로 받습니다.\n· 폴더 아이콘: zip이나 .jsonl 여러 개를 원래 이름 그대로 불러옵니다.\n· 이름이 겹치면 뒤에 (2)를 붙이고, 원래 채팅은 건드리지 않습니다.'],
+            ['chatSort', '채팅 목록 정렬', 'ST 채팅 목록 창(Chat History)의 검색칸 옆과 편의성 모음 채팅 목록에 정렬 버튼이 생깁니다. 누르면 최근 대화순(ST 기본), 최신순, 오래된 순 중에서 고릅니다.\n· 최신순·오래된 순은 채팅을 만든 날짜로 정렬합니다. 날짜는 채팅 이름에서 읽고, 이름에 날짜가 없는 채팅만 처음 한 번 파일에서 읽어 이 기기에 기억해 둡니다(그 처음 한 번은 채팅이 많으면 조금 걸립니다).\n· 두 목록이 같은 정렬을 씁니다.'],
             ['chatQuickRename', '채팅 이름 한 번에 바꾸기', '채팅 목록 창의 연필 옆에 사람 모양 버튼이 생깁니다.\n· 페르소나 이름, 페르소나 + 날짜, 캐릭터 이름, 캐릭터 + 날짜 중 골라 바로 바꿉니다.\n· 페르소나는 그 채팅에 고정한 것(없으면 지금 것)이고, 날짜는 채팅을 만든 날입니다.'],
             ['rangeDelete', '메시지 범위 삭제', '옵션 메뉴(입력창 왼쪽 ☰)에 "메시지 범위 삭제"가 생깁니다.\n· 첫 메시지와 끝 메시지를 누르면 그 사이만 체크됩니다(ST 기본은 끝까지).\n· 입력창 자리의 삭제 버튼으로 지우고, 취소로 나옵니다.'],
             ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다.\n· 범위 삭제처럼 첫·끝 메시지를 눌러 고른 뒤 숨깁니다.\n· 숨긴 메시지는 채팅에 남지만 AI에게 보내지 않고, 눈 버튼으로 다시 보이게 합니다.\n· 바로가기 버튼에서는 번호를 적어서 숨깁니다.'],
@@ -102,7 +107,8 @@ const TABS = Object.freeze([
         features: [
             ['presetFolders', '프롬프트 폴더·관리', '프롬프트(프리셋) 선택 칸을 누르면 폴더로 정리된 목록이 열립니다.\n· 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지웁니다.'],
             ['toggleSetChips', '빠른 전환 (항목 켜기·끄기 저장)', '프롬프트 항목 목록 위에 빠른 전환 버튼 줄이 생깁니다.\n· "+ 빠른 전환 추가"로 지금 켜고 끈 상태를 이름 붙여 저장합니다.\n· 저장한 버튼을 누르면 그 상태로 돌아갑니다.\n· ✎ 로 덮어쓰기·이름 바꾸기·지우기를 하고, 프롬프트마다 따로 저장됩니다.'],
-            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
+            ['promptCopy', '프롬프트 항목 메뉴 (···)', '프롬프트 항목 목록의 연필 옆에 ··· 버튼이 생깁니다. 누르면 복사, 맨 위로, 맨 아래로, 삭제가 뜹니다.\n· 복사: 사본이 바로 아래에 꺼진 채로 들어가고, 이름 뒤에 "(복사)"가 붙습니다. 마커 항목(채팅 기록, 캐릭터 설명 등)은 복사할 수 없습니다.\n· 삭제: 목록에서 빼는 것(연결 끊기)이 아니라 항목을 아예 지웁니다. 지우기 전에 묻고, 되돌릴 수 없습니다. ST 기본 항목은 지울 수 없습니다.'],
+            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다. 프롬프트 편집 창과 월드인포 항목은 文A·지우개를 누르면 이름만, 내용만, 전체 중에서 고릅니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
         ],
     },
     {
@@ -140,6 +146,7 @@ function applyAll() {
     Object.keys(FOLDER_AREAS).forEach(applyFolders);
     applyFolderButtons();
     applyToggleSets();
+    applyPromptCopy();
     applyRangeDelete();
     applyNameSettings();
     applyCharListTools();
@@ -147,6 +154,7 @@ function applyAll() {
     applyChatName();
     applyChatReplace();
     applyChatSearch();
+    applyChatSort();
     applyMessageTrash();
     applySwipeList();
     applyBackupView();
@@ -314,6 +322,20 @@ function extrasFor(key) {
             saveSettings();
             applyMessageToolSettings();
         });
+    } else if (key === 'emptyReplyDelete') {
+        // 다시 생성 [n]번: typed in (0: only deleted)
+        const label = document.createElement('label');
+        label.className = 'stqa_retry_count';
+        label.innerHTML = '<i class="fa-solid fa-rotate-right"></i><input type="number" class="text_pole" inputmode="numeric"><span>번</span>';
+        label.title = '다시 생성 횟수 (0: 지우기만)';
+        const input = label.querySelector('input');
+        Object.assign(input, { min: 0, max: MAX_RETRIES, step: 1, value: String(retryLimit()) });
+        input.addEventListener('change', () => {
+            settings.emptyReplyRetries = Math.min(MAX_RETRIES, Math.max(0, Math.floor(Number(input.value)) || 0));
+            input.value = String(settings.emptyReplyRetries);
+            saveSettings();
+        });
+        extra.append(label);
     } else if (key === 'entryTranslate') {
         extra.append(translatorControls(settings));
     } else if (key === 'qrBar') {
@@ -492,7 +514,10 @@ function addMenuButton() {
     initChatName();
     initChatReplace();
     initChatSearch();
+    initChatSort();
     initMessageTrash();
+    initEmptyReply();
+    initPromptCopy();
     initSwipeList();
     initBackupView();
     initKoFill();

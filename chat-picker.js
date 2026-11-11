@@ -3,6 +3,7 @@
 import { MODULE, getSettings, isOn } from './settings.js';
 import { listChats, setActiveChat, renameChat, deleteChat, exportChat } from './chat-api.js';
 import { exportAllChats, importChatFiles } from './chat-export.js';
+import { sortChats, createSortButton } from './chat-sort.js';
 
 const CHARACTER_LIST_ID = 'rm_print_characters_block';
 // Classes ST puts on the character list while in bulk-edit / multi-select mode
@@ -133,24 +134,39 @@ async function showChatPicker(character, initialChats) {
                 <input type="file" accept=".zip,.jsonl" multiple hidden>
             </label>
         </div>
-        <input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색...">
+        <div class="stqa_picker_searchbar"><input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색..."></div>
         <div class="stqa_chat_list"></div>`;
     root.querySelector('.stqa_picker_avatar').src = getThumbnailUrl('avatar', character.avatar);
     root.querySelector('.stqa_picker_title').textContent = character.name;
 
     const listElement = root.querySelector('.stqa_chat_list');
     const searchInput = root.querySelector('.stqa_picker_search');
-    renderChatList(listElement, initialChats, character.chat);
+    const nameOf = chat => chat.name;
+    // The list as fetched (latest message first): a new sort only reorders it
+    let fetched = initialChats;
 
-    // Stale search responses are dropped by sequence number
+    // Stale search responses (and sorts) are dropped by sequence number
     let refreshSeq = 0;
+    const show = async (highlight = []) => {
+        const seq = refreshSeq;
+        const sorted = await sortChats(fetched, character, nameOf);
+        if (seq === refreshSeq) {
+            renderChatList(listElement, sorted, character.chat, highlight);
+        }
+    };
     const refresh = async (highlight = []) => {
         const seq = ++refreshSeq;
         const chats = await listChats(character.avatar, searchInput.value.trim());
         if (seq === refreshSeq && chats) {
-            renderChatList(listElement, chats, character.chat, highlight);
+            fetched = chats;
+            await show(highlight);
         }
     };
+    await show();
+    searchInput.after(createSortButton(() => {
+        ++refreshSeq;
+        show();
+    }));
 
     let choice = null;
     const popup = new Popup(root, POPUP_TYPE.TEXT, '', {

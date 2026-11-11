@@ -6,6 +6,8 @@ import { MODULE, getSettings, isOn } from './settings.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 import { askAndHideRange } from './range-delete.js';
 import { findMenuItem, listItems } from './layout-manager.js';
+import { showMoreMessages } from '../../../../script.js';
+import { flashHighlight } from '../../../utils.js';
 
 const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
@@ -138,9 +140,16 @@ let panel = null;
 let inputToggle = null;
 let open = false;
 
+/**
+ * Draws the older messages down to this one if they aren't drawn yet. Scrolling is left to the
+ * caller: /chat-jump also starts a smooth scroll of its own, which on phones kept going against
+ * the settling (and the finger) and could throw the chat to another message seconds later.
+ */
 async function jumpTo(messageId) {
-    // /chat-jump loads older messages that aren't drawn yet, then scrolls to the one asked for
-    await SillyTavern.getContext().executeSlashCommandsWithOptions(`/chat-jump ${messageId}`);
+    const first = Number(document.querySelector('#chat > .mes[mesid]')?.getAttribute('mesid'));
+    if (Number.isInteger(first) && messageId < first) {
+        await showMoreMessages(first - messageId);
+    }
 }
 
 /**
@@ -151,18 +160,48 @@ async function jumpTo(messageId) {
 // The settling in progress: a new one (a second tap) takes over from it
 let settling = 0;
 
+/**
+ * Whether the chat was scrolled by hand since `spot` ({ top, height } taken right after our own
+ * scroll). A finger on a status panel or HTML card (an iframe) sends no touch event to the page,
+ * so the scroll itself is what tells: it moved while the chat's height stayed the same (a
+ * message growing above moves it too, but changes the height).
+ */
+const scrolledByHand = (chat, spot) => Math.abs(chat.scrollTop - spot.top) > 4 && chat.scrollHeight === spot.height;
+const spotOf = chat => ({ top: chat.scrollTop, height: chat.scrollHeight });
+
+// The longest a move waits for the pictures where it lands
+const PICTURE_WAIT_MS = 300;
+
+/**
+ * Loads and decodes the pictures of the messages a move lands on, before moving. Performance
+ * Optimizer and the like make chat pictures load only when they come near and decode later;
+ * landing on them in one go showed blank boxes that then popped in and pushed the text (a stutter).
+ */
+function preparePictures(messages) {
+    const pictures = messages.filter(Boolean).flatMap(message => [...message.querySelectorAll('.mes_text img')]);
+    if (!pictures.length) {
+        return Promise.resolve();
+    }
+    for (const picture of pictures) {
+        picture.loading === 'lazy' && (picture.loading = 'eager');
+    }
+    const decoded = Promise.all(pictures.map(picture => picture.decode().catch(() => {})));
+    return Promise.race([decoded, new Promise(resolve => setTimeout(resolve, PICTURE_WAIT_MS))]);
+}
+
 function settle(chat, target) {
     const run = ++settling;
     let frame = 0;
     let steady = 0;
     let last = null;
     let height = null;
+    let spot = null;
     // The user scrolling by hand takes over
     const stopNow = () => (frame = Infinity);
     chat.addEventListener('touchstart', stopNow, { once: true, passive: true });
     chat.addEventListener('wheel', stopNow, { once: true, passive: true });
     const step = () => {
-        if (run !== settling) {
+        if (run !== settling || (spot && scrolledByHand(chat, spot))) {
             frame = Infinity;
         }
         if (frame === Infinity) {
@@ -171,6 +210,7 @@ function settle(chat, target) {
             return;
         }
         chat.scrollTo({ top: target(), behavior: 'instant' });
+        spot = spotOf(chat);
         steady = chat.scrollTop === last && chat.scrollHeight === height ? steady + 1 : 0;
         last = chat.scrollTop;
         height = chat.scrollHeight;
@@ -192,11 +232,15 @@ function settleAtEnd(top) {
 }
 
 /** The message's top edge at the top of the chat. */
-function settleAtMessage(messageId) {
+async function settleAtMessage(messageId) {
     const chat = document.getElementById('chat');
     const message = chat?.querySelector(`.mes[mesid="${messageId}"]`);
-    message && showForReal([message.previousElementSibling, message, message.nextElementSibling]);
-    message && settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
+    if (!message) {
+        return;
+    }
+    showForReal([message.previousElementSibling, message, message.nextElementSibling]);
+    await preparePictures([message, message.nextElementSibling]);
+    settle(chat, () => chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top);
 }
 
 async function scrollToTop() {
@@ -247,18 +291,25 @@ export function showForReal(elements) {
 }
 
 /**
- * Puts a drawn message's top edge at the top of the chat in one go. Messages that change size
- * after it (chat virtualizers shrink the ones out of sight) are left to the browser's scroll
- * anchoring, which keeps the message in place without a visible jump; aligning again every frame
- * would fight it. One check a moment later puts it right if it still drifted.
+ * Puts a drawn message's top edge at the top of the chat in one go, once its pictures are in.
+ * Messages that change size after it (chat virtualizers shrink the ones out of sight) are left to
+ * the browser's scroll anchoring, which keeps the message in place without a visible jump;
+ * aligning again every frame would fight it. One check a moment later puts it right if it still
+ * drifted.
  */
-function alignMessage(chat, message) {
-    ++settling;
+async function alignMessage(chat, message) {
+    const run = ++settling;
+    await preparePictures([message, message.nextElementSibling]);
+    // A newer move, or the user scrolling meanwhile, takes over
+    if (run !== settling) {
+        return;
+    }
     const align = () => chat.scrollTo({ top: chat.scrollTop + message.getBoundingClientRect().top - chat.getBoundingClientRect().top, behavior: 'instant' });
     align();
-    const run = settling;
+    const spot = spotOf(chat);
     setTimeout(() => {
-        if (run === settling && Math.abs(message.getBoundingClientRect().top - chat.getBoundingClientRect().top) > 2) {
+        // Not after the user started scrolling: that would pull the chat back
+        if (run === settling && !scrolledByHand(chat, spot) && Math.abs(message.getBoundingClientRect().top - chat.getBoundingClientRect().top) > 2) {
             align();
         }
     }, 250);
@@ -333,8 +384,11 @@ async function askAndJump() {
         return;
     }
     await jumpTo(number);
-    // ST's smooth scroll stops short when messages above are still growing
+    // Held in place while messages above are still growing
     settleAtMessage(number);
+    // The message flashes as with /chat-jump, to find it at a glance
+    const message = document.querySelector(`#chat .mes[mesid="${number}"]`);
+    message && flashHighlight($(message), 2000);
 }
 
 // Fields in the order the user reads them
