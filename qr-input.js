@@ -521,6 +521,29 @@ function onSwipeClick(event) {
 }
 
 /**
+ * A finger swipe on the newest QR message. ST turns swipe gestures into taps on its swipe arrows,
+ * and only on arrows it shows: none on hidden messages and notes, none while the ‹ › buttons
+ * replace them. Then the gesture taps ‹ / › instead.
+ */
+function onGesture(event) {
+    const { powerUserSettings, chat } = SillyTavern.getContext();
+    if (!isOn('qrSwipe') || powerUserSettings?.gestures === false || document.querySelector('dialog[open]') || document.getElementById('curEditTextarea')) {
+        return;
+    }
+    const element = event.target?.closest?.('#chat .mes.last_mes');
+    if (!element || !chat.at(-1)?.extra?.stqa_qr) {
+        return;
+    }
+    const forward = event.type === 'swiped-left';
+    const arrow = [...document.querySelectorAll(forward ? '#chat .swipe_right' : '#chat .swipe_left')].at(-1);
+    // ST taps its own arrow (and the tap comes here): nothing more to do
+    if (arrow?.offsetParent) {
+        return;
+    }
+    element.querySelector(`.stqa_mes_footer [data-stqa-action="${forward ? 'next' : 'prev'}"]`)?.click();
+}
+
+/**
  * The last message, when a QR made it and ST doesn't swipe it, gets the ‹ 1/2 › buttons (CSS) so
  * it can be swiped and made again.
  */
@@ -586,6 +609,8 @@ export function initQrInput() {
     };
     // Capture: before ST's own swipe (and the 답변 넘기기 button's)
     document.addEventListener('click', onSwipeClick, true);
+    document.addEventListener('swiped-left', onGesture);
+    document.addEventListener('swiped-right', onGesture);
     const { eventSource, eventTypes } = SillyTavern.getContext();
     for (const event of [eventTypes.CHAT_CHANGED, eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_UPDATED]) {
         event && eventSource.on(event, () => setTimeout(refreshQrMessage));
