@@ -225,13 +225,37 @@ const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetPa
 // ST's generation requests: their answers are read (a copy) while a QR runs
 const GENERATE_URL = /\/api\/(backends\/[\w-]+\/generate|novelai\/generate|horde\/generate)/;
 
+// Generation requests not answered yet (any: a QR's, a translator's...)
+let pending = 0;
+
+/** ST's own quiet generation (/gen): its request says so; other extensions' requests don't. */
+function isQuietRequest(init) {
+    try {
+        return typeof init?.body === 'string' && JSON.parse(init.body)?.type === 'quiet';
+    } catch {
+        return false;
+    }
+}
+
 function watchAnswers() {
     const fetchBefore = window.fetch;
     window.fetch = async function (...args) {
-        const response = await fetchBefore.apply(this, args);
         const url = String(args[0]?.url ?? args[0] ?? '');
-        if (run && GENERATE_URL.test(url) && response.ok && !String(response.headers.get('content-type')).includes('event-stream')) {
-            const current = run;
+        if (!GENERATE_URL.test(url)) {
+            return fetchBefore.apply(this, args);
+        }
+        const current = run && isQuietRequest(args[1]) ? run : null;
+        pending++;
+        let response;
+        try {
+            response = await fetchBefore.apply(this, args);
+        } catch (error) {
+            pending--;
+            throw error;
+        }
+        // Answered once its whole body has come in
+        response.clone().arrayBuffer().catch(() => null).finally(() => pending--);
+        if (current && response.ok && !String(response.headers.get('content-type')).includes('event-stream')) {
             response.clone().json().then((data) => {
                 const text = extractMessageFromData(data);
                 if (typeof text === 'string' && !text.trim()) {
@@ -243,17 +267,41 @@ function watchAnswers() {
     };
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Waits (a minute at most) for the requests under way, so extensions working on the run's
+ * messages (an auto translator) are done with them before they are taken out.
+ */
+async function answersIn() {
+    await sleep(300);
+    for (const until = Date.now() + 60000; pending > 0 && Date.now() < until;) {
+        await sleep(200);
+    }
+    await sleep(100);
+}
+
 /** What a run made came to nothing: its AI answer was empty, or a message it posted has nothing. */
 const cameEmpty = (finished, added) => finished.emptyAnswer || added.some(message => !message.is_user && hasNothing(message));
 
-/** A run's own messages taken back out (ST's way, from the end); never the user's to keep. */
+/** A run's own messages taken back out (ST's way, from the end); never the user's to keep. False: another chat opened. */
 async function takeBack(before) {
     const context = SillyTavern.getContext();
+    if (context.chat.length <= before) {
+        return true;
+    }
+    const chatId = context.getCurrentChatId();
+    await answersIn();
+    // Another chat opened meanwhile: nothing there is the run's
+    if (context.getCurrentChatId() !== chatId) {
+        return false;
+    }
     await withoutTrash(async () => {
         while (context.chat.length > before) {
             await context.deleteLastMessage();
         }
     });
+    return true;
 }
 
 /* ---------- the message a run made ---------- */
@@ -303,7 +351,9 @@ async function afterRun(started, chatId, finished, attempt) {
     const added = context.chat.slice(started);
     if (isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
         const limit = retryLimit();
-        await takeBack(started);
+        if (!await takeBack(started)) {
+            return false;
+        }
         if (attempt < limit) {
             toastr.info(`빈 답변을 지우고 QR을 다시 실행합니다. (${attempt + 1}/${limit})`, TITLE);
             return true;
@@ -399,7 +449,9 @@ async function regenerateQrMessage(messageId) {
             return;
         }
         // The run's own messages go, then the text joins as a swipe
-        await takeBack(before);
+        if (!await takeBack(before)) {
+            return;
+        }
         if (empty) {
             if (attempt < limit) {
                 toastr.info(`빈 답변을 지우고 QR을 다시 실행합니다. (${attempt + 1}/${limit})`, TITLE);
