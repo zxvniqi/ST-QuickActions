@@ -237,9 +237,18 @@ function isQuietRequest(init) {
     }
 }
 
+let watcher = null;
+
+/**
+ * Reads generation answers by sitting on top of fetch. Put back on top before each run, should
+ * another extension have put its own fetch over it since.
+ */
 function watchAnswers() {
+    if (window.fetch === watcher) {
+        return;
+    }
     const fetchBefore = window.fetch;
-    window.fetch = async function (...args) {
+    watcher = window.fetch = async function (...args) {
         const url = String(args[0]?.url ?? args[0] ?? '');
         if (!GENERATE_URL.test(url)) {
             return fetchBefore.apply(this, args);
@@ -256,12 +265,12 @@ function watchAnswers() {
         // Answered once its whole body has come in
         response.clone().arrayBuffer().catch(() => null).finally(() => pending--);
         if (current && response.ok && !String(response.headers.get('content-type')).includes('event-stream')) {
-            response.clone().json().then((data) => {
+            current.reads.push(response.clone().json().then((data) => {
                 const text = extractMessageFromData(data);
                 if (typeof text === 'string' && !text.trim()) {
                     current.emptyAnswer = true;
                 }
-            }).catch(() => { /* not JSON: not an answer */ });
+            }).catch(() => { /* not JSON: not an answer */ }));
         }
         return response;
     };
@@ -348,6 +357,8 @@ async function afterRun(started, chatId, finished, attempt) {
     if (context.getCurrentChatId() !== chatId) {
         return false;
     }
+    // The run's answers read through first
+    await Promise.all(finished.reads);
     const added = context.chat.slice(started);
     if (isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
         const limit = retryLimit();
@@ -441,6 +452,7 @@ async function regenerateQrMessage(messageId) {
         if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
             return;
         }
+        await Promise.all(lastRun?.reads ?? []);
         const added = context.chat.slice(before);
         const made = madeMessage(added);
         const empty = isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (made && hasNothing(made)));
@@ -539,7 +551,8 @@ export function initQrInput() {
         const chatId = context.getCurrentChatId();
         // Again with the same answers while its AI answer comes back empty (see afterRun)
         for (let attempt = 0, answers = null; ; attempt++) {
-            run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false };
+            watchAnswers();
+            run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, reads: [] };
             const started = context.chat.length;
             const replaying = Boolean(answers);
             if (replaying) {
