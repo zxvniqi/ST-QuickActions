@@ -532,6 +532,11 @@ body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_syst
     display: var(--stqa_footer_display, grid);
 }
 
+/* Messages a QR posts while one of its messages is made again: taken back out right after */
+#chat .mes.stqa_qr_temp {
+    display: none !important;
+}
+
 #message_template .stqa_mes_footer {
     display: none !important;
 }
