@@ -122,8 +122,8 @@ function onChatClick(event) {
     const action = button.classList.contains(TO_BOTTOM_CLASS) ? 'bottom' : button.dataset.stqaAction;
     try {
         if (action === 'prev' || action === 'next') {
+            // (Nothing happens, as with ST's own arrows on messages it doesn't swipe)
             if (action === 'next' && !canMakeNew(message)) {
-                toastr.info('노트 메시지는 새로 생성할 수 없습니다.', '편의성 모음');
                 return;
             }
             swipe(message, action).catch(error => console.error(`[${MODULE}] Swipe failed`, error));
@@ -159,7 +159,6 @@ export function initMessageTools() {
         if (message && !canMakeNew(message)) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            toastr.info('노트 메시지는 새로 생성할 수 없습니다.', '편의성 모음');
         }
     }, true);
     // The number is filled in as soon as messages are drawn (chat opened, more loaded, a reply
