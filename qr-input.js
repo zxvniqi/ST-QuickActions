@@ -310,6 +310,7 @@ async function takeBack(before) {
             await context.deleteLastMessage();
         }
     });
+    refreshQrMessage();
     return true;
 }
 
@@ -553,6 +554,12 @@ export function refreshQrMessage() {
     const message = chat[id];
     document.querySelectorAll('#chat .mes.stqa_qr_own').forEach(element => element.getAttribute('mesid') !== String(id) && element.classList.remove('stqa_qr_own'));
     const element = document.querySelector(`#chat .mes[mesid="${id}"]`);
+    // ST's "delete the last message" leaves the new last one unmarked as last (the swipe buttons
+    // and arrows go with that mark): marked again
+    if (element && !element.classList.contains('last_mes')) {
+        document.querySelectorAll('#chat .mes.last_mes').forEach(other => other.classList.remove('last_mes'));
+        element.classList.add('last_mes');
+    }
     element?.classList.toggle('stqa_qr_own', Boolean(message?.extra?.stqa_qr && swipedHere(message)));
     document.body.classList.toggle('stqa_qr_swipe_on', isOn('qrSwipe'));
 }
