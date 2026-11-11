@@ -724,7 +724,7 @@ export function refreshQrMessage() {
     const element = document.querySelector(`#chat .mes[mesid="${id}"]`);
     // ST's "delete the last message" leaves the new last one unmarked as last (the swipe buttons
     // and arrows go with that mark): marked again
-    if (element && !element.classList.contains('last_mes')) {
+    if (isOn('qrSwipe') && element && !element.classList.contains('last_mes')) {
         document.querySelectorAll('#chat .mes.last_mes').forEach(other => other.classList.remove('last_mes'));
         element.classList.add('last_mes');
     }
@@ -738,7 +738,6 @@ export function initQrInput() {
     if (!QuickReplySet) {
         return;
     }
-    watchAnswers();
     quietRunEvents();
     const execute = QuickReplySet.prototype.executeWithOptions;
     QuickReplySet.prototype.executeWithOptions = async function (qr, options = {}) {
@@ -750,8 +749,11 @@ export function initQrInput() {
         const chatId = context.getCurrentChatId();
         // Again with the same answers while its AI answer comes back empty (see afterRun)
         for (let attempt = 0, answers = null; ; attempt++) {
-            watchAnswers();
-            watchGenResults();
+            // Only once one of the features that need them is used (until then fetch and /gen are ST's own)
+            if (isOn('qrSwipe') || isOn('emptyReplyDelete')) {
+                watchAnswers();
+                watchGenResults();
+            }
             run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, reads: [] };
             const started = context.chat.length;
             const replaying = Boolean(answers);
@@ -798,7 +800,7 @@ export function initQrInput() {
     const showError = toastr.error;
     toastr.error = function (...args) {
         // (An empty toast in its place, so code clearing "its" toast doesn't clear them all)
-        return run?.stopped ? $() : showError.apply(this, args);
+        return run?.stopped && isOn('qrSwipe') ? $() : showError.apply(this, args);
     };
     // Messages added or taken away (any way: replies, /sendas, /comment, deleting): only the
     // chat's own children are watched

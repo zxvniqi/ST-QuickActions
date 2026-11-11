@@ -156,7 +156,8 @@ export function initMessageTools() {
     document.addEventListener('click', (event) => {
         const arrow = event.target.closest?.('#chat .swipe_right');
         const message = arrow?.closest('.mes');
-        if (message && !canMakeNew(message)) {
+        // Part of QR swipes: with that off, ST's arrows are left entirely to ST
+        if (message && isOn('qrSwipe') && !canMakeNew(message)) {
             event.preventDefault();
             event.stopImmediatePropagation();
         }
