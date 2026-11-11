@@ -13,6 +13,10 @@ const TITLE = '편의성 모음';
 const entries = [];
 
 function add(kind, title, detail = '', time = new Date()) {
+    // Off: nothing is gathered
+    if (!isOn('errorLog')) {
+        return;
+    }
     entries.push({ time, kind, title: String(title ?? '').slice(0, 300), detail: String(detail ?? '').slice(0, MAX_TEXT) });
     // In time order (an answer is read a moment after it arrives)
     entries.sort((a, b) => a.time - b.time);

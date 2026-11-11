@@ -182,7 +182,8 @@ async function translateAll(texts) {
 const viewOn = () => isOn('entryTranslate') && getSettings().translationView === true;
 // One item switched apart from the rest: original text → 'original' | 'translation'
 const itemView = new Map();
-const showsTranslation = text => (itemView.get(text) ?? (viewOn() ? 'translation' : 'original')) === 'translation';
+// (Feature off: originals everywhere, also for items switched one by one)
+const showsTranslation = text => isOn('entryTranslate') && (itemView.get(text) ?? (viewOn() ? 'translation' : 'original')) === 'translation';
 
 const PROMPT_FIELDS = ['completion_prompt_manager_popup_entry_form_name', 'completion_prompt_manager_popup_entry_form_prompt'];
 const CHARACTER_FIELDS = ['description_textarea'];

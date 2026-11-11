@@ -107,14 +107,21 @@ export function isOn(key) {
     return settings.enabled !== false && settings[key] !== false;
 }
 
+// Settings objects already filled with the defaults (read very often: filled once, not each time)
+const filled = new WeakSet();
+
 export function getSettings() {
     const { extensionSettings } = SillyTavern.getContext();
     extensionSettings[MODULE] ??= {};
     const settings = extensionSettings[MODULE];
+    if (filled.has(settings)) {
+        return settings;
+    }
     for (const [key, value] of Object.entries(defaultSettings)) {
         if (!Object.hasOwn(settings, key)) {
             settings[key] = structuredClone(value);
         }
     }
+    filled.add(settings);
     return settings;
 }

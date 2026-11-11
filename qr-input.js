@@ -8,7 +8,7 @@
 import { MODULE, getSettings, isOn } from './settings.js';
 import { withoutTrash } from './message-trash.js';
 import { hasNothing, retryLimit } from './empty-reply.js';
-import { extractMessageFromData, animation_duration } from '../../../../script.js';
+import { animation_duration } from '../../../../script.js';
 
 const HISTORY_SIZE = 3;
 const TITLE = '편의성 모음';
@@ -222,38 +222,24 @@ const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetPa
 
 /* ---------- empty AI answers inside a QR (/gen and the like) ---------- */
 
-// ST's generation requests: their answers are read (a copy) while a QR runs
+// ST's generation requests (any: a QR's, a translator's...) and how many are not answered yet
 const GENERATE_URL = /\/api\/(backends\/[\w-]+\/generate|novelai\/generate|horde\/generate)/;
-
-// Generation requests not answered yet (any: a QR's, a translator's...)
 let pending = 0;
-
-/** ST's own quiet generation (/gen): its request says so; other extensions' requests don't. */
-function isQuietRequest(init) {
-    try {
-        return typeof init?.body === 'string' && JSON.parse(init.body)?.type === 'quiet';
-    } catch {
-        return false;
-    }
-}
-
-let watcher = null;
+let counter = null;
 
 /**
- * Reads generation answers by sitting on top of fetch. Put back on top before each run, should
- * another extension have put its own fetch over it since.
+ * Counts the generation requests under way by sitting on top of fetch (see answersIn). Put back
+ * on top before each run, should another extension have put its own fetch over it since.
  */
-function watchAnswers() {
-    if (window.fetch === watcher) {
+function countRequests() {
+    if (window.fetch === counter) {
         return;
     }
     const fetchBefore = window.fetch;
-    watcher = window.fetch = async function (...args) {
-        const url = String(args[0]?.url ?? args[0] ?? '');
-        if (!GENERATE_URL.test(url)) {
+    counter = window.fetch = async function (...args) {
+        if (!GENERATE_URL.test(String(args[0]?.url ?? args[0] ?? ''))) {
             return fetchBefore.apply(this, args);
         }
-        const current = run && isQuietRequest(args[1]) ? run : null;
         pending++;
         let response;
         try {
@@ -264,18 +250,9 @@ function watchAnswers() {
         }
         // Answered once its whole body has come in
         response.clone().arrayBuffer().catch(() => null).finally(() => pending--);
-        if (current && response.ok && !String(response.headers.get('content-type')).includes('event-stream')) {
-            current.reads.push(response.clone().json().then((data) => {
-                const text = extractMessageFromData(data);
-                if (typeof text === 'string' && !text.trim()) {
-                    current.emptyAnswer = true;
-                }
-            }).catch(() => { /* not JSON: not an answer */ }));
-        }
         return response;
     };
 }
-
 /**
  * What /gen (and /genraw) hand on to the rest of the QR ({{pipe}}): empty means the AI gave
  * nothing usable, also when all it wrote was reasoning, which ST strips off.
@@ -383,8 +360,6 @@ async function afterRun(started, chatId, finished, attempt) {
     if (context.getCurrentChatId() !== chatId) {
         return false;
     }
-    // The run's answers read through first
-    await Promise.all(finished.reads);
     const added = context.chat.slice(started);
     // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
     if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
@@ -598,7 +573,6 @@ async function regenerateQrMessage(messageId) {
             if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
                 return;
             }
-            await Promise.all(lastRun?.reads ?? []);
             const added = context.chat.slice(before);
             const candidate = madeMessage(added);
             // Stopped by the user, or nothing made: back to the version before, quietly
@@ -751,10 +725,10 @@ export function initQrInput() {
         for (let attempt = 0, answers = null; ; attempt++) {
             // Only once one of the features that need them is used (until then fetch and /gen are ST's own)
             if (isOn('qrSwipe') || isOn('emptyReplyDelete')) {
-                watchAnswers();
+                countRequests();
                 watchGenResults();
             }
-            run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, reads: [] };
+            run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false };
             const started = context.chat.length;
             const replaying = Boolean(answers);
             if (replaying) {
