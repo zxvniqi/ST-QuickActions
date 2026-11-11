@@ -527,6 +527,7 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort {
 }
 
 body.stqa_footer_top_on .stqa_mes_footer,
+body.stqa_qr_swipe_on #chat .mes.last_mes.stqa_qr_own .stqa_mes_footer,
 body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_system="true"]) .stqa_mes_footer {
     display: var(--stqa_footer_display, grid);
 }
@@ -555,6 +556,7 @@ body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_syst
 }
 
 body.stqa_footer_top_on .stqa_footer_button[data-stqa-action="top"],
+body.stqa_qr_swipe_on #chat .mes.last_mes.stqa_qr_own .stqa_footer_swipe,
 body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_system="true"]) .stqa_footer_swipe {
     display: flex;
 }

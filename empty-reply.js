@@ -22,12 +22,17 @@ let watch = null;
 // A retry asked for here: which one, and when (a generation starting soon after is it)
 let retrying = null;
 const RETRY_START_MS = 3000;
+let emptyRun = { count: 0, at: 0 };
+const EMPTY_RUN_MS = 60000;
 
 function onStarted(type, _params, dryRun) {
     type ||= 'normal';
     if (dryRun || !WATCHED.includes(type)) {
         return;
     }
+    // A new reply on the way: what was waiting for the last one is over
+    rendering = 0;
+    afterRendering = null;
     const context = SillyTavern.getContext();
     watch = { type, chatId: context.getCurrentChatId(), last: context.chat.at(-1), tokens: false, stopped: false, attempt: retrying && Date.now() - retrying.at < RETRY_START_MS ? retrying.attempt : 0 };
     retrying = null;
@@ -38,7 +43,8 @@ const isGenerating = () => {
     return Boolean(stop) && getComputedStyle(stop).display !== 'none';
 };
 
-function hasNothing(message, streamFailed) {
+/** Nothing at all in the message: no text, reasoning, picture or file. */
+export function hasNothing(message, streamFailed = false) {
     const text = String(message.mes ?? '');
     // '...' is what ST shows while waiting for a streamed reply; left there when the stream failed
     const blank = !text.trim() || (text === '...' && streamFailed);
@@ -61,18 +67,22 @@ async function check(current, streamFailed) {
         return;
     }
     if (!hasNothing(message, streamFailed)) {
+        emptyRun = { count: 0, at: 0 };
         return;
     }
+    // Empty replies in a row (a real reply, or a minute without one, starts it over): a second
+    // stop for retries, should one ever not be told apart from a new generation
+    emptyRun = { count: Date.now() - emptyRun.at < EMPTY_RUN_MS ? emptyRun.count + 1 : 1, at: Date.now() };
     const swipes = Array.isArray(message.swipes) ? message.swipes.length : 0;
     const limit = retryLimit();
     const next = current.attempt + 1;
-    const retry = next <= limit;
+    const retry = next <= limit && emptyRun.count <= limit;
     await withoutTrash(() => (swipes > 1
         ? context.deleteMessage(id, message.swipe_id ?? swipes - 1, false)
         : context.deleteMessage(id, undefined, false, false)));
     if (retry) {
         toastr.info(`빈 답변을 지우고 다시 생성합니다. (${next}/${limit})`, TITLE);
-    } else if (current.attempt) {
+    } else if (limit && (current.attempt || emptyRun.count > 1)) {
         toastr.warning(`빈 답변을 지웠습니다. 다시 생성 ${limit}번도 모두 비어 있었습니다.`, TITLE);
     } else {
         toastr.info('빈 답변을 지웠습니다.', TITLE);
@@ -99,7 +109,7 @@ function onEnded() {
     // A stream that failed before its first word leaves ST's '...' placeholder
     const processor = SillyTavern.getContext().streamingProcessor;
     const streamFailed = Boolean(processor && processor.isStopped && !processor.isFinished && !processor.result && !current.tokens);
-    setTimeout(() => {
+    const run = () => {
         // Another generation followed (tool calls, another extension): that one is checked instead
         if (watch !== current || isGenerating()) {
             return;
@@ -108,12 +118,40 @@ function onEnded() {
         if (isOn('emptyReplyDelete')) {
             check(current, streamFailed).catch(error => console.error(`[${MODULE}] Empty reply check failed`, error));
         }
+    };
+    setTimeout(() => {
+        // Other extensions still handling the reply (translating, summarizing...): after them
+        rendering ? (afterRendering = run) : run();
     }, SETTLE_MS);
+}
+
+// ST tells extensions about a reply (received, then rendered), waiting for each in turn. The
+// reply is deleted only once all of them are done with it, never under one still using it.
+let rendering = 0;
+let afterRendering = null;
+
+function onReceived() {
+    rendering++;
+}
+
+function onRendered() {
+    rendering = Math.max(0, rendering - 1);
+    if (!rendering && afterRendering) {
+        const run = afterRendering;
+        afterRendering = null;
+        // Outside ST's own round of telling extensions, which waits for each
+        setTimeout(run, 0);
+    }
 }
 
 export function initEmptyReply() {
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.GENERATION_STARTED, onStarted);
+    eventSource.on(eventTypes.GENERATION_STARTED, (...args) => {
+        // First to hear of a reply, last to hear it was drawn (extensions loaded after this one too)
+        eventSource.makeFirst(eventTypes.MESSAGE_RECEIVED, onReceived);
+        eventSource.makeLast(eventTypes.CHARACTER_MESSAGE_RENDERED, onRendered);
+        onStarted(...args);
+    });
     eventSource.on(eventTypes.STREAM_TOKEN_RECEIVED, () => watch && (watch.tokens = true));
     eventSource.on(eventTypes.GENERATION_STOPPED, () => watch && (watch.stopped = true));
     eventSource.on(eventTypes.GENERATION_ENDED, onEnded);

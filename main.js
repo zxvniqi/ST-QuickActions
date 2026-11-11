@@ -10,7 +10,7 @@ import { createInlineSelect } from './inline-select.js';
 import { FOOTER_POSITIONS, initMessageTools, applyMessageToolSettings } from './message-tools.js';
 import { FLOATING_LAYOUTS, orderedFloatingButtons, initFloatingPanel, applyFloatingSettings, pickMenuItems } from './floating-panel.js';
 import { QR_MODES, initQrBar, applyQrPreset } from './qr-bar.js';
-import { initQrInput } from './qr-input.js';
+import { initQrInput, refreshQrMessage } from './qr-input.js';
 import { initStatusGuard } from './status-guard.js';
 import { initDisplayTweaks, applyDisplayTweaks } from './display-tweaks.js';
 import { FOLDER_AREAS, initFolders, applyFolders } from './folders.js';
@@ -139,6 +139,7 @@ function saveSettings() {
 function applyAll() {
     applyDeleteButtonSetting();
     applyMessageToolSettings();
+    refreshQrMessage();
     applyFloatingSettings();
     applyQrPreset();
     applyDisplayTweaks();
