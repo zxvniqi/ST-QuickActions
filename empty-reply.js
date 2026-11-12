@@ -128,7 +128,11 @@ async function check(current, streamFailed) {
     // Kept (only generating again), or deleted as one swipe of several: a new swipe on the
     // message, as ST's own swipe makes it; a deleted message: a new reply in its place
     if (!deleted || (swipes > 1 && chat.at(-1) === message)) {
-        document.querySelector('#chat .last_mes .swipe_right')?.click();
+        // As from a slash command (as the ‹ › buttons do): works with ST's arrows hidden or off too
+        const to = context.swipe?.to;
+        typeof to === 'function'
+            ? await to(null, 'right', { source: 'slash_command', message })
+            : document.querySelector('#chat .last_mes .swipe_right')?.click();
     } else {
         // 'regenerate' leaves what is typed in the input bar alone
         await context.generate('regenerate');
