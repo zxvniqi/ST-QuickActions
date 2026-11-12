@@ -215,6 +215,15 @@ function watchPopups(on) {
 
 // Set while a QR message is being made again: that run marks no message of its own
 let regenerating = false;
+// Automatic QRs running now (what they start with /run is theirs, not the user's)
+let automatic = 0;
+// Set just before a swipe starts its run (that call is the swipe's own run, whatever else runs)
+let regenStart = false;
+// When a QR button was last tapped
+let pressedAt = 0;
+const PRESS_MS = 2000;
+// A run going on longer than this is taken as stuck (it no longer makes later QRs part of it)
+const STALE_RUN_MS = 10 * 60 * 1000;
 // The last run that ended (the one being made again reads whether its AI answer was empty)
 let lastRun = null;
 
@@ -595,6 +604,7 @@ async function regenerateQrMessage(messageId) {
             replay = mark.answers.map(answer => ({ ...answer }));
             let failed = false;
             try {
+                regenStart = true;
                 await set.executeWithOptions(qr, {});
             } catch (error) {
                 // Stopped, or the API failed (ST tells of that itself)
@@ -752,12 +762,33 @@ export function initQrInput() {
         return;
     }
     quietRunEvents();
+    // A tap on a QR button: the run it starts is the user's, also while an automatic QR runs
+    document.addEventListener('click', (event) => {
+        event.target.closest?.('.qr--button, .ctx-item') && (pressedAt = Date.now());
+    }, true);
     const execute = QuickReplySet.prototype.executeWithOptions;
     QuickReplySet.prototype.executeWithOptions = async function (qr, options = {}) {
-        // Auto-run QRs and QRs started by another QR (/run) belong to the run around them
-        if (run || options.isAutoExecute || options.isEditor) {
+        // Automatic QRs (and what they start with /run) and the editor's test runs are not the user's
+        if (options.isAutoExecute || options.isEditor) {
+            automatic++;
+            try {
+                return await execute.call(this, qr, options);
+            } finally {
+                automatic--;
+            }
+        }
+        // The run a swipe starts to make its message again (see regenerateQrMessage)
+        const own = regenStart;
+        regenStart = false;
+        // Started by a QR running now (/run): part of that run. A run that has gone on for very
+        // long (stuck on something) no longer counts, so it can't take every QR after it with it.
+        // While a swipe makes a message again, everything else is part of that.
+        const tapped = !regenerating && Date.now() - pressedAt < PRESS_MS;
+        const runningRun = run && Date.now() - run.startedAt < STALE_RUN_MS ? run : null;
+        if (!own && !tapped && (runningRun || automatic > 0 || regenerating)) {
             return execute.call(this, qr, options);
         }
+        pressedAt = 0;
         const context = SillyTavern.getContext();
         const chatId = context.getCurrentChatId();
         // Again with the same answers while its AI answer comes back empty (see afterRun)
@@ -767,7 +798,9 @@ export function initQrInput() {
                 countRequests();
                 watchGenResults();
             }
-            run = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false };
+            // This run's own record (another run may start and end meanwhile)
+            const current = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, startedAt: Date.now() };
+            run = current;
             const started = context.chat.length;
             const replaying = Boolean(answers);
             if (replaying) {
@@ -778,13 +811,13 @@ export function initQrInput() {
             try {
                 result = await execute.call(this, qr, options);
             } finally {
-                lastRun = run;
-                run = null;
+                lastRun = current;
+                run === current && (run = null);
                 replaying && (replay = null);
-                watchPopups(false);
+                watchPopups(Boolean(run));
             }
-            const finished = lastRun;
-            if (regenerating) {
+            const finished = current;
+            if (own) {
                 return result;
             }
             let again = false;
