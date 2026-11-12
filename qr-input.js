@@ -576,12 +576,19 @@ async function regenerateQrMessage(messageId) {
     // What is shown keeps any change made to it
     message.swipes[previous] = message.mes;
     message.swipe_info[previous] = { ...message.swipe_info[previous], extra: structuredClone(message.extra ?? {}) };
-    regenerating = true;
-    await swapWithMotion(messageId, true, () => addPlaceholder(message, mark));
     let made = null;
     // Only generating again, and every try empty: the last empty version stays
     let keptEmpty = false;
+    // The "..." version was added (an error before that leaves the message as it was)
+    let placed = false;
+    let crashed = false;
+    // Set until the end whatever happens (left set, every QR run after would go unhandled)
+    regenerating = true;
     try {
+        await swapWithMotion(messageId, true, () => {
+            addPlaceholder(message, mark);
+            placed = true;
+        });
         for (let attempt = 0; ; attempt++) {
             const before = context.chat.length;
             hiddenFrom = before;
@@ -629,15 +636,23 @@ async function regenerateQrMessage(messageId) {
                 break;
             }
         }
+    } catch (error) {
+        console.error(`[${MODULE}] Making the QR message again failed`, error);
+        crashed = true;
     } finally {
         hiddenFrom = null;
         regenerating = false;
-        document.querySelectorAll('#chat .mes.stqa_qr_temp').forEach(element => element.classList.remove('stqa_qr_temp'));
+        // A run's messages still there (an error came between): taken out, never left showing
+        const left = [...document.querySelectorAll('#chat .mes.stqa_qr_temp')];
+        left.forEach(element => element.classList.remove('stqa_qr_temp'));
+        if (crashed && context.getCurrentChatId() === chatId) {
+            await takeBack(left.map(element => context.chat[Number(element.getAttribute('mesid'))]).filter(Boolean), false).catch(() => {});
+        }
     }
-    if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
+    if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message || !placed) {
         return;
     }
-    if (!made && !keptEmpty) {
+    if (crashed || (!made && !keptEmpty)) {
         await backTo(messageId, previous);
         return;
     }
