@@ -97,6 +97,22 @@ function updateCount() {
     }
 }
 
+/**
+ * Whether › may make a new version here. On its last version ST would write a normal reply in its
+ * place, which a note (/comment, /sys: ST itself never swipes those) must never get. Notes a QR
+ * made are made again by the QR instead (qr-input), before this is reached.
+ */
+function canMakeNew(element) {
+    const { chat } = SillyTavern.getContext();
+    const message = chat[Number(element.getAttribute('mesid'))];
+    if (message?.extra?.stqa_qr && isOn('qrSwipe')) {
+        return true;
+    }
+    const onLast = (message?.swipe_id ?? 0) >= (message?.swipes?.length ?? 1) - 1;
+    const note = message?.extra?.isSmallSys || ['comment', 'narrator'].includes(message?.extra?.type);
+    return !onLast || !(note || message?.extra?.swipeable === false || message?.is_user);
+}
+
 function onChatClick(event) {
     const button = event.target.closest(`.${FOOTER_CLASS} [data-stqa-action], .${TO_BOTTOM_CLASS}`);
     const message = button?.closest('.mes');
@@ -106,6 +122,10 @@ function onChatClick(event) {
     const action = button.classList.contains(TO_BOTTOM_CLASS) ? 'bottom' : button.dataset.stqaAction;
     try {
         if (action === 'prev' || action === 'next') {
+            // (Nothing happens, as with ST's own arrows on messages it doesn't swipe)
+            if (action === 'next' && !canMakeNew(message)) {
+                return;
+            }
             swipe(message, action).catch(error => console.error(`[${MODULE}] Swipe failed`, error));
         } else if (action !== 'count') {
             scrollToMessageEdge(message, action);
@@ -132,6 +152,16 @@ export function initMessageTools() {
     applyMessageToolSettings();
     const chat = document.getElementById('chat');
     chat?.addEventListener('click', onChatClick);
+    // ST's own arrow (and swipe gesture, which taps it) on a note's last version: no normal reply there
+    document.addEventListener('click', (event) => {
+        const arrow = event.target.closest?.('#chat .swipe_right');
+        const message = arrow?.closest('.mes');
+        // Part of QR swipes: with that off, ST's arrows are left entirely to ST
+        if (message && isOn('qrSwipe') && !canMakeNew(message)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
     // The number is filled in as soon as messages are drawn (chat opened, more loaded, a reply
     // added), not after: only the chat's own children are watched, so streaming text costs nothing
     if (chat) {

@@ -24,7 +24,22 @@ function sharpen(img) {
     img.addEventListener('error', () => img.getAttribute('src') === full && img.setAttribute('src', thumbnail), { once: true });
     // Big card pictures are decoded off the main thread, so scrolling doesn't stall on them
     img.decoding = 'async';
+    swapTo(img, full);
+}
+
+/** The full picture in place of the thumbnail, which is kept to give back when the option is off. */
+function swapTo(img, full) {
+    img.dataset.stqaThumb = img.getAttribute('src');
     img.setAttribute('src', full);
+}
+
+/** Option off: the thumbnails back where full pictures were put. */
+function restoreThumbnails() {
+    document.querySelectorAll('img[data-stqa-thumb]').forEach((img) => {
+        const thumbnail = img.dataset.stqaThumb;
+        delete img.dataset.stqaThumb;
+        img.setAttribute('src', thumbnail);
+    });
 }
 
 // List pictures waiting for their full picture, and how many are downloading
@@ -51,7 +66,7 @@ function loadListPictures() {
                 // Not redrawn with another picture meanwhile
                 if (isOn('hdAvatars') && img.isConnected && fullPictureOf(img.getAttribute('src')) === full) {
                     img.decoding = 'async';
-                    img.setAttribute('src', full);
+                    swapTo(img, full);
                 }
             })
             .catch(() => {})
@@ -216,22 +231,33 @@ function enableIconNames(menu, itemSelector, setting) {
     });
 }
 
-/** Icons only: the name stays as the tooltip. */
-function nameAsTitle(items) {
-    document.querySelectorAll(items).forEach(item => !item.title && (item.title = item.textContent.trim()));
+/** Icons only: the name stays as the tooltip (taken off again when the option is off). */
+function nameAsTitle(items, on) {
+    document.querySelectorAll(items).forEach((item) => {
+        if (on && !item.title) {
+            item.title = item.textContent.trim();
+            item.dataset.stqaTitle = '1';
+        } else if (!on && item.dataset.stqaTitle) {
+            item.removeAttribute('title');
+            delete item.dataset.stqaTitle;
+        }
+    });
 }
 
 export function applyDisplayTweaks() {
     document.body.classList.toggle('stqa_wand_grid', isOn('wandGrid'));
-    isOn('wandGrid') && nameAsTitle('#extensionsMenu .list-group-item');
+    nameAsTitle('#extensionsMenu .list-group-item', isOn('wandGrid'));
     document.body.classList.toggle('stqa_options_grid', isOn('optionsGrid'));
-    isOn('optionsGrid') && nameAsTitle('#options .options-content > a');
+    nameAsTitle('#options .options-content > a', isOn('optionsGrid'));
     document.body.classList.toggle('stqa_welcome_recent', isOn('welcomeRecent'));
     document.body.classList.toggle('stqa_hide_hints', isOn('hideSettingHints'));
     syncPlaceholder();
     expandRecentChats();
     if (isOn('hdAvatars')) {
         document.querySelectorAll(AVATAR_SCOPES).forEach(scan);
+    } else {
+        listQueue.length = 0;
+        restoreThumbnails();
     }
 }
 
@@ -241,7 +267,7 @@ export function initDisplayTweaks() {
     const options = document.querySelector('#options .options-content');
     enableIconNames(options, '.options-content > a', 'optionsGrid');
     // Items other extensions add later get their names as tooltips too
-    options && new MutationObserver(() => isOn('optionsGrid') && nameAsTitle('#options .options-content > a')).observe(options, { childList: true });
+    options && new MutationObserver(() => isOn('optionsGrid') && nameAsTitle('#options .options-content > a', true)).observe(options, { childList: true });
     // ST sets the placeholder again (language, chat changes); the start screen is drawn into the chat
     const input = document.getElementById('send_textarea');
     if (input) {

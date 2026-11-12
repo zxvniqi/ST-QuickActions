@@ -3,7 +3,7 @@
 // stay as they are. Added through ST's own translation (so it covers popups and messages ST
 // translates later too, costs nothing while running, and never replaces an existing translation).
 import { MODULE, isOn } from './settings.js';
-import { addLocaleData, applyLocale, getCurrentLocale } from '../../../i18n.js';
+import { addLocaleData, getCurrentLocale, translate } from '../../../i18n.js';
 import { translateToasts } from './toast-ko.js';
 
 const KO = Object.freeze({
@@ -705,26 +705,36 @@ const FIXES = Object.freeze({
 });
 
 /** Same reading of data-i18n as ST's (";" between keys, "[attribute]key"), for the fixed keys only. */
-function fixElement(element) {
+function fixElement(element, words = FIXES) {
     for (const key of (element.getAttribute('data-i18n') ?? '').split(';')) {
         const attribute = key.startsWith('[') ? key.match(/\[(\S+)\](.+)/) : null;
         const name = attribute ? attribute[2] : key;
-        if (!Object.hasOwn(FIXES, name)) {
+        if (!Object.hasOwn(words, name)) {
             continue;
         }
-        const value = FIXES[name];
+        const value = words[name];
         if (attribute) {
             element.getAttribute(attribute[1]) !== value && element.setAttribute(attribute[1], value);
-        } else if (element.textContent !== value) {
-            element.textContent = value;
+        } else {
+            setText(element, value);
         }
     }
 }
 
+/** The label's text replaced, leaving what other extensions put inside it (a button in a heading). */
+function setText(element, value) {
+    if (!element.firstElementChild) {
+        element.textContent !== value && (element.textContent = value);
+        return;
+    }
+    const text = [...element.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.nodeValue.trim());
+    text ? (text.nodeValue !== value && (text.nodeValue = value)) : element.prepend(value);
+}
+
 // A plain [data-i18n] walk with a lookup is far quicker than a selector naming every key
-function fixWithin(root) {
-    root.hasAttribute('data-i18n') && fixElement(root);
-    root.querySelectorAll('[data-i18n]').forEach(fixElement);
+function fixWithin(root, words = FIXES) {
+    root.hasAttribute('data-i18n') && fixElement(root, words);
+    root.querySelectorAll('[data-i18n]').forEach(element => fixElement(element, words));
 }
 
 function initFixes() {
@@ -752,10 +762,14 @@ export function initKoFill() {
         return;
     }
     try {
-        // Empty strings are left out: they would blank the text instead of translating it
-        addLocaleData(getCurrentLocale(), Object.fromEntries(Object.entries(KO).filter(([, value]) => value)));
-        // What ST already drew is translated again with the added words
-        applyLocale();
+        // Empty strings are left out: they would blank the text instead of translating it. Only
+        // words ST has no translation for are added (never replacing one)
+        const missing = '\u0000';
+        const added = Object.fromEntries(Object.entries(KO).filter(([key, value]) => value && translate(missing, key) === missing));
+        addLocaleData(getCurrentLocale(), added);
+        // What ST already drew in English gets the added words; the rest is left untouched (ST's
+        // whole pass again would wipe buttons other extensions put inside translated labels)
+        fixWithin(document.body, added);
         initFixes();
         translateToasts();
     } catch (error) {

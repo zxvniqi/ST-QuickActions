@@ -1,6 +1,7 @@
-// A reply that came back with nothing at all (an API error, an empty answer) is deleted, with a
-// notice. Only when there is truly nothing: no text, no reasoning, no picture or file. Then
-// generated again up to the number of times set (never endlessly, for an API that keeps failing).
+// A reply that came back with nothing at all (an API error, an empty answer): deleted, generated
+// again, or both, as chosen, with a notice. Only when there is truly nothing: no text, no
+// reasoning, no picture or file. Generated again up to the number of times set (never endlessly,
+// for an API that keeps failing).
 import { MODULE, getSettings, isOn } from './settings.js';
 import { withoutTrash } from './message-trash.js';
 
@@ -11,12 +12,48 @@ const WATCHED = ['normal', 'regenerate', 'swipe'];
 const SETTLE_MS = 400;
 export const MAX_RETRIES = 10;
 
-/** How many times an empty reply is generated again (0: only deleted). */
+/** What happens to an empty reply. */
+export const EMPTY_REPLY_MODES = Object.freeze([
+    { value: 'delete', label: '지우기만' },
+    { value: 'retry', label: '다시 생성만' },
+    { value: 'both', label: '지우고 다시 생성' },
+]);
+
+/** The mode chosen (before there was one: generating again was set by a count above 0). */
+export function emptyReplyMode() {
+    const settings = getSettings();
+    return EMPTY_REPLY_MODES.some(mode => mode.value === settings.emptyReplyMode)
+        ? settings.emptyReplyMode
+        : (Number(settings.emptyReplyRetries) > 0 ? 'both' : 'delete');
+}
+
+/** Whether an empty reply is deleted (not when only generating again). */
+export const deletesEmpty = () => emptyReplyMode() !== 'retry';
+
+/** How many times an empty reply is generated again (0: never). */
 export function retryLimit() {
+    if (emptyReplyMode() === 'delete') {
+        return 0;
+    }
     const count = Math.floor(Number(getSettings().emptyReplyRetries));
     return Number.isFinite(count) ? Math.min(MAX_RETRIES, Math.max(0, count)) : 0;
 }
 
+/**
+ * The notice for an empty reply. `again`: what is done again ('다시 생성' / 'QR을 다시 실행');
+ * `next`: the try about to start (0: none), `tries`: the tries made before this one.
+ */
+export function tellEmpty(again, next, tries) {
+    const limit = retryLimit();
+    const deleted = deletesEmpty();
+    if (next) {
+        toastr.info(`빈 답변${deleted ? '을 지우고' : '이라'} ${again}합니다. (${next}/${limit})`, TITLE);
+    } else if (limit && tries) {
+        toastr.warning(`${deleted ? '빈 답변을 지웠습니다. ' : ''}${again.replace(/^QR을 /, '')} ${limit}번도 모두 비어 있었습니다.`, TITLE);
+    } else if (deleted) {
+        toastr.info('빈 답변을 지웠습니다.', TITLE);
+    }
+}
 // The generation being watched: { type, chatId, last, tokens, stopped, attempt }
 let watch = null;
 // A retry asked for here: which one, and when (a generation starting soon after is it)
@@ -43,7 +80,8 @@ const isGenerating = () => {
     return Boolean(stop) && getComputedStyle(stop).display !== 'none';
 };
 
-function hasNothing(message, streamFailed) {
+/** Nothing at all in the message: no text, reasoning, picture or file. */
+export function hasNothing(message, streamFailed = false) {
     const text = String(message.mes ?? '');
     // '...' is what ST shows while waiting for a streamed reply; left there when the stream failed
     const blank = !text.trim() || (text === '...' && streamFailed);
@@ -76,24 +114,25 @@ async function check(current, streamFailed) {
     const limit = retryLimit();
     const next = current.attempt + 1;
     const retry = next <= limit && emptyRun.count <= limit;
-    await withoutTrash(() => (swipes > 1
-        ? context.deleteMessage(id, message.swipe_id ?? swipes - 1, false)
-        : context.deleteMessage(id, undefined, false, false)));
-    if (retry) {
-        toastr.info(`빈 답변을 지우고 다시 생성합니다. (${next}/${limit})`, TITLE);
-    } else if (limit && (current.attempt || emptyRun.count > 1)) {
-        toastr.warning(`빈 답변을 지웠습니다. 다시 생성 ${limit}번도 모두 비어 있었습니다.`, TITLE);
-    } else {
-        toastr.info('빈 답변을 지웠습니다.', TITLE);
+    const deleted = deletesEmpty();
+    if (deleted) {
+        await withoutTrash(() => (swipes > 1
+            ? context.deleteMessage(id, message.swipe_id ?? swipes - 1, false)
+            : context.deleteMessage(id, undefined, false, false)));
     }
+    tellEmpty('다시 생성', retry ? next : 0, current.attempt || emptyRun.count > 1);
     if (!retry) {
         return;
     }
     retrying = { attempt: next, at: Date.now() };
-    const last = chat.at(-1);
-    if (swipes > 1 && last === message) {
-        // The swipe before it is shown now: one more swipe to the right makes a new one
-        document.querySelector('#chat .last_mes .swipe_right')?.click();
+    // Kept (only generating again), or deleted as one swipe of several: a new swipe on the
+    // message, as ST's own swipe makes it; a deleted message: a new reply in its place
+    if (!deleted || (swipes > 1 && chat.at(-1) === message)) {
+        // As from a slash command (as the ‹ › buttons do): works with ST's arrows hidden or off too
+        const to = context.swipe?.to;
+        typeof to === 'function'
+            ? await to(null, 'right', { source: 'slash_command', message })
+            : document.querySelector('#chat .last_mes .swipe_right')?.click();
     } else {
         // 'regenerate' leaves what is typed in the input bar alone
         await context.generate('regenerate');

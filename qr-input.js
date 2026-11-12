@@ -3,8 +3,12 @@
 //  - a message a QR made (/gen + /sendas and the like) can be swiped like a reply: swiping right
 //    on its last version runs the QR again with the same answers, and the new text becomes the
 //    message's next swipe instead of a new message
+//  - a QR whose AI answer came back empty: what it posted is taken back out and the QR runs
+//    again with the same answers, as many times as set for empty replies
 import { MODULE, getSettings, isOn } from './settings.js';
 import { withoutTrash } from './message-trash.js';
+import { hasNothing, retryLimit, deletesEmpty, tellEmpty } from './empty-reply.js';
+import { animation_duration } from '../../../../script.js';
 
 const HISTORY_SIZE = 3;
 const TITLE = '편의성 모음';
@@ -211,16 +215,146 @@ function watchPopups(on) {
 
 // Set while a QR message is being made again: that run marks no message of its own
 let regenerating = false;
+// Automatic QRs running now (what they start with /run is theirs, not the user's)
+let automatic = 0;
+// Set just before a swipe starts its run (that call is the swipe's own run, whatever else runs)
+let regenStart = false;
+// When a QR button was last tapped
+let pressedAt = 0;
+const PRESS_MS = 2000;
+// A run going on longer than this is taken as stuck (it no longer makes later QRs part of it)
+const STALE_RUN_MS = 10 * 60 * 1000;
+// The last run that ended (the one being made again reads whether its AI answer was empty)
+let lastRun = null;
 
 const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
 
-/** After a run started by the user: the last message it added (not the user's) remembers it. */
+/* ---------- empty AI answers inside a QR (/gen and the like) ---------- */
+
+// ST's generation requests (any: a QR's, a translator's...) and how many are not answered yet
+const GENERATE_URL = /\/api\/(backends\/[\w-]+\/generate|novelai\/generate|horde\/generate)/;
+let pending = 0;
+let counter = null;
+
+/**
+ * Counts the generation requests under way by sitting on top of fetch (see answersIn). Put back
+ * on top before each run, should another extension have put its own fetch over it since.
+ */
+function countRequests() {
+    if (window.fetch === counter) {
+        return;
+    }
+    const fetchBefore = window.fetch;
+    counter = window.fetch = async function (...args) {
+        if (!GENERATE_URL.test(String(args[0]?.url ?? args[0] ?? ''))) {
+            return fetchBefore.apply(this, args);
+        }
+        pending++;
+        let response;
+        try {
+            response = await fetchBefore.apply(this, args);
+        } catch (error) {
+            pending--;
+            throw error;
+        }
+        // Answered once its whole body has come in
+        response.clone().arrayBuffer().catch(() => null).finally(() => pending--);
+        return response;
+    };
+}
+/**
+ * What /gen (and /genraw) hand on to the rest of the QR ({{pipe}}): empty means the AI gave
+ * nothing usable, also when all it wrote was reasoning, which ST strips off.
+ */
+function watchGenResults() {
+    const commands = SillyTavern.getContext().SlashCommandParser?.commands ?? {};
+    for (const name of ['gen', 'genraw']) {
+        const command = commands[name];
+        if (!command || typeof command.callback !== 'function' || command.stqaWatched) {
+            continue;
+        }
+        const callback = command.callback;
+        command.callback = async function (...args) {
+            const current = run;
+            const result = await callback.apply(this, args);
+            if (current && typeof result === 'string' && !result.trim()) {
+                current.emptyAnswer = true;
+                // What the run posts from here on is not told to other extensions (a translator
+                // would start on an empty message about to go): see quietRunEvents
+                if (isOn('emptyReplyDelete') && deletesEmpty()) {
+                    current.quietFrom ??= SillyTavern.getContext().chat.length;
+                }
+            }
+            return result;
+        };
+        command.stqaWatched = true;
+    }
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Waits (a minute at most) for the requests under way, so extensions working on the run's
+ * messages (an auto translator) are done with them before they are taken out.
+ */
+async function answersIn() {
+    await sleep(300);
+    for (const until = Date.now() + 60000; pending > 0 && Date.now() < until;) {
+        await sleep(200);
+    }
+    await sleep(100);
+}
+
+/** What a run made came to nothing: its AI answer was empty, or a message it posted has nothing. */
+const cameEmpty = (finished, added) => finished.emptyAnswer || added.some(message => !message.is_user && hasNothing(message));
+
+/**
+ * A run's own messages taken back out (those very messages, from the last: never one the user
+ * added meanwhile); never the user's to keep. False: another chat opened.
+ */
+async function takeBack(messages, settle = true) {
+    const context = SillyTavern.getContext();
+    if (!messages.length) {
+        return true;
+    }
+    const chatId = context.getCurrentChatId();
+    // (Not needed when no extension was told of the messages: see quietRunEvents)
+    settle && await answersIn();
+    // Another chat opened meanwhile: nothing there is the run's
+    if (context.getCurrentChatId() !== chatId) {
+        return false;
+    }
+    await withoutTrash(async () => {
+        for (const message of [...messages].reverse()) {
+            const index = context.chat.indexOf(message);
+            index >= 0 && await context.deleteMessage(index, undefined, false, false);
+        }
+    });
+    refreshQrMessage();
+    return true;
+}
+/* ---------- the message a run made ---------- */
+
+/**
+ * Which of the messages a run added is the one it made: the last that isn't the user's (hidden
+ * ones and notes too), else the last of the user's (a QR that writes as {{user}}), unless a
+ * reply to it is being generated now (that reply is not the QR's).
+ */
+function madeMessage(added) {
+    const reply = [...added].reverse().find(message => !message.is_user);
+    if (reply) {
+        return reply;
+    }
+    return isGenerating() ? null : added.at(-1) ?? null;
+}
+
+/** After a run started by the user: the message it made remembers it. */
 async function markMadeMessage(started, chatId, finishedRun) {
     const context = SillyTavern.getContext();
     if (!isOn('qrSwipe') || context.getCurrentChatId() !== chatId || context.chat.length <= started) {
         return;
     }
-    const made = context.chat.slice(started).reverse().find(message => !message.is_user && !message.is_system);
+    const made = madeMessage(context.chat.slice(started));
     if (!made) {
         return;
     }
@@ -231,7 +365,39 @@ async function markMadeMessage(started, chatId, finishedRun) {
         answers: finishedRun.answers.filter(Boolean),
     };
     await context.saveChat();
+    refreshQrMessage();
 }
+
+/**
+ * After a run started by the user: an empty AI answer is handled as set for empty replies (the
+ * run's messages taken back out, the QR run again, or both) and asks for one more run (true)
+ * while tries are left; otherwise the made message is marked.
+ */
+async function afterRun(started, chatId, finished, attempt) {
+    const context = SillyTavern.getContext();
+    if (context.getCurrentChatId() !== chatId) {
+        return false;
+    }
+    const added = context.chat.slice(started);
+    // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
+    if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
+        // Extensions told of none of them (all posted after the empty /gen): taken out at once;
+        // otherwise once their requests are answered
+        const told = added.some(message => !(context.chat.indexOf(message) >= (finished.quietFrom ?? Infinity)));
+        if (deletesEmpty() && !await takeBack(added, told)) {
+            return false;
+        }
+        const again = attempt < retryLimit();
+        tellEmpty('QR을 다시 실행', again ? attempt + 1 : 0, attempt);
+        return again;
+    }
+    await markMadeMessage(started, chatId, finished);
+    return false;
+}
+/* ---------- swiping a QR message ---------- */
+
+/** ST swipes only replies that are shown and not small notes: the rest are swiped here. */
+const swipedHere = message => Boolean(message.is_user || message.is_system || message.extra?.isSmallSys);
 
 /** Whether a swipe right on this message would make a new version (it is on its last one). */
 function swipesToNew(message, messageId, chat) {
@@ -239,9 +405,165 @@ function swipesToNew(message, messageId, chat) {
     return messageId === chat.length - 1 && (message.swipe_id ?? 0) >= last;
 }
 
+function ensureSwipes(message) {
+    if (!Array.isArray(message.swipes) || !message.swipes.length) {
+        message.swipes = [message.mes];
+        message.swipe_info = [{ send_date: message.send_date, gen_started: message.gen_started, gen_finished: message.gen_finished, extra: structuredClone(message.extra ?? {}) }];
+        message.swipe_id = 0;
+    }
+    message.swipe_info ??= message.swipes.map(() => ({}));
+}
+
+/* ---------- looking like ST's own swipe ---------- */
+
 /**
- * Makes a QR message again: the QR runs with the same answers, the message(s) it adds are taken
- * back out, and the text it made becomes the message's next swipe.
+ * ST's swipe motion on one message: its block and avatar slide from xStart to xEnd (ST's own
+ * 'slide' animation and speed setting).
+ */
+async function slide(messageId, xStart, xEnd) {
+    const element = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
+    const duration = Number(animation_duration) || 0;
+    const parts = element ? [...element.querySelectorAll(':scope > .mes_block, :scope > .mesAvatarWrapper')] : [];
+    if (!parts.length || duration <= 50) {
+        return;
+    }
+    const root = document.documentElement.style;
+    root.setProperty('--slide-mes-x-start', xStart);
+    root.setProperty('--slide-mes-x-end', xEnd);
+    root.setProperty('--slide-mes-x-duration', `${duration}ms`);
+    parts.forEach(part => part.classList.remove('slide'));
+    void parts[0].offsetWidth;
+    parts.forEach(part => part.classList.add('slide'));
+    const animation = parts[0].getAnimations().find(item => item.animationName === 'slide');
+    await Promise.race([animation?.finished, sleep(duration * 2)].filter(Boolean)).catch(() => null);
+    parts.forEach(part => part.classList.remove('slide'));
+    root.setProperty('--slide-mes-x-start', '');
+    root.setProperty('--slide-mes-x-end', '');
+}
+
+const widthOf = messageId => document.querySelector(`#chat .mes[mesid="${messageId}"]`)?.offsetWidth ?? 0;
+
+/** "2/3" on the message (ST's counter and the ‹ › one). */
+function showCount(messageId, message) {
+    const element = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
+    const text = `${(message.swipe_id ?? 0) + 1}/${message.swipes?.length ?? 1}`;
+    element?.querySelectorAll('.swipes-counter, .stqa_footer_count').forEach(counter => (counter.textContent = text));
+}
+
+/** The message turned to another version as ST's swipe does: out one side, in from the other. */
+async function swapWithMotion(messageId, forward, change) {
+    const context = SillyTavern.getContext();
+    const width = widthOf(messageId);
+    await slide(messageId, '0px', `${forward ? -width : width}px`);
+    change();
+    context.updateMessageBlock(messageId, context.chat[messageId]);
+    showCount(messageId, context.chat[messageId]);
+    await slide(messageId, `${forward ? width : -width}px`, '0px');
+}
+
+// While a QR message is made again, the messages its run posts stay out of sight: from this index on
+let hiddenFrom = null;
+
+/**
+ * While a QR message is made again, extensions aren't told of the messages its run posts (a
+ * translator would start on them, and they are gone a moment later): they hear of the result,
+ * as a new swipe of the message, instead.
+ */
+function quietRunEvents() {
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    const quiet = new Set([eventTypes.MESSAGE_RECEIVED, eventTypes.MESSAGE_SENT, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED].filter(Boolean));
+    const emit = eventSource.emit;
+    eventSource.emit = function (event, ...args) {
+        // From hiddenFrom (a QR message being made again) or run.quietFrom (after an empty /gen)
+        const from = hiddenFrom ?? run?.quietFrom ?? null;
+        if (from !== null && quiet.has(event) && Number(args[0]) >= from) {
+            return Promise.resolve();
+        }
+        return emit.call(this, event, ...args);
+    };
+}
+
+function hideRunMessages() {
+    if (hiddenFrom === null) {
+        return;
+    }
+    document.querySelectorAll('#chat > .mes[mesid]').forEach((element) => {
+        Number(element.getAttribute('mesid')) >= hiddenFrom && element.classList.add('stqa_qr_temp');
+    });
+}
+
+/* ---------- swiping a QR message ---------- */
+
+/** Shows another of the message's versions (for messages ST doesn't swipe), with ST's motion. */
+async function showSwipe(messageId, to) {
+    const context = SillyTavern.getContext();
+    const message = context.chat[messageId];
+    ensureSwipes(message);
+    const from = message.swipe_id ?? 0;
+    if (to < 0 || to >= message.swipes.length || to === from) {
+        return;
+    }
+    const mark = message.extra?.stqa_qr;
+    await swapWithMotion(messageId, to > from, () => {
+        // What was shown keeps any change made to it (ST does the same when swiping)
+        message.swipes[from] = message.mes;
+        message.swipe_info[from] = { ...message.swipe_info[from], extra: structuredClone(message.extra ?? {}) };
+        const info = message.swipe_info[to] ?? {};
+        message.swipe_id = to;
+        message.mes = message.swipes[to];
+        info.send_date && (message.send_date = info.send_date);
+        message.extra = { ...structuredClone(info.extra ?? message.extra ?? {}), stqa_qr: mark };
+    });
+    await context.saveChat();
+    await context.eventSource.emit(context.eventTypes.MESSAGE_SWIPED, messageId);
+}
+
+/** Shows version `to` again after a try that came to nothing (the try's own "..." version goes). */
+async function backTo(messageId, to) {
+    const context = SillyTavern.getContext();
+    const message = context.chat[messageId];
+    const mark = message.extra?.stqa_qr;
+    await swapWithMotion(messageId, false, () => {
+        message.swipes.pop();
+        message.swipe_info.pop();
+        const info = message.swipe_info[to] ?? {};
+        message.swipe_id = to;
+        message.mes = message.swipes[to];
+        info.send_date && (message.send_date = info.send_date);
+        message.extra = { ...structuredClone(info.extra ?? {}), stqa_qr: mark };
+    });
+}
+
+/** A new last version of the message, "..." until the QR has made it. */
+function addPlaceholder(message, mark) {
+    const extra = { ...structuredClone(message.extra ?? {}), stqa_qr: mark };
+    ['display_text', 'original_text_for_translation', 'reasoning', 'reasoning_duration', 'reasoning_signature', 'token_count'].forEach(key => delete extra[key]);
+    message.swipes.push('...');
+    message.swipe_info.push({ send_date: message.send_date, extra: structuredClone(extra) });
+    message.swipe_id = message.swipes.length - 1;
+    message.mes = '...';
+    message.extra = extra;
+}
+
+/** The message's last version filled with what a run made (nothing: left empty). */
+function fillLast(message, made, mark) {
+    const last = message.swipes.length - 1;
+    const extra = { ...structuredClone(made?.extra ?? {}), stqa_qr: mark };
+    const text = made?.mes ?? '';
+    message.swipes[last] = text;
+    message.swipe_info[last] = { send_date: made?.send_date ?? message.send_date, gen_started: made?.gen_started, gen_finished: made?.gen_finished, extra: structuredClone(extra) };
+    message.swipe_id = last;
+    message.mes = text;
+    made?.send_date && (message.send_date = made.send_date);
+    message.extra = extra;
+}
+
+/**
+ * Makes a QR message again, looking like ST's own swipe: the message slides to a new version
+ * showing "..." while the QR runs again with the same answers (out of sight: what it posts is
+ * taken back out), then the made text fills that version. An empty AI answer is handled as set
+ * for empty replies: tried again (deleted, or kept as a version of its own) as many times as set;
+ * when it ends with nothing (deleted), the message slides back to the version before.
  */
 async function regenerateQrMessage(messageId) {
     const context = SillyTavern.getContext();
@@ -257,55 +579,108 @@ async function regenerateQrMessage(messageId) {
         return;
     }
     const chatId = context.getCurrentChatId();
-    const before = context.chat.length;
+    const limit = isOn('emptyReplyDelete') ? retryLimit() : 0;
+    ensureSwipes(message);
+    const previous = message.swipe_id ?? 0;
+    // What is shown keeps any change made to it
+    message.swipes[previous] = message.mes;
+    message.swipe_info[previous] = { ...message.swipe_info[previous], extra: structuredClone(message.extra ?? {}) };
+    let made = null;
+    // Only generating again, and every try empty: the last empty version stays
+    let keptEmpty = false;
+    // The "..." version was added (an error before that leaves the message as it was)
+    let placed = false;
+    let crashed = false;
+    // Set until the end whatever happens (left set, every QR run after would go unhandled)
     regenerating = true;
-    replay = mark.answers.map(answer => ({ ...answer }));
     try {
-        await set.executeWithOptions(qr, {});
-    } finally {
-        replay = null;
-        regenerating = false;
-    }
-    // Another chat opened meanwhile: nothing is touched
-    if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
-        return;
-    }
-    const added = context.chat.slice(before);
-    const made = [...added].reverse().find(item => !item.is_user && !item.is_system);
-    if (!made) {
-        toastr.info('QR이 새 메시지를 만들지 않았습니다.', TITLE);
-        return;
-    }
-    // The run's own messages go (ST's way, one by one from the end), then the text joins as a swipe;
-    // they were never the user's to keep, so not into the trash
-    await withoutTrash(async () => {
-        while (context.chat.length > before) {
-            await context.deleteLastMessage();
+        await swapWithMotion(messageId, true, () => {
+            addPlaceholder(message, mark);
+            placed = true;
+        });
+        for (let attempt = 0; ; attempt++) {
+            const before = context.chat.length;
+            hiddenFrom = before;
+            replay = mark.answers.map(answer => ({ ...answer }));
+            let failed = false;
+            try {
+                regenStart = true;
+                await set.executeWithOptions(qr, {});
+            } catch (error) {
+                // Stopped, or the API failed (ST tells of that itself)
+                console.warn(`[${MODULE}] The QR run ended early`, error);
+                failed = true;
+            } finally {
+                replay = null;
+            }
+            // Another chat opened meanwhile: nothing is touched
+            if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
+                return;
+            }
+            const added = context.chat.slice(before);
+            const candidate = madeMessage(added);
+            const empty = !failed && !lastRun?.stopped && isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (candidate && hasNothing(candidate)));
+            // The run's own messages go (their text joins the message as its new version)
+            if (!await takeBack(added, false)) {
+                return;
+            }
+            // Stopped by the user, or nothing made: back to the version before, quietly
+            if (failed || lastRun?.stopped || (!candidate && !empty)) {
+                break;
+            }
+            if (!empty) {
+                made = candidate;
+                break;
+            }
+            const again = attempt < limit;
+            tellEmpty('QR을 다시 실행', again ? attempt + 1 : 0, attempt);
+            if (!deletesEmpty()) {
+                // Only generating again: the empty answer stays as a version of its own
+                fillLast(message, candidate, mark);
+                keptEmpty = !again;
+                if (again) {
+                    await swapWithMotion(messageId, true, () => addPlaceholder(message, mark));
+                }
+            }
+            if (!again) {
+                break;
+            }
         }
-    });
-    if (!Array.isArray(message.swipes) || !message.swipes.length) {
-        message.swipes = [message.mes];
-        message.swipe_info = [{ send_date: message.send_date, gen_started: message.gen_started, gen_finished: message.gen_finished, extra: structuredClone(message.extra ?? {}) }];
-        message.swipe_id = 0;
+    } catch (error) {
+        console.error(`[${MODULE}] Making the QR message again failed`, error);
+        crashed = true;
+    } finally {
+        hiddenFrom = null;
+        regenerating = false;
+        // A run's messages still there (an error came between): taken out, never left showing
+        const left = [...document.querySelectorAll('#chat .mes.stqa_qr_temp')];
+        left.forEach(element => element.classList.remove('stqa_qr_temp'));
+        if (crashed && context.getCurrentChatId() === chatId) {
+            await takeBack(left.map(element => context.chat[Number(element.getAttribute('mesid'))]).filter(Boolean), false).catch(() => {});
+        }
     }
-    message.swipe_info ??= message.swipes.map(() => ({}));
-    message.swipes.push(made.mes);
-    message.swipe_info.push({ send_date: made.send_date, gen_started: made.gen_started, gen_finished: made.gen_finished, extra: { ...structuredClone(made.extra ?? {}), stqa_qr: mark } });
-    message.swipe_id = message.swipes.length - 1;
-    message.mes = made.mes;
-    message.send_date = made.send_date;
-    message.extra = { ...structuredClone(made.extra ?? {}), stqa_qr: mark };
+    if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message || !placed) {
+        return;
+    }
+    if (crashed || (!made && !keptEmpty)) {
+        await backTo(messageId, previous);
+        return;
+    }
+    made && fillLast(message, made, mark);
     context.updateMessageBlock(messageId, message);
+    showCount(messageId, message);
     await context.saveChat();
     await context.eventSource.emit(context.eventTypes.MESSAGE_SWIPED, messageId);
 }
-
-/** A swipe right that would make a new version of a QR message is ours (ST's would write a normal reply). */
+/**
+ * A swipe on a QR message: on its last version a swipe right runs the QR again (ST's would write
+ * a normal reply); messages ST doesn't swipe (hidden, notes, the user's) are swiped here.
+ */
 function onSwipeClick(event) {
     if (!isOn('qrSwipe')) {
         return;
     }
-    const button = event.target.closest('#chat .swipe_right, #chat .stqa_mes_footer [data-stqa-action="next"]');
+    const button = event.target.closest('#chat .swipe_right, #chat .swipe_left, #chat .stqa_mes_footer [data-stqa-action="next"], #chat .stqa_mes_footer [data-stqa-action="prev"]');
     const element = button?.closest('.mes');
     if (!element) {
         return;
@@ -313,42 +688,174 @@ function onSwipeClick(event) {
     const { chat } = SillyTavern.getContext();
     const messageId = Number(element.getAttribute('mesid'));
     const message = chat[messageId];
-    if (!message?.extra?.stqa_qr || !swipesToNew(message, messageId, chat)) {
+    if (!message?.extra?.stqa_qr) {
+        return;
+    }
+    // Being made again: wait for it
+    if (regenerating) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+    }
+    const forward = button.matches('.swipe_right, [data-stqa-action="next"]');
+    const anew = forward && swipesToNew(message, messageId, chat);
+    if (!anew && !swipedHere(message)) {
+        // An earlier version of a reply ST swipes: ST's own swipe
         return;
     }
     event.preventDefault();
     event.stopImmediatePropagation();
-    regenerateQrMessage(messageId).catch((error) => {
-        console.error(`[${MODULE}] Making the QR message again failed`, error);
-        toastr.error('QR 메시지를 다시 만들지 못했습니다.', TITLE);
+    const task = anew ? regenerateQrMessage(messageId) : showSwipe(messageId, (message.swipe_id ?? 0) + (forward ? 1 : -1));
+    task.catch((error) => {
+        console.error(`[${MODULE}] Swiping the QR message failed`, error);
+        toastr.error('QR 메시지를 넘기지 못했습니다.', TITLE);
     });
 }
+
+/**
+ * A finger swipe on the newest QR message. ST turns swipe gestures into taps on its swipe arrows,
+ * and only on arrows it shows: none on hidden messages and notes, none while the ‹ › buttons
+ * replace them. Then the gesture taps ‹ / › instead.
+ */
+function onGesture(event) {
+    const { powerUserSettings, chat } = SillyTavern.getContext();
+    if (!isOn('qrSwipe') || powerUserSettings?.gestures === false || document.querySelector('dialog[open]') || document.getElementById('curEditTextarea')) {
+        return;
+    }
+    const element = event.target?.closest?.('#chat .mes.last_mes');
+    if (!element || !chat.at(-1)?.extra?.stqa_qr) {
+        return;
+    }
+    const forward = event.type === 'swiped-left';
+    const arrow = [...document.querySelectorAll(forward ? '#chat .swipe_right' : '#chat .swipe_left')].at(-1);
+    // ST taps its own arrow (and the tap comes here): nothing more to do
+    if (arrow?.offsetParent) {
+        return;
+    }
+    element.querySelector(`.stqa_mes_footer [data-stqa-action="${forward ? 'next' : 'prev'}"]`)?.click();
+}
+
+/**
+ * The last message, when a QR made it and ST doesn't swipe it, gets the ‹ 1/2 › buttons (CSS) so
+ * it can be swiped and made again.
+ */
+export function refreshQrMessage() {
+    const { chat } = SillyTavern.getContext();
+    const id = chat.length - 1;
+    const message = chat[id];
+    document.querySelectorAll('#chat .mes.stqa_qr_own').forEach(element => element.getAttribute('mesid') !== String(id) && element.classList.remove('stqa_qr_own'));
+    const element = document.querySelector(`#chat .mes[mesid="${id}"]`);
+    // ST's "delete the last message" leaves the new last one unmarked as last (the swipe buttons
+    // and arrows go with that mark): marked again
+    if (isOn('qrSwipe') && element && !element.classList.contains('last_mes')) {
+        document.querySelectorAll('#chat .mes.last_mes').forEach(other => other.classList.remove('last_mes'));
+        element.classList.add('last_mes');
+    }
+    element?.classList.toggle('stqa_qr_own', Boolean(message?.extra?.stqa_qr && swipedHere(message)));
+    document.body.classList.toggle('stqa_qr_swipe_on', isOn('qrSwipe'));
+}
+
 export function initQrInput() {
     // Per-QR history of earlier versions: one shared list now
     delete getSettings().qrInputHistory;
     if (!QuickReplySet) {
         return;
     }
+    quietRunEvents();
+    // A tap on a QR button: the run it starts is the user's, also while an automatic QR runs
+    document.addEventListener('click', (event) => {
+        event.target.closest?.('.qr--button, .ctx-item') && (pressedAt = Date.now());
+    }, true);
     const execute = QuickReplySet.prototype.executeWithOptions;
     QuickReplySet.prototype.executeWithOptions = async function (qr, options = {}) {
-        // Auto-run QRs and QRs started by another QR (/run) belong to the run around them
-        if (run || options.isAutoExecute || options.isEditor) {
+        // Automatic QRs (and what they start with /run) and the editor's test runs are not the user's
+        if (options.isAutoExecute || options.isEditor) {
+            automatic++;
+            try {
+                return await execute.call(this, qr, options);
+            } finally {
+                automatic--;
+            }
+        }
+        // The run a swipe starts to make its message again (see regenerateQrMessage)
+        const own = regenStart;
+        regenStart = false;
+        // Started by a QR running now (/run): part of that run. A run that has gone on for very
+        // long (stuck on something) no longer counts, so it can't take every QR after it with it.
+        // While a swipe makes a message again, everything else is part of that.
+        const tapped = !regenerating && Date.now() - pressedAt < PRESS_MS;
+        const runningRun = run && Date.now() - run.startedAt < STALE_RUN_MS ? run : null;
+        if (!own && !tapped && (runningRun || automatic > 0 || regenerating)) {
             return execute.call(this, qr, options);
         }
-        run = { set: this, qr, options: { ...options }, answers: [] };
+        pressedAt = 0;
         const context = SillyTavern.getContext();
-        const started = context.chat.length;
         const chatId = context.getCurrentChatId();
-        watchPopups(true);
-        try {
-            return await execute.call(this, qr, options);
-        } finally {
-            const finished = run;
-            run = null;
-            watchPopups(false);
-            !regenerating && markMadeMessage(started, chatId, finished).catch(error => console.error(`[${MODULE}] Marking the QR message failed`, error));
+        // Again with the same answers while its AI answer comes back empty (see afterRun)
+        for (let attempt = 0, answers = null; ; attempt++) {
+            // Only once one of the features that need them is used (until then fetch and /gen are ST's own)
+            if (isOn('qrSwipe') || isOn('emptyReplyDelete')) {
+                countRequests();
+                watchGenResults();
+            }
+            // This run's own record (another run may start and end meanwhile)
+            const current = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, startedAt: Date.now() };
+            run = current;
+            const started = context.chat.length;
+            const replaying = Boolean(answers);
+            if (replaying) {
+                replay = answers.map(answer => ({ ...answer }));
+            }
+            watchPopups(true);
+            let result;
+            try {
+                result = await execute.call(this, qr, options);
+            } finally {
+                lastRun = current;
+                run === current && (run = null);
+                replaying && (replay = null);
+                watchPopups(Boolean(run));
+            }
+            const finished = current;
+            if (own) {
+                return result;
+            }
+            let again = false;
+            try {
+                again = await afterRun(started, chatId, finished, attempt);
+            } catch (error) {
+                console.error(`[${MODULE}] After the QR run`, error);
+            }
+            if (!again) {
+                return result;
+            }
+            answers = finished.answers.filter(Boolean);
         }
     };
     // Capture: before ST's own swipe (and the 답변 넘기기 button's)
     document.addEventListener('click', onSwipeClick, true);
+    document.addEventListener('swiped-left', onGesture);
+    document.addEventListener('swiped-right', onGesture);
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    for (const event of [eventTypes.CHAT_CHANGED, eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_UPDATED]) {
+        event && eventSource.on(event, () => setTimeout(refreshQrMessage));
+    }
+    // The stop button pressed while a QR runs: the run counts as stopped, not as an empty answer,
+    // and when a swipe was making it again, the error the cut-off /gen raises isn't shown (a
+    // stopped swipe tells nothing either)
+    eventSource.on(eventTypes.GENERATION_STOPPED, () => run && (run.stopped = true));
+    const showError = toastr.error;
+    toastr.error = function (...args) {
+        // (An empty toast in its place, so code clearing "its" toast doesn't clear them all)
+        // Only for a QR being made again by a swipe (a QR started by its button stays as ST has it)
+        return run?.stopped && regenerating && isOn('qrSwipe') ? $() : showError.apply(this, args);
+    };
+    // Messages added or taken away (any way: replies, /sendas, /comment, deleting): only the
+    // chat's own children are watched
+    const chat = document.getElementById('chat');
+    chat && new MutationObserver(() => {
+        hideRunMessages();
+        refreshQrMessage();
+    }).observe(chat, { childList: true });
+    refreshQrMessage();
 }

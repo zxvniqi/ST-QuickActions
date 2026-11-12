@@ -21,8 +21,10 @@ const defaultSettings = Object.freeze({
     // Chat lists' order: recent (latest message, ST's) | newest | oldest (when the chat was made)
     chatSort: true,
     chatSortMode: 'recent',
-    // A reply that came back with nothing at all is deleted, then generated again up to this many times
+    // A reply that came back with nothing at all: delete | retry | both (null: from the count, as
+    // before there was a choice), generated again up to this many times
     emptyReplyDelete: true,
+    emptyReplyMode: null,
     emptyReplyRetries: 0,
     // A ··· menu on each prompt of the prompt list: copy, to the top / bottom, delete
     promptCopy: true,
@@ -107,14 +109,21 @@ export function isOn(key) {
     return settings.enabled !== false && settings[key] !== false;
 }
 
+// Settings objects already filled with the defaults (read very often: filled once, not each time)
+const filled = new WeakSet();
+
 export function getSettings() {
     const { extensionSettings } = SillyTavern.getContext();
     extensionSettings[MODULE] ??= {};
     const settings = extensionSettings[MODULE];
+    if (filled.has(settings)) {
+        return settings;
+    }
     for (const [key, value] of Object.entries(defaultSettings)) {
         if (!Object.hasOwn(settings, key)) {
             settings[key] = structuredClone(value);
         }
     }
+    filled.add(settings);
     return settings;
 }
