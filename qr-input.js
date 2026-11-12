@@ -270,6 +270,11 @@ function watchGenResults() {
             const result = await callback.apply(this, args);
             if (current && typeof result === 'string' && !result.trim()) {
                 current.emptyAnswer = true;
+                // What the run posts from here on is not told to other extensions (a translator
+                // would start on an empty message about to go): see quietRunEvents
+                if (isOn('emptyReplyDelete') && deletesEmpty()) {
+                    current.quietFrom ??= SillyTavern.getContext().chat.length;
+                }
             }
             return result;
         };
@@ -367,7 +372,10 @@ async function afterRun(started, chatId, finished, attempt) {
     const added = context.chat.slice(started);
     // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
     if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
-        if (deletesEmpty() && !await takeBack(added)) {
+        // Extensions told of none of them (all posted after the empty /gen): taken out at once;
+        // otherwise once their requests are answered
+        const told = added.some(message => !(context.chat.indexOf(message) >= (finished.quietFrom ?? Infinity)));
+        if (deletesEmpty() && !await takeBack(added, told)) {
             return false;
         }
         const again = attempt < retryLimit();
@@ -457,7 +465,9 @@ function quietRunEvents() {
     const quiet = new Set([eventTypes.MESSAGE_RECEIVED, eventTypes.MESSAGE_SENT, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.USER_MESSAGE_RENDERED].filter(Boolean));
     const emit = eventSource.emit;
     eventSource.emit = function (event, ...args) {
-        if (hiddenFrom !== null && quiet.has(event) && Number(args[0]) >= hiddenFrom) {
+        // From hiddenFrom (a QR message being made again) or run.quietFrom (after an empty /gen)
+        const from = hiddenFrom ?? run?.quietFrom ?? null;
+        if (from !== null && quiet.has(event) && Number(args[0]) >= from) {
             return Promise.resolve();
         }
         return emit.call(this, event, ...args);
