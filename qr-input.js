@@ -769,12 +769,14 @@ export function initQrInput() {
         event && eventSource.on(event, () => setTimeout(refreshQrMessage));
     }
     // The stop button pressed while a QR runs: the run counts as stopped, not as an empty answer,
-    // and the error the cut-off /gen raises isn't shown (the user stopped it)
+    // and when a swipe was making it again, the error the cut-off /gen raises isn't shown (a
+    // stopped swipe tells nothing either)
     eventSource.on(eventTypes.GENERATION_STOPPED, () => run && (run.stopped = true));
     const showError = toastr.error;
     toastr.error = function (...args) {
         // (An empty toast in its place, so code clearing "its" toast doesn't clear them all)
-        return run?.stopped && isOn('qrSwipe') ? $() : showError.apply(this, args);
+        // Only for a QR being made again by a swipe (a QR started by its button stays as ST has it)
+        return run?.stopped && regenerating && isOn('qrSwipe') ? $() : showError.apply(this, args);
     };
     // Messages added or taken away (any way: replies, /sendas, /comment, deleting): only the
     // chat's own children are watched
