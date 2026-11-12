@@ -7,7 +7,7 @@
 //    again with the same answers, as many times as set for empty replies
 import { MODULE, getSettings, isOn } from './settings.js';
 import { withoutTrash } from './message-trash.js';
-import { hasNothing, retryLimit } from './empty-reply.js';
+import { hasNothing, retryLimit, deletesEmpty, tellEmpty } from './empty-reply.js';
 import { animation_duration } from '../../../../script.js';
 
 const HISTORY_SIZE = 3;
@@ -294,10 +294,13 @@ async function answersIn() {
 /** What a run made came to nothing: its AI answer was empty, or a message it posted has nothing. */
 const cameEmpty = (finished, added) => finished.emptyAnswer || added.some(message => !message.is_user && hasNothing(message));
 
-/** A run's own messages taken back out (ST's way, from the end); never the user's to keep. False: another chat opened. */
-async function takeBack(before, settle = true) {
+/**
+ * A run's own messages taken back out (those very messages, from the last: never one the user
+ * added meanwhile); never the user's to keep. False: another chat opened.
+ */
+async function takeBack(messages, settle = true) {
     const context = SillyTavern.getContext();
-    if (context.chat.length <= before) {
+    if (!messages.length) {
         return true;
     }
     const chatId = context.getCurrentChatId();
@@ -308,14 +311,14 @@ async function takeBack(before, settle = true) {
         return false;
     }
     await withoutTrash(async () => {
-        while (context.chat.length > before) {
-            await context.deleteLastMessage();
+        for (const message of [...messages].reverse()) {
+            const index = context.chat.indexOf(message);
+            index >= 0 && await context.deleteMessage(index, undefined, false, false);
         }
     });
     refreshQrMessage();
     return true;
 }
-
 /* ---------- the message a run made ---------- */
 
 /**
@@ -352,8 +355,9 @@ async function markMadeMessage(started, chatId, finishedRun) {
 }
 
 /**
- * After a run started by the user: an empty AI answer takes the run's messages back out and asks
- * for one more run (true) while tries are left; otherwise the made message is marked.
+ * After a run started by the user: an empty AI answer is handled as set for empty replies (the
+ * run's messages taken back out, the QR run again, or both) and asks for one more run (true)
+ * while tries are left; otherwise the made message is marked.
  */
 async function afterRun(started, chatId, finished, attempt) {
     const context = SillyTavern.getContext();
@@ -363,21 +367,16 @@ async function afterRun(started, chatId, finished, attempt) {
     const added = context.chat.slice(started);
     // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
     if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
-        const limit = retryLimit();
-        if (!await takeBack(started)) {
+        if (deletesEmpty() && !await takeBack(added)) {
             return false;
         }
-        if (attempt < limit) {
-            toastr.info(`빈 답변을 지우고 QR을 다시 실행합니다. (${attempt + 1}/${limit})`, TITLE);
-            return true;
-        }
-        limit ? toastr.warning(`빈 답변을 지웠습니다. 다시 실행 ${limit}번도 모두 비어 있었습니다.`, TITLE) : toastr.info('빈 답변을 지웠습니다.', TITLE);
-        return false;
+        const again = attempt < retryLimit();
+        tellEmpty('QR을 다시 실행', again ? attempt + 1 : 0, attempt);
+        return again;
     }
     await markMadeMessage(started, chatId, finished);
     return false;
 }
-
 /* ---------- swiping a QR message ---------- */
 
 /** ST swipes only replies that are shown and not small notes: the rest are swiped here. */
@@ -516,11 +515,36 @@ async function backTo(messageId, to) {
     });
 }
 
+/** A new last version of the message, "..." until the QR has made it. */
+function addPlaceholder(message, mark) {
+    const extra = { ...structuredClone(message.extra ?? {}), stqa_qr: mark };
+    ['display_text', 'original_text_for_translation', 'reasoning', 'reasoning_duration', 'reasoning_signature', 'token_count'].forEach(key => delete extra[key]);
+    message.swipes.push('...');
+    message.swipe_info.push({ send_date: message.send_date, extra: structuredClone(extra) });
+    message.swipe_id = message.swipes.length - 1;
+    message.mes = '...';
+    message.extra = extra;
+}
+
+/** The message's last version filled with what a run made (nothing: left empty). */
+function fillLast(message, made, mark) {
+    const last = message.swipes.length - 1;
+    const extra = { ...structuredClone(made?.extra ?? {}), stqa_qr: mark };
+    const text = made?.mes ?? '';
+    message.swipes[last] = text;
+    message.swipe_info[last] = { send_date: made?.send_date ?? message.send_date, gen_started: made?.gen_started, gen_finished: made?.gen_finished, extra: structuredClone(extra) };
+    message.swipe_id = last;
+    message.mes = text;
+    made?.send_date && (message.send_date = made.send_date);
+    message.extra = extra;
+}
+
 /**
  * Makes a QR message again, looking like ST's own swipe: the message slides to a new version
  * showing "..." while the QR runs again with the same answers (out of sight: what it posts is
- * taken back out), then the made text fills that version. An empty AI answer is tried again, as
- * many times as set for empty replies; nothing in the end slides back to the version before.
+ * taken back out), then the made text fills that version. An empty AI answer is handled as set
+ * for empty replies: tried again (deleted, or kept as a version of its own) as many times as set;
+ * when it ends with nothing (deleted), the message slides back to the version before.
  */
 async function regenerateQrMessage(messageId) {
     const context = SillyTavern.getContext();
@@ -543,17 +567,10 @@ async function regenerateQrMessage(messageId) {
     message.swipes[previous] = message.mes;
     message.swipe_info[previous] = { ...message.swipe_info[previous], extra: structuredClone(message.extra ?? {}) };
     regenerating = true;
-    // The new version, "..." until the QR has made it
-    await swapWithMotion(messageId, true, () => {
-        const extra = { ...structuredClone(message.extra ?? {}), stqa_qr: mark };
-        ['display_text', 'original_text_for_translation', 'reasoning', 'reasoning_duration', 'reasoning_signature', 'token_count'].forEach(key => delete extra[key]);
-        message.swipes.push('...');
-        message.swipe_info.push({ send_date: message.send_date, extra: structuredClone(extra) });
-        message.swipe_id = message.swipes.length - 1;
-        message.mes = '...';
-        message.extra = extra;
-    });
+    await swapWithMotion(messageId, true, () => addPlaceholder(message, mark));
     let made = null;
+    // Only generating again, and every try empty: the last empty version stays
+    let keptEmpty = false;
     try {
         for (let attempt = 0; ; attempt++) {
             const before = context.chat.length;
@@ -575,28 +592,32 @@ async function regenerateQrMessage(messageId) {
             }
             const added = context.chat.slice(before);
             const candidate = madeMessage(added);
-            // Stopped by the user, or nothing made: back to the version before, quietly
-            if (failed || lastRun?.stopped) {
-                await takeBack(before, false);
-                break;
-            }
-            const empty = isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (candidate && hasNothing(candidate)));
-            if (!candidate && !empty) {
-                break;
-            }
-            // The run's own messages go; the text joins the message as its new version
-            if (!await takeBack(before, false)) {
+            const empty = !failed && !lastRun?.stopped && isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (candidate && hasNothing(candidate)));
+            // The run's own messages go (their text joins the message as its new version)
+            if (!await takeBack(added, false)) {
                 return;
+            }
+            // Stopped by the user, or nothing made: back to the version before, quietly
+            if (failed || lastRun?.stopped || (!candidate && !empty)) {
+                break;
             }
             if (!empty) {
                 made = candidate;
                 break;
             }
-            if (attempt >= limit) {
-                limit ? toastr.warning(`빈 답변을 지웠습니다. 다시 실행 ${limit}번도 모두 비어 있었습니다.`, TITLE) : toastr.info('빈 답변을 지웠습니다.', TITLE);
+            const again = attempt < limit;
+            tellEmpty('QR을 다시 실행', again ? attempt + 1 : 0, attempt);
+            if (!deletesEmpty()) {
+                // Only generating again: the empty answer stays as a version of its own
+                fillLast(message, candidate, mark);
+                keptEmpty = !again;
+                if (again) {
+                    await swapWithMotion(messageId, true, () => addPlaceholder(message, mark));
+                }
+            }
+            if (!again) {
                 break;
             }
-            toastr.info(`빈 답변을 지우고 QR을 다시 실행합니다. (${attempt + 1}/${limit})`, TITLE);
         }
     } finally {
         hiddenFrom = null;
@@ -606,23 +627,16 @@ async function regenerateQrMessage(messageId) {
     if (context.getCurrentChatId() !== chatId || context.chat[messageId] !== message) {
         return;
     }
-    if (!made) {
+    if (!made && !keptEmpty) {
         await backTo(messageId, previous);
         return;
     }
-    const last = message.swipes.length - 1;
-    message.swipes[last] = made.mes;
-    message.swipe_info[last] = { send_date: made.send_date, gen_started: made.gen_started, gen_finished: made.gen_finished, extra: { ...structuredClone(made.extra ?? {}), stqa_qr: mark } };
-    message.swipe_id = last;
-    message.mes = made.mes;
-    message.send_date = made.send_date;
-    message.extra = { ...structuredClone(made.extra ?? {}), stqa_qr: mark };
+    made && fillLast(message, made, mark);
     context.updateMessageBlock(messageId, message);
     showCount(messageId, message);
     await context.saveChat();
     await context.eventSource.emit(context.eventTypes.MESSAGE_SWIPED, messageId);
 }
-
 /**
  * A swipe on a QR message: on its last version a swipe right runs the QR again (ST's would write
  * a normal reply); messages ST doesn't swipe (hidden, notes, the user's) are swiped here.

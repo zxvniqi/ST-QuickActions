@@ -2936,6 +2936,10 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     gap: 6px;
 }
 
+.stqa_retry_count[hidden] {
+    display: none;
+}
+
 .stqa_retry_count input {
     width: 4em;
     margin: 0;

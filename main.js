@@ -30,7 +30,7 @@ import { initMessageTrash, applyMessageTrash, purge as purgeTrash } from './mess
 import { initSwipeList, applySwipeList } from './swipe-list.js';
 import { initBackupView, applyBackupView } from './backup-view.js';
 import { initKoFill } from './ko-fill.js';
-import { MAX_RETRIES, retryLimit, initEmptyReply } from './empty-reply.js';
+import { MAX_RETRIES, EMPTY_REPLY_MODES, emptyReplyMode, initEmptyReply } from './empty-reply.js';
 import { initPromptCopy, applyPromptCopy } from './prompt-copy.js';
 import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
@@ -60,7 +60,7 @@ const TABS = Object.freeze([
             ['swipeList', '스와이프 목록', '스와이프 번호(2/3)를 누르면 그 메시지의 스와이프가 카드로 뜹니다.\n· 카드에는 번호, 글자 수, 앞부분이 보이고, 보고 있는 것은 "지금"으로 표시됩니다.\n· 카드를 누르면 그 스와이프로 바뀌고, 오른쪽 위 버튼으로 전체를 봅니다.\n· "여러 개 고르기"로 한 번에 지울 수 있습니다(하나는 남습니다).\n· 휴지통이 켜져 있으면 지운 스와이프도 휴지통으로 갑니다.'],
             ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 갑니다. 위치는 아래에서 고릅니다.'],
             ['selectionTools', '드래그해서 수정·삭제', '글자를 드래그해 고르면 "수정"·"삭제" 버튼이 뜹니다.\n· 수정은 고른 부분만 고치는 창을 엽니다.\n· 삭제는 고른 부분만 지우고, 뜨는 알림을 누르면 되돌립니다.\n· 번역된 메시지면 원문의 같은 부분도 함께 바뀝니다.\n· 버튼 위치는 아래에서 고릅니다.'],
-            ['emptyReplyDelete', '빈 답변 자동 삭제·재생성', '오류 등으로 답변이 아무것도 없이 오면 그 메시지(스와이프면 그 스와이프만)를 지우고 알림을 띄웁니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 지웁니다.\n· 직접 멈춘 생성은 건드리지 않습니다.\n· 아래 칸에 적은 횟수만큼 다시 생성합니다(0이면 지우기만, 최대 10번). 그만큼 해도 비어 있으면 멈추고 알려 줍니다.'],
+            ['emptyReplyDelete', '빈 답변 자동 삭제·재생성', '오류 등으로 답변이 아무것도 없이 오면 알림을 띄우고 아래에서 고른 대로 합니다. QR이 만든 답변에도 적용됩니다.\n· 지우기만: 그 메시지(스와이프면 그 스와이프만)를 지웁니다.\n· 다시 생성만: 빈 메시지는 두고 새로 생성합니다(일반 답변은 새 스와이프로).\n· 지우고 다시 생성: 지운 뒤 새로 생성합니다.\n· 다시 생성은 적은 횟수(최대 10번)만큼 하고, 그래도 비어 있으면 멈추고 알려 줍니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 빈 답변으로 봅니다. 직접 멈춘 생성은 건드리지 않습니다.'],
             ['keepStatusPanels', '상태창 렌더링 픽스', '주점 도우미(Tavern Helper) 상태창이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다. 번역문은 그대로 둡니다.'],
         ],
     },
@@ -324,20 +324,32 @@ function extrasFor(key) {
             applyMessageToolSettings();
         });
     } else if (key === 'emptyReplyDelete') {
-        // 다시 생성 [n]번: typed in (0: only deleted)
+        // 지우기만 / 다시 생성만 / 지우고 다시 생성, and for the last two: 다시 생성 [n]번
         const label = document.createElement('label');
         label.className = 'stqa_retry_count';
         label.innerHTML = '<i class="fa-solid fa-rotate-right"></i><input type="number" class="text_pole" inputmode="numeric"><span>번</span>';
-        label.title = '다시 생성 횟수 (0: 지우기만)';
+        label.title = '다시 생성 횟수';
         const input = label.querySelector('input');
-        Object.assign(input, { min: 0, max: MAX_RETRIES, step: 1, value: String(retryLimit()) });
+        const count = () => Math.min(MAX_RETRIES, Math.max(1, Math.floor(Number(settings.emptyReplyRetries)) || 1));
+        Object.assign(input, { min: 1, max: MAX_RETRIES, step: 1, value: String(count()) });
+        const showCount = mode => (label.hidden = mode === 'delete');
+        select(EMPTY_REPLY_MODES, emptyReplyMode(), (value) => {
+            settings.emptyReplyMode = value;
+            // Generating again needs a number of times (at least once)
+            if (value !== 'delete') {
+                settings.emptyReplyRetries = count();
+                input.value = String(settings.emptyReplyRetries);
+            }
+            showCount(value);
+            saveSettings();
+        });
         input.addEventListener('change', () => {
-            settings.emptyReplyRetries = Math.min(MAX_RETRIES, Math.max(0, Math.floor(Number(input.value)) || 0));
+            settings.emptyReplyRetries = Math.min(MAX_RETRIES, Math.max(1, Math.floor(Number(input.value)) || 1));
             input.value = String(settings.emptyReplyRetries);
             saveSettings();
         });
-        extra.append(label);
-    } else if (key === 'entryTranslate') {
+        showCount(emptyReplyMode());
+        extra.append(label);    } else if (key === 'entryTranslate') {
         extra.append(translatorControls(settings));
     } else if (key === 'qrBar') {
         select(QR_MODES, settings.qrMode, (value) => {
