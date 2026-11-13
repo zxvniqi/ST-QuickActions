@@ -3229,7 +3229,7 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
    first-letter icon of an extension that has none */
 .stqa_link_grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) repeat(4, 2.2em);
+    grid-template-columns: minmax(0, 1fr) repeat(3, 2.2em);
     align-items: center;
     gap: 6px 4px;
     max-height: 60vh;
@@ -3251,6 +3251,20 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
 .stqa_link_grid input[type="checkbox"] {
     justify-self: center;
     margin: 0;
+}
+
+.stqa_link_grid .stqa_link_hidden {
+    margin-right: 4px;
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+/* The tab an extension opens on: a line of its own under the extension's row */
+.stqa_link_grid .stqa_link_tab {
+    grid-column: 1 / -1;
+    width: auto;
+    margin: -2px 0 4px;
+    font-size: 0.85em;
 }
 
 .stqa_link_letter {
