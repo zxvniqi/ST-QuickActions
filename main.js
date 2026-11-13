@@ -241,21 +241,21 @@ function featureRow(key, label, description, tabTitle) {
             <div class="stqa_desc_toggle fa-solid fa-circle-question" title="도움말"></div>
         </div>
         <div class="stqa_feature_summary"></div>
-        <div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div>
-        <div class="stqa_desc" hidden></div>
+        <div class="stqa_desc" hidden><div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div><div class="stqa_desc_text"></div></div>
         <div class="stqa_feature_extra"></div>`;
     row.querySelector('.checkbox_label span').textContent = label;
     row.querySelector('.stqa_feature_summary').textContent = summary;
+    // Where it shows up: the first thing the help tells
     row.querySelector('.stqa_feature_where span').textContent = WHERE[key] ?? '';
     row.querySelector('.stqa_feature_where').hidden = !WHERE[key];
-    row.querySelector('.stqa_desc').textContent = rest;
+    row.querySelector('.stqa_desc_text').textContent = rest;
     row.dataset.search = searchable(`${label} ${description} ${WHERE[key] ?? ''} ${tabTitle}`);
     const on = getSettings()[key] !== false;
     row.querySelector('input').checked = on;
     row.classList.toggle('stqa_feature_off', !on);
     const toggle = row.querySelector('.stqa_desc_toggle');
     // Nothing more to tell than the first sentence: no ?
-    toggle.hidden = !rest;
+    toggle.hidden = !rest && !WHERE[key];
     // ? opens the help under the name, and closes it again
     toggle.addEventListener('click', () => {
         const desc = row.querySelector('.stqa_desc');

@@ -1520,7 +1520,7 @@ details.stqa_section[open] > summary {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    margin: 5px 0 0 26px;
+    margin: 2px 0 5px;
     padding: 1px 8px;
     border-radius: 999px;
     font-size: 0.76em;
@@ -1538,8 +1538,7 @@ details.stqa_section[open] > summary {
     display: none !important;
 }
 
-.stqa_feature_off .stqa_feature_summary,
-.stqa_feature_off .stqa_feature_where {
+.stqa_feature_off .stqa_feature_summary {
     opacity: 0.45;
 }
 
