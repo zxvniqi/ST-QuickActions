@@ -204,7 +204,6 @@ const WHERE = Object.freeze({
     qrHistory: 'QR 입력창',
     qrSwipe: 'QR 메시지 스와이프',
     hideInputPlaceholder: '입력창',
-    floatingPanel: '입력창 위 ···',
     presetFolders: '프리셋 선택 칸',
     toggleSetChips: '프롬프트 목록 위',
     promptCopy: '프롬프트 항목 ···',
