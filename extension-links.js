@@ -92,9 +92,22 @@ export async function openExtensionLink(key) {
     if (content && getComputedStyle(content).display === 'none') {
         header.click();
     }
-    // After the drawers have opened
-    await new Promise(resolve => setTimeout(resolve, 350));
-    element.scrollIntoView({ block: 'start' });
+    // After the drawers have opened; settings above may still be growing (unfolding, drawn late),
+    // so it is put at the top again a few times, unless the user has scrolled since
+    const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+    let touched = false;
+    const stop = () => (touched = true);
+    const events = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    events.forEach(type => block?.addEventListener(type, stop, { passive: true }));
+    try {
+        await wait(350);
+        for (let i = 0; i < 4 && !touched; i++) {
+            element.scrollIntoView({ block: 'start' });
+            await wait(250);
+        }
+    } finally {
+        events.forEach(type => block?.removeEventListener(type, stop));
+    }
 }
 
 /** The shortcuts' buttons for links (floating-panel.js). */
