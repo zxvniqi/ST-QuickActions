@@ -77,6 +77,10 @@ const defaultSettings = Object.freeze({
     floatingOrder: [],
     // Menu items (wand / Options / input bar) added as shortcuts: [{ selector, key, label, icon }]
     floatingExtras: [],
+    // Extensions' settings added to the Options / wand / message menus and the shortcuts:
+    // [{ key, label, icon, places: ('options' | 'wand' | 'floating' | 'message')[] }]
+    extensionLinks: true,
+    extensionLinkList: [],
     floatingPosition: null,
     // input (a row above the input bar) | vertical | horizontal (floating)
     floatingLayout: 'input',

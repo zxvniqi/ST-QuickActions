@@ -34,6 +34,7 @@ import { MAX_RETRIES, EMPTY_REPLY_MODES, emptyReplyMode, initEmptyReply } from '
 import { initPromptCopy, applyPromptCopy } from './prompt-copy.js';
 import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
+import { initExtensionLinks, applyExtensionLinks, pickExtensionLinks } from './extension-links.js';
 
 const TOOLBAR_POSITIONS = [
     { value: 'dock', label: '버튼 위치: 화면 아래' },
@@ -117,6 +118,7 @@ const TABS = Object.freeze([
             ['layoutManager', '메뉴 정리', '확장 메뉴, 옵션 메뉴, 상단 바, 입력창 버튼, 메시지 메뉴, 확장 설정의 항목을 숨기거나 순서를 바꿉니다. 끄면 원래대로 돌아갑니다.'],
             ['wandGrid', '확장 메뉴를 아이콘으로', '확장 메뉴(마법봉)를 아이콘만, 한 줄에 2개씩 보여 줍니다.\n· 꾹 누르면 이름이 잠깐 뜨고(그때는 실행되지 않습니다), 컴퓨터는 마우스를 올리면 보입니다.'],
             ['optionsGrid', '옵션 메뉴를 아이콘으로', '옵션 메뉴(☰)를 아이콘만, 한 줄에 2개씩 보여 줍니다.\n· 꾹 누르면 이름이 잠깐 뜨고(그때는 실행되지 않습니다), 컴퓨터는 마우스를 올리면 보입니다.'],
+            ['extensionLinks', '확장 설정 바로가기', '확장 설정(태번 헬퍼, 정규식 등)을 옵션 메뉴·마법봉·바로가기·메시지 메뉴에 넣습니다. 누르면 확장 설정이 그 항목이 펼쳐진 채로 열립니다.\n· 아래 "항목 고르기"에서 확장마다 넣을 곳을 고릅니다.\n· 아이콘이 없는 확장은 이름 첫 글자로 보입니다.'],
             ['regexFolders', '정규식 폴더', '정규식 목록을 폴더로 묶어 접고 펼칩니다. 실행 순서는 그대로입니다. 폴더는 정규식 창의 "폴더" 버튼에서 만듭니다.'],
         ],
     },
@@ -160,6 +162,7 @@ function applyAll() {
     applySwipeList();
     applyBackupView();
     applyEntryTranslate();
+    applyExtensionLinks();
 }
 
 function featureRow(key, label, description) {
@@ -420,6 +423,8 @@ function extrasFor(key) {
             purgeTrash();
         });
         extra.append(days, most);
+    } else if (key === 'extensionLinks') {
+        extra.append(panelButton('fa-list-check', '항목 고르기', pickExtensionLinks));
     } else if (key === 'layoutManager') {
         extra.append(panelButton('fa-list-check', '메뉴 정리 열기', openLayoutEditor));
     }
@@ -533,6 +538,11 @@ function addMenuButton() {
     initPromptCopy();
     initSwipeList();
     initBackupView();
+    try {
+        initExtensionLinks();
+    } catch (error) {
+        console.error(`[${MODULE}] Extension links failed`, error);
+    }
     initKoFill();
     initEntryTranslate();
 })();

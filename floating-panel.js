@@ -6,6 +6,7 @@ import { MODULE, getSettings, isOn } from './settings.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 import { askAndHideRange } from './range-delete.js';
 import { findMenuItem, listItems } from './layout-manager.js';
+import { extensionLinkButtons, openExtensionLink } from './extension-links.js';
 import { showMoreMessages } from '../../../../script.js';
 import { flashHighlight } from '../../../utils.js';
 
@@ -34,7 +35,7 @@ export const FLOATING_BUTTONS = Object.freeze([
  * in the default order.
  */
 export function orderedFloatingButtons() {
-    const buttons = [...FLOATING_BUTTONS, ...extraButtons()];
+    const buttons = [...FLOATING_BUTTONS, ...extraButtons(), ...extensionLinkButtons()];
     const keys = buttons.map(button => button.key);
     const order = (getSettings().floatingOrder ?? []).filter(key => keys.includes(key));
     keys.forEach((key, index) => {
@@ -460,7 +461,8 @@ const ACTIONS = {
 
 function runAction(key) {
     Promise.resolve()
-        .then(() => (key.startsWith('menu:') ? runMenuItem(key) : ACTIONS[key]?.()))
+        .then(() => (key.startsWith('menu:') ? runMenuItem(key)
+            : key.startsWith('link:') ? openExtensionLink(key.slice(5)) : ACTIONS[key]?.()))
         .catch(error => console.error(`[${MODULE}] Shortcut failed`, error));
 }
 
@@ -614,9 +616,15 @@ function enableMoving() {
 }
 
 /** A shortcut button (a menu item's icon may be in any Font Awesome style, so its classes go as they are). */
-function createButton(key, icon, label) {
+function createButton(key, icon, label, letter = '') {
     const button = document.createElement('div');
-    button.className = `stqa_floating_button ${/\bfa-(solid|regular|brands|light|thin|duotone)\b|\bfa[srb]\b/.test(icon) ? icon : `fa-solid ${icon}`}`;
+    if (letter) {
+        // No icon of its own (an extension's settings): the first letter of its name
+        button.className = 'stqa_floating_button stqa_link_letter';
+        button.textContent = letter;
+    } else {
+        button.className = `stqa_floating_button ${/\bfa-(solid|regular|brands|light|thin|duotone)\b|\bfa[srb]\b/.test(icon) ? icon : `fa-solid ${icon}`}`;
+    }
     button.dataset.key = key;
     button.title = label;
     return button;
@@ -667,11 +675,11 @@ export function applyFloatingSettings() {
     matchTheme();
     const ordered = orderedFloatingButtons();
     // Menu items taken off the list go
-    for (const button of panel.querySelectorAll(':scope > [data-key^="menu:"]')) {
+    for (const button of panel.querySelectorAll(':scope > [data-key^="menu:"], :scope > [data-key^="link:"]')) {
         ordered.some(({ key }) => key === button.dataset.key) || button.remove();
     }
-    for (const { key, icon, label } of ordered) {
-        const button = [...panel.children].find(child => child.dataset.key === key) ?? createButton(key, icon, label);
+    for (const { key, icon, label, letter } of ordered) {
+        const button = [...panel.children].find(child => child.dataset.key === key) ?? createButton(key, icon, label, letter);
         // Buttons added in later versions start switched on
         button.hidden = settings.floatingButtons?.[key] === false;
         panel.append(button);

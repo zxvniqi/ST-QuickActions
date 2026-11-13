@@ -2839,10 +2839,18 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     text-align: center;
 }
 
+/* Only the list scrolls; the buttons under it stay in sight */
 .stqa_trash_items {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_trash_bottom .menu_button.stqa_dim {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .stqa_trash_item {
@@ -3216,4 +3224,41 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
 .stqa_backup_chip_accent {
     border-color: var(--SmartThemeQuoteColor);
     color: var(--SmartThemeQuoteColor);
+}
+/* Extension settings shortcuts: the picker (one row per extension, a box per place) and the
+   first-letter icon of an extension that has none */
+.stqa_link_grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(4, 2.2em);
+    align-items: center;
+    gap: 6px 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_link_grid .stqa_link_head {
+    justify-self: center;
+    opacity: 0.7;
+}
+
+.stqa_link_grid .stqa_link_name {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.stqa_link_grid input[type="checkbox"] {
+    justify-self: center;
+    margin: 0;
+}
+
+.stqa_link_letter {
+    font-family: inherit;
+    font-weight: bold;
+    font-style: normal;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }

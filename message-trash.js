@@ -479,10 +479,30 @@ async function openTrash() {
                 .filter(pick => pick.entries.length);
             picks.length && restorePicks(picks);
         });
+        // While picking, deleting the ticked ones takes the place of emptying the whole trash
+        const ticked = () => new Set(ticks.filter(([, , box]) => box.checked).map(([item, entry]) => entryKey(item, entry)));
+        const deleteTicked = button('fa-trash', '', async () => {
+            const picked = ticked();
+            if (picked.size && await ask('선택 삭제', `${picked.size}개 · 되돌릴 수 없습니다.`, '삭제')) {
+                await change(async () => {
+                    picking = false;
+                    await removePicked(chat.key, picked);
+                });
+            }
+        }, true);
+        const emptyAll = button('fa-dumpster', '휴지통 비우기', async () => {
+            if (await ask('휴지통 비우기', '이 채팅의 휴지통을 모두 지웁니다. 되돌릴 수 없습니다.', '비우기')) {
+                await change(() => writeTrash(chat.key, []));
+            }
+        }, true);
         const count = () => {
-            const ticked = ticks.filter(([, , box]) => box.checked).length;
-            restoreTicked.querySelector('span').textContent = `선택한 ${ticked}개 되살리기`;
-            restoreTicked.hidden = !ticked;
+            const size = ticked().size;
+            restoreTicked.querySelector('span').textContent = `선택한 ${size}개 되살리기`;
+            restoreTicked.hidden = !size;
+            deleteTicked.querySelector('span').textContent = `선택한 ${size}개 삭제`;
+            deleteTicked.hidden = !picking;
+            deleteTicked.classList.toggle('stqa_dim', !size);
+            emptyAll.hidden = picking;
         };
         for (const item of items) {
             const block = document.createElement('div');
@@ -548,18 +568,15 @@ async function openTrash() {
             if (!picking) {
                 ticks.forEach(([, , box]) => (box.checked = false));
                 content.querySelectorAll('.stqa_trash_head input').forEach(box => (box.checked = false));
-                count();
             }
+            count();
         });
-        bottom.append(restoreTicked, pickButton, button('fa-dumpster', '휴지통 비우기', async () => {
-            if (await ask('휴지통 비우기', '이 채팅의 휴지통을 모두 지웁니다. 되돌릴 수 없습니다.', '비우기')) {
-                await change(() => writeTrash(chat.key, []));
-            }
-        }, true));
+        bottom.append(restoreTicked, pickButton, deleteTicked, emptyAll);
     };
 
     await render();
-    await new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', allowVerticalScrolling: true }).show();
+    // Only the list scrolls: the title and the buttons under it stay where they are
+    await new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기' }).show();
 }
 
 /** Every chat's trash taken away (the feature switched off and the user said so). */
