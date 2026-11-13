@@ -388,7 +388,7 @@ function extrasFor(key) {
             saveSettings();
             applyFloatingSettings();
         });
-        extra.append(chips, panelButton('fa-plus', '메뉴 항목 추가 (마법봉·옵션·입력창·확장 설정)', async () => {
+        extra.append(chips, panelButton('fa-plus', '메뉴 항목 추가', async () => {
             if (await pickMenuItems()) {
                 renderChips();
             }
