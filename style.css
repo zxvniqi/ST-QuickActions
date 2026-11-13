@@ -1455,24 +1455,15 @@ details.stqa_section[open] > summary {
     padding-left: 32px !important;
 }
 
-/* The settings window's tabs: a small icon before the name, four to a row */
+/* The settings window's tabs: names only, four to a row */
 .stqa_panel_tabs {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .stqa_panel_tabs .stqa_tab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 5px 2px;
-    font-size: 0.8em;
-}
-
-.stqa_panel_tabs .stqa_tab i {
-    flex: none;
-    font-size: 0.9em;
+    padding: 6px 4px;
+    font-size: 0.85em;
 }
 
 .stqa_searching .stqa_panel_tabs {

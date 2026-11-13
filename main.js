@@ -165,18 +165,6 @@ function applyAll() {
     applyExtensionLinks();
 }
 
-/** Each tab's icon. */
-const TAB_ICONS = Object.freeze({
-    '메시지': 'fa-message',
-    '채팅': 'fa-comments',
-    '캐릭터': 'fa-user',
-    '입력창·QR': 'fa-keyboard',
-    '바로가기': 'fa-ellipsis',
-    '프롬프트': 'fa-scroll',
-    '메뉴 정리': 'fa-bars-staggered',
-    '화면·기타': 'fa-display',
-});
-
 /** Where each feature shows up (or 자동: it works by itself). */
 const WHERE = Object.freeze({
     deleteButton: '메시지 연필 옆',
@@ -543,9 +531,7 @@ function buildPanel() {
         }
         const tab = document.createElement('div');
         tab.className = 'stqa_tab';
-        tab.innerHTML = '<i class="fa-solid"></i><span></span>';
-        tab.querySelector('i').classList.add(TAB_ICONS[title] ?? 'fa-circle');
-        tab.querySelector('span').textContent = title;
+        tab.textContent = title;
         tabs.append(tab);
         body.append(page);
         return { tab, page };
