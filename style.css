@@ -1433,31 +1433,29 @@ details.stqa_section[open] > summary {
 }
 
 /* Search box over the tabs */
+/* The theme's own input box, with the magnifier inside it (no box of our own around it) */
 .stqa_panel_search {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    position: relative;
     margin: 8px 0 0;
-    padding: 0 10px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor) 15%, transparent);
 }
 
 .stqa_panel_search i {
-    opacity: 0.55;
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1;
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .stqa_panel_search input.text_pole {
-    flex: 1;
-    min-width: 0;
+    width: 100%;
     margin: 0;
-    border: none;
-    background: transparent;
-    box-shadow: none;
+    padding-left: 32px !important;
 }
 
-/* The settings window's tabs: icon over name, four to a row */
+/* The settings window's tabs: a small icon before the name, four to a row */
 .stqa_panel_tabs {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1465,15 +1463,16 @@ details.stqa_section[open] > summary {
 
 .stqa_panel_tabs .stqa_tab {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 3px;
-    padding: 7px 2px;
+    justify-content: center;
+    gap: 4px;
+    padding: 5px 2px;
     font-size: 0.8em;
 }
 
 .stqa_panel_tabs .stqa_tab i {
-    font-size: 1.15em;
+    flex: none;
+    font-size: 0.9em;
 }
 
 .stqa_searching .stqa_panel_tabs {
@@ -1520,7 +1519,7 @@ details.stqa_section[open] > summary {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    margin: 2px 0 5px;
+    margin: 6px 0 0;
     padding: 1px 8px;
     border-radius: 999px;
     font-size: 0.76em;

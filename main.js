@@ -62,7 +62,7 @@ const TABS = Object.freeze([
             ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 갑니다. 위치는 아래에서 고릅니다.'],
             ['selectionTools', '드래그해서 수정·삭제', '글자를 드래그해 고르면 "수정"·"삭제" 버튼이 뜹니다.\n· 수정은 고른 부분만 고치는 창을 엽니다.\n· 삭제는 고른 부분만 지우고, 뜨는 알림을 누르면 되돌립니다.\n· 번역된 메시지면 원문의 같은 부분도 함께 바뀝니다.\n· 버튼 위치는 아래에서 고릅니다.'],
             ['emptyReplyDelete', '빈 답변 자동 삭제·재생성', '오류 등으로 답변이 아무것도 없이 오면 알림을 띄우고 아래에서 고른 대로 합니다. QR이 만든 답변에도 적용됩니다.\n· 지우기만: 그 메시지(스와이프면 그 스와이프만)를 지웁니다.\n· 다시 생성만: 빈 메시지는 두고 새로 생성합니다(일반 답변은 새 스와이프로).\n· 지우고 다시 생성: 지운 뒤 새로 생성합니다.\n· 다시 생성은 적은 횟수(최대 10번)만큼 하고, 그래도 비어 있으면 멈추고 알려 줍니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 빈 답변으로 봅니다. 직접 멈춘 생성은 건드리지 않습니다.'],
-            ['keepStatusPanels', '상태창 렌더링 픽스', '주점 도우미(Tavern Helper) 상태창이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다. 번역문은 그대로 둡니다.'],
+            ['keepStatusPanels', '정규식 렌더링 픽스', '정규식이 만든 HTML 화면(상태창 등)이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다.\n· 주점 도우미(Tavern Helper)가 그리는 화면에 적용됩니다.\n· 번역문은 그대로 둡니다.'],
         ],
     },
     {
@@ -241,11 +241,11 @@ function featureRow(key, label, description, tabTitle) {
             <div class="stqa_desc_toggle fa-solid fa-circle-question" title="도움말"></div>
         </div>
         <div class="stqa_feature_summary"></div>
-        <div class="stqa_desc" hidden><div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div><div class="stqa_desc_text"></div></div>
+        <div class="stqa_desc" hidden><div class="stqa_desc_text"></div><div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div></div>
         <div class="stqa_feature_extra"></div>`;
     row.querySelector('.checkbox_label span').textContent = label;
     row.querySelector('.stqa_feature_summary').textContent = summary;
-    // Where it shows up: the first thing the help tells
+    // Where it shows up: at the end of the help
     row.querySelector('.stqa_feature_where span').textContent = WHERE[key] ?? '';
     row.querySelector('.stqa_feature_where').hidden = !WHERE[key];
     row.querySelector('.stqa_desc_text').textContent = rest;
