@@ -81,6 +81,8 @@ const defaultSettings = Object.freeze({
     // [{ key, label, icon, places: ('options' | 'wand' | 'floating' | 'message')[] }]
     extensionLinks: true,
     extensionLinkList: [],
+    // Icons picked for extensions' links (and their shortcuts): { key: classes }
+    extensionIcons: {},
     floatingPosition: null,
     // input (a row above the input bar) | vertical | horizontal (floating)
     floatingLayout: 'input',

@@ -3242,10 +3242,68 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
 }
 
 .stqa_link_grid .stqa_link_name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.stqa_link_grid .stqa_link_label {
     min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+/* The icon an extension's links show: tap to pick another */
+.stqa_link_grid .stqa_link_icon {
+    flex: none;
+    width: 1.9em;
+    height: 1.9em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.stqa_icon_grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.6em, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.stqa_icon_cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1em;
+}
+
+.stqa_icon_cell.stqa_icon_default {
+    grid-column: span 2;
+    aspect-ratio: auto;
+    font-size: 0.85em;
+}
+
+/* An extension's settings shown in a window: its own header gives way to the window's title */
+.stqa_ext_popup {
+    text-align: left;
+}
+
+.stqa_ext_popup > h3 {
+    margin: 0 0 8px;
+    text-align: center;
+}
+
+.stqa_ext_popup .stqa_ext_popup_head {
+    display: none !important;
 }
 
 .stqa_link_grid input[type="checkbox"] {

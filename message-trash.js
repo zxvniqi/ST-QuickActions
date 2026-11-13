@@ -571,7 +571,8 @@ async function openTrash() {
             }
             count();
         });
-        bottom.append(restoreTicked, pickButton, deleteTicked, emptyAll);
+        // While picking: 되살리기 · 삭제 · 취소; otherwise: 여러 개 고르기 · 휴지통 비우기
+        bottom.append(restoreTicked, deleteTicked, pickButton, emptyAll);
     };
 
     await render();
