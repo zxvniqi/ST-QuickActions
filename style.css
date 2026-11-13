@@ -3306,6 +3306,21 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
     display: none !important;
 }
 
+/* On a phone the settings get about the width they have in the Extensions drawer (tabs and rows
+   laid out for that width don't wrap) */
+@media (max-width: 1000px) {
+    .popup:has(.stqa_ext_popup) {
+        width: calc(100dvw - 8px) !important;
+        max-width: none !important;
+        margin-inline: auto !important;
+        padding-inline: 6px !important;
+    }
+
+    .popup:has(.stqa_ext_popup) .popup-content {
+        padding-inline: 0 !important;
+    }
+}
+
 .stqa_link_grid input[type="checkbox"] {
     justify-self: center;
     margin: 0;
