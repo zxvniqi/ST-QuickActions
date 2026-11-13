@@ -6,6 +6,7 @@ import { MODULE, getSettings, isOn } from './settings.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 import { askAndHideRange } from './range-delete.js';
 import { findMenuItem, listItems } from './layout-manager.js';
+import { settingsOnPage, openExtensionLink, letterOf, iconFor } from './extension-links.js';
 import { showMoreMessages } from '../../../../script.js';
 import { flashHighlight } from '../../../utils.js';
 
@@ -53,23 +54,34 @@ export const MENU_SOURCES = Object.freeze([
     { title: '입력창 버튼', selectors: ['#leftSendForm', '#rightSendForm'] },
 ]);
 const FALLBACK_ICON = 'fa-solid fa-puzzle-piece';
+// Extensions' settings (the Extensions drawer opened at them) stand in the list as this "selector"
+const EXTENSION_SETTINGS = 'extensions';
 // Size classes a menu icon may carry (fa-lg in the Options menu): the shortcuts size their icons themselves
 const iconWithoutSize = icon => icon.split(/\s+/).filter(name => name && !/^fa-(lg|xl|2xl|xs|sm|2xs|fw|\d+x)$/.test(name)).join(' ');
 const extraKey = (selector, key) => `menu:${selector}|${key}`;
 
 /** Menu items added to the shortcuts (settings: { selector, key, label, icon }). */
 function extraButtons() {
-    return (getSettings().floatingExtras ?? []).map(item => ({
-        key: extraKey(item.selector, item.key),
-        icon: iconWithoutSize(item.icon || '') || FALLBACK_ICON,
-        label: item.label,
-        menuItem: item,
-    }));
+    return (getSettings().floatingExtras ?? []).map((item) => {
+        // An extension's settings: the icon picked for it (확장 설정 바로가기), else its own, else
+        // the first letter of its name
+        const icon = item.selector === EXTENSION_SETTINGS ? iconFor(item.key, item.icon) : item.icon;
+        return {
+            key: extraKey(item.selector, item.key),
+            icon: iconWithoutSize(icon || '') || FALLBACK_ICON,
+            letter: item.selector === EXTENSION_SETTINGS && !icon ? letterOf(item.label) : '',
+            label: item.label,
+            menuItem: item,
+        };
+    });
 }
 
 /** Taps the menu item a shortcut stands for, where the page has it (the menu needn't be open). */
 function runMenuItem(key) {
     const item = (getSettings().floatingExtras ?? []).find(entry => extraKey(entry.selector, entry.key) === key);
+    if (item?.selector === EXTENSION_SETTINGS) {
+        return openExtensionLink(item.key, item.label);
+    }
     const element = item && findMenuItem(item.selector, item.key);
     if (!element) {
         toastr.warning(`"${item?.label ?? '?'}" 항목을 찾지 못했습니다. 그 확장이 꺼져 있거나 이름이 바뀌었을 수 있습니다.`, TITLE);
@@ -91,9 +103,11 @@ export async function pickMenuItems() {
     const root = document.createElement('div');
     root.className = 'stqa_panel stqa_menu_pick';
     root.innerHTML = '<h3>바로가기에 메뉴 항목 추가</h3><div class="stqa_hint">고른 항목이 바로가기 줄에 아이콘으로 생깁니다. 누르면 원래 메뉴에서 누른 것과 같습니다.</div>';
-    for (const { title, selectors } of MENU_SOURCES) {
+    // Extensions' settings (hidden ones in 메뉴 정리 too: reached through the shortcut)
+    const extensionSettings = settingsOnPage().map(({ key, label, icon }) => ({ key, label, icon, shown: iconFor(key, icon), selector: EXTENSION_SETTINGS }));
+    for (const { title, selectors } of [...MENU_SOURCES, { title: '확장 설정', selectors: [] }]) {
         // The shortcuts' own ··· isn't one to add
-        const items = selectors.flatMap(selector => listItems(selector, { natural: true }).map(item => ({ ...item, selector })))
+        const items = (selectors.length ? selectors.flatMap(selector => listItems(selector, { natural: true }).map(item => ({ ...item, selector }))) : extensionSettings)
             .filter(item => item.key !== INPUT_TOGGLE_ID);
         if (!items.length) {
             continue;
@@ -110,7 +124,7 @@ export async function pickMenuItems() {
             row.innerHTML = '<input type="checkbox"><i></i><span></span>';
             row.querySelector('input').dataset.key = key;
             row.querySelector('input').checked = chosen.has(key);
-            row.querySelector('i').className = item.icon || FALLBACK_ICON;
+            row.querySelector('i').className = (item.selector === EXTENSION_SETTINGS ? item.shown : item.icon) || FALLBACK_ICON;
             row.querySelector('span').textContent = item.label;
             group.append(row);
         }
@@ -614,10 +628,18 @@ function enableMoving() {
 }
 
 /** A shortcut button (a menu item's icon may be in any Font Awesome style, so its classes go as they are). */
-function createButton(key, icon, label) {
+function createButton(key, icon, label, letter = '') {
     const button = document.createElement('div');
-    button.className = `stqa_floating_button ${/\bfa-(solid|regular|brands|light|thin|duotone)\b|\bfa[srb]\b/.test(icon) ? icon : `fa-solid ${icon}`}`;
+    if (letter) {
+        // No icon of its own (an extension's settings): the first letter of its name
+        button.className = 'stqa_floating_button stqa_link_letter';
+        button.textContent = letter;
+    } else {
+        button.className = `stqa_floating_button ${/\bfa-(solid|regular|brands|light|thin|duotone)\b|\bfa[srb]\b/.test(icon) ? icon : `fa-solid ${icon}`}`;
+    }
     button.dataset.key = key;
+    // How it looks, to make it again when that changes (another icon picked)
+    button.dataset.look = `${icon}|${letter}`;
     button.title = label;
     return button;
 }
@@ -668,10 +690,10 @@ export function applyFloatingSettings() {
     const ordered = orderedFloatingButtons();
     // Menu items taken off the list go
     for (const button of panel.querySelectorAll(':scope > [data-key^="menu:"]')) {
-        ordered.some(({ key }) => key === button.dataset.key) || button.remove();
+        ordered.some(({ key, icon, letter }) => key === button.dataset.key && button.dataset.look === `${icon}|${letter}`) || button.remove();
     }
-    for (const { key, icon, label } of ordered) {
-        const button = [...panel.children].find(child => child.dataset.key === key) ?? createButton(key, icon, label);
+    for (const { key, icon, label, letter } of ordered) {
+        const button = [...panel.children].find(child => child.dataset.key === key) ?? createButton(key, icon, label, letter);
         // Buttons added in later versions start switched on
         button.hidden = settings.floatingButtons?.[key] === false;
         panel.append(button);

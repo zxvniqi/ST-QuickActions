@@ -2839,10 +2839,18 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
     text-align: center;
 }
 
+/* Only the list scrolls; the buttons under it stay in sight */
 .stqa_trash_items {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_trash_bottom .menu_button.stqa_dim {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 .stqa_trash_item {
@@ -3216,4 +3224,150 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
 .stqa_backup_chip_accent {
     border-color: var(--SmartThemeQuoteColor);
     color: var(--SmartThemeQuoteColor);
+}
+/* Extension settings shortcuts: the picker (one row per extension, a box per place) and the
+   first-letter icon of an extension that has none */
+.stqa_link_grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(3, 2.2em);
+    align-items: center;
+    gap: 6px 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.stqa_link_grid .stqa_link_head {
+    justify-self: center;
+    opacity: 0.7;
+}
+
+.stqa_link_grid .stqa_link_name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.stqa_link_grid .stqa_link_label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The icon an extension's links show: tap to pick another */
+.stqa_link_grid .stqa_link_icon {
+    flex: none;
+    width: 1.9em;
+    height: 1.9em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.stqa_icon_grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2.6em, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.stqa_icon_cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1em;
+}
+
+.stqa_icon_cell.stqa_icon_default {
+    grid-column: span 2;
+    aspect-ratio: auto;
+    font-size: 0.85em;
+}
+
+/* An extension's settings shown in a window: its own header gives way to the window's title */
+.stqa_ext_popup {
+    text-align: left;
+}
+
+.stqa_ext_popup > h3 {
+    margin: 0 0 8px;
+    text-align: center;
+}
+
+.stqa_ext_popup .stqa_ext_popup_head {
+    display: none !important;
+}
+
+/* What ST gives settings in the Extensions drawer only (folding parts inside them, checkboxes),
+   so they look the same in the window */
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header {
+    background-image: linear-gradient(348deg, var(--white30a) 2%, var(--grey30a) 10%, var(--black70a) 95%, var(--SmartThemeQuoteColor) 100%);
+    margin-bottom: 5px;
+    border-radius: 10px;
+    padding: 2px 5px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    transition: all var(--animation-duration-2x);
+}
+
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header:hover,
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header:focus-visible {
+    filter: brightness(150%);
+}
+
+.stqa_ext_popup input[type="checkbox"],
+.stqa_ext_popup input[type="radio"] {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
+/* On a phone the settings get about the width they have in the Extensions drawer (tabs and rows
+   laid out for that width don't wrap) */
+@media (max-width: 1000px) {
+    .popup:has(.stqa_ext_popup) {
+        width: calc(100dvw - 8px) !important;
+        max-width: none !important;
+        margin-inline: auto !important;
+        padding-inline: 6px !important;
+    }
+
+    .popup:has(.stqa_ext_popup) .popup-content {
+        padding-inline: 0 !important;
+    }
+}
+
+.stqa_link_grid input[type="checkbox"] {
+    justify-self: center;
+    margin: 0;
+}
+
+.stqa_link_grid .stqa_link_hidden {
+    margin-right: 4px;
+    opacity: 0.6;
+    font-size: 0.85em;
+}
+
+/* The tab an extension opens on: a line of its own under the extension's row */
+.stqa_link_grid .stqa_link_tab {
+    grid-column: 1 / -1;
+    width: auto;
+    margin: -2px 0 4px;
+    font-size: 0.85em;
+}
+
+.stqa_link_letter {
+    font-family: inherit;
+    font-weight: bold;
+    font-style: normal;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
