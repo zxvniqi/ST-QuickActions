@@ -3306,6 +3306,28 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
     display: none !important;
 }
 
+/* What ST gives settings in the Extensions drawer only (folding parts inside them, checkboxes),
+   so they look the same in the window */
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header {
+    background-image: linear-gradient(348deg, var(--white30a) 2%, var(--grey30a) 10%, var(--black70a) 95%, var(--SmartThemeQuoteColor) 100%);
+    margin-bottom: 5px;
+    border-radius: 10px;
+    padding: 2px 5px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    transition: all var(--animation-duration-2x);
+}
+
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header:hover,
+.stqa_ext_popup .inline-drawer-toggle.inline-drawer-header:focus-visible {
+    filter: brightness(150%);
+}
+
+.stqa_ext_popup input[type="checkbox"],
+.stqa_ext_popup input[type="radio"] {
+    margin-left: 10px;
+    margin-right: 10px;
+}
+
 /* On a phone the settings get about the width they have in the Extensions drawer (tabs and rows
    laid out for that width don't wrap) */
 @media (max-width: 1000px) {

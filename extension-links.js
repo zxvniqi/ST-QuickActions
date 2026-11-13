@@ -265,7 +265,8 @@ function syncMenu(place) {
 /** A message menu button for a link (the message menu shows icons only: a letter when there is none). */
 function messageButton(link) {
     const button = document.createElement('div');
-    dress(button, link, `mes_button ${MESSAGE_CLASS} stqa_link_m_${idOf(link.key)}`);
+    // Its own class first: 메뉴 정리 tells message buttons apart by their first class
+    dress(button, link, `mes_button stqa_link_m_${idOf(link.key)} ${MESSAGE_CLASS}`);
     button.title = link.label;
     button.dataset.look = lookOf(link);
     button.setAttribute(LINK_ATTR, link.key);
@@ -425,15 +426,20 @@ export function initExtensionLinks() {
     });
     // An extension's settings unfolded by hand in the Extensions drawer open on their set tab
     document.addEventListener('click', (event) => {
-        const header = event.target.closest?.('.inline-drawer-header, .inline-drawer-toggle');
-        if (!header || header.classList.contains(POPUP_HEAD_CLASS) || !links().some(link => link.tab) || !isOn('extensionLinks')) {
+        // Only an extension's own header in the Extensions drawer (not world info entries and the like)
+        const header = event.target.closest?.('#extensions_settings .inline-drawer-header, #extensions_settings .inline-drawer-toggle, #extensions_settings2 .inline-drawer-header, #extensions_settings2 .inline-drawer-toggle');
+        if (!header || !isOn('extensionLinks') || !links().some(link => link.tab)) {
             return;
         }
-        const entry = settingsOnPage().find(({ element }) => drawerOf(element)?.header === header);
-        const content = entry && drawerOf(entry.element).content;
-        if (content && links().some(link => link.key === entry.key && link.tab)) {
+        const element = [...header.closest('#extensions_settings, #extensions_settings2').children].find(child => child.contains(header));
+        const parts = element && drawerOf(element);
+        if (!parts?.content || parts.header !== header) {
+            return;
+        }
+        const { key } = describeItem(element);
+        if (links().some(link => link.key === key && link.tab)) {
             // After ST has unfolded it (the tap reaches ST's own handler first)
-            setTimeout(() => getComputedStyle(content).display !== 'none' && showPinnedTab(entry.key, content), 50);
+            setTimeout(() => getComputedStyle(parts.content).display !== 'none' && showPinnedTab(key, parts.content), 50);
         }
     });
     // Messages drawn from the template carry the buttons; ones drawn before (or re-drawn by
