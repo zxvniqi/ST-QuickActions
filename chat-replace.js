@@ -7,8 +7,6 @@ import { MODULE, isOn } from './settings.js';
 
 const OPTION_ID = 'stqa_option_replace';
 const TITLE = '편의성 모음';
-// Places shown in the preview (the count covers them all)
-const PREVIEW_MAX = 50;
 // Text shown around each place in the preview
 const AROUND = 18;
 
@@ -50,13 +48,13 @@ function countIn(chat, word, swipes) {
 
 const oneLine = text => text.replace(/\s+/g, ' ');
 
-/** The first places the word is found: [{ index, name, label, before, after }]. */
+/** Every place the word is found: [{ index, name, label, before, after }]. */
 function previewOf(chat, word, swipes) {
     const found = [];
     chat.forEach((message, index) => {
         for (const [holder, key, label] of textSlots(message, swipes)) {
             const text = holder[key];
-            for (let at = text.indexOf(word); at !== -1 && found.length < PREVIEW_MAX; at = text.indexOf(word, at + word.length)) {
+            for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + word.length)) {
                 const start = Math.max(0, at - AROUND);
                 const end = Math.min(text.length, at + word.length + AROUND);
                 found.push({
@@ -179,24 +177,38 @@ async function openReplace() {
         <label>찾을 글자<input class="text_pole" data-field="find" type="text"></label>
         <label>바꿀 글자<input class="text_pole" data-field="to" type="text"></label>
         <label class="checkbox_label"><input type="checkbox" data-field="swipes" checked><span>다른 답변(스와이프)에서도 바꾸기</span></label>
-        <div class="stqa_replace_count"></div>
-        <div class="stqa_replace_preview"></div>
+        <div class="stqa_replace_count"><i class="fa-solid fa-chevron-right"></i><span></span></div>
+        <div class="stqa_replace_preview" hidden></div>
         <div class="stqa_replace_undo"></div>`;
     const field = name => content.querySelector(`[data-field="${name}"]`);
     const list = content.querySelector('.stqa_replace_preview');
+    const counter = content.querySelector('.stqa_replace_count');
+    // The places are folded under the count; tapping it shows them all (drawn only while shown)
+    let unfolded = false;
+    const draw = () => {
+        const word = field('find').value;
+        list.dataset.word = word;
+        drawPreview(list, unfolded && word ? previewOf(chat, word, field('swipes').checked) : [], field('to').value);
+        list.hidden = !unfolded || !word;
+        counter.classList.toggle('stqa_open', unfolded);
+    };
     let timer = null;
     const update = () => {
         clearTimeout(timer);
         // A long chat is searched once typing pauses
         timer = setTimeout(() => {
             const word = field('find').value;
-            const swipes = field('swipes').checked;
-            const count = word ? countIn(chat, word, swipes) : 0;
-            content.querySelector('.stqa_replace_count').textContent = word ? `${count}곳${count > PREVIEW_MAX ? ` · 앞의 ${PREVIEW_MAX}곳만 보임` : ''}` : '';
-            list.dataset.word = word;
-            drawPreview(list, word ? previewOf(chat, word, swipes) : [], field('to').value);
+            const count = word ? countIn(chat, word, field('swipes').checked) : 0;
+            counter.querySelector('span').textContent = word ? `${count}곳` : '';
+            counter.hidden = !word;
+            draw();
         }, chat.length > 300 ? 250 : 80);
     };
+    counter.hidden = true;
+    counter.addEventListener('click', () => {
+        unfolded = !unfolded;
+        draw();
+    });
     content.addEventListener('input', update);
     content.addEventListener('change', update);
     // Changes made earlier in this chat (until the page is reloaded): each can be taken back
