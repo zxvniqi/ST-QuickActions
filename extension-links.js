@@ -65,7 +65,9 @@ export function settingsOnPage() {
             const label = (parts.header.textContent.trim().split('\n')[0].trim().replace(/\s*\?$/, '') || key).slice(0, 40);
             const iconElement = parts.header.querySelector('[class*="fa-"]:not(.inline-drawer-icon):not([class*="question"])');
             const icon = iconElement ? withoutSize([...iconElement.classList].filter(name => name.startsWith('fa'))).join(' ') : '';
-            found.push({ key, label, icon, element });
+            // Hidden in 메뉴 정리: there is nothing to open
+            const hidden = getComputedStyle(element).display === 'none';
+            found.push({ key, label, icon, element, hidden });
         }
     }
     return found;
@@ -74,11 +76,16 @@ export function settingsOnPage() {
 /** Opens the Extensions drawer at one extension's settings, unfolded. */
 export async function openExtensionLink(key) {
     const link = links().find(entry => entry.key === key);
-    const element = settingsOnPage().find(entry => entry.key === key)?.element;
-    if (!element) {
+    const found = settingsOnPage().find(entry => entry.key === key);
+    if (!found) {
         toastr.warning(`"${link?.label ?? '?'}" 설정을 찾지 못했습니다.`, TITLE);
         return;
     }
+    if (found.hidden) {
+        toastr.info(`"${found.label}"은(는) 메뉴 정리에서 숨긴 설정입니다.`, TITLE);
+        return;
+    }
+    const { element } = found;
     // The Options menu closes the way its own button closes it
     if (document.getElementById('options')?.style.display !== 'none' && document.getElementById('options')?.offsetParent) {
         document.getElementById('options_button')?.click();
@@ -102,7 +109,12 @@ export async function openExtensionLink(key) {
     try {
         await wait(350);
         for (let i = 0; i < 4 && !touched; i++) {
-            element.scrollIntoView({ block: 'start' });
+            // The drawer itself (a container may have no box of its own: display: contents), put
+            // at the top of the Extensions drawer's own scrolling (scrollIntoView can tuck it
+            // under the top bar)
+            block
+                ? (block.scrollTop += drawer.getBoundingClientRect().top - block.getBoundingClientRect().top)
+                : drawer.scrollIntoView({ block: 'start' });
             await wait(250);
         }
     } finally {
@@ -208,7 +220,7 @@ export function applyExtensionLinks() {
 export async function pickExtensionLinks() {
     const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
     const settings = getSettings();
-    const onPage = settingsOnPage();
+    const onPage = settingsOnPage().filter(entry => !entry.hidden);
     if (!onPage.length) {
         toastr.info('확장 설정이 없습니다.', TITLE);
         return false;
