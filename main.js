@@ -165,7 +165,74 @@ function applyAll() {
     applyExtensionLinks();
 }
 
-function featureRow(key, label, description) {
+/** Each tab's icon. */
+const TAB_ICONS = Object.freeze({
+    '메시지': 'fa-message',
+    '채팅': 'fa-comments',
+    '캐릭터': 'fa-user',
+    '입력창·QR': 'fa-keyboard',
+    '바로가기': 'fa-ellipsis',
+    '프롬프트': 'fa-scroll',
+    '메뉴 정리': 'fa-bars-staggered',
+    '화면·기타': 'fa-display',
+});
+
+/** Where each feature shows up (or 자동: it works by itself). */
+const WHERE = Object.freeze({
+    deleteButton: '메시지 연필 옆',
+    menuToBottom: '메시지 메뉴',
+    footerSwipe: '마지막 답변 아래',
+    swipeList: '스와이프 번호',
+    footerTop: '메시지 아래',
+    selectionTools: '글자 드래그',
+    emptyReplyDelete: '자동',
+    keepStatusPanels: '자동',
+    chatPicker: '캐릭터 목록',
+    chatExportAll: '채팅 목록 창',
+    chatSort: '채팅 목록 창',
+    chatQuickRename: '채팅 목록 창',
+    rangeDelete: '☰ 옵션 메뉴',
+    rangeHide: '☰ 옵션 메뉴',
+    messageTrash: '☰ 옵션 메뉴',
+    backupView: '채팅 목록 창 › Backups',
+    chatReplace: '☰ 옵션 메뉴',
+    chatSearch: '☰ 옵션 메뉴',
+    welcomeRecent: '시작 화면',
+    charListTools: '캐릭터 목록',
+    hdAvatars: '자동',
+    qrBar: '입력창 위',
+    qrHistory: 'QR 입력창',
+    qrSwipe: 'QR 메시지 스와이프',
+    hideInputPlaceholder: '입력창',
+    floatingPanel: '입력창 위 ···',
+    presetFolders: '프리셋 선택 칸',
+    toggleSetChips: '프롬프트 목록 위',
+    promptCopy: '프롬프트 항목 ···',
+    entryTranslate: '프롬프트·월드인포 文A',
+    layoutManager: '아래 "메뉴 정리 열기"',
+    extensionLinks: '☰ · 마법봉 · 메시지 메뉴',
+    wandGrid: '마법봉',
+    optionsGrid: '☰ 옵션 메뉴',
+    regexFolders: '정규식 창 › 폴더',
+    koFill: '자동',
+    hideSettingHints: '자동',
+    errorLog: '빨간 오류 알림',
+    vertexProfileFix: '자동',
+});
+
+/** A description's first sentence (shown under the name) and the rest (behind ?). */
+function splitDescription(text) {
+    const firstLine = text.split('\n')[0];
+    const end = firstLine.search(/다\.(\s|$)/);
+    const summary = end === -1 ? firstLine : firstLine.slice(0, end + 2);
+    return { summary, rest: text.slice(summary.length).trim() };
+}
+
+// Text a feature is found by (its name, description, place and tab), without spaces
+const searchable = text => text.toLowerCase().replace(/\s+/g, '');
+
+function featureRow(key, label, description, tabTitle) {
+    const { summary, rest } = splitDescription(description);
     const row = document.createElement('div');
     row.className = 'stqa_feature';
     row.innerHTML = `
@@ -173,13 +240,24 @@ function featureRow(key, label, description) {
             <label class="checkbox_label"><input type="checkbox" data-setting="${key}"><span></span></label>
             <div class="stqa_desc_toggle fa-solid fa-circle-question" title="도움말"></div>
         </div>
+        <div class="stqa_feature_summary"></div>
+        <div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div>
         <div class="stqa_desc" hidden></div>
         <div class="stqa_feature_extra"></div>`;
-    row.querySelector('span').textContent = label;
-    row.querySelector('.stqa_desc').textContent = description;
-    row.querySelector('input').checked = getSettings()[key] !== false;
+    row.querySelector('.checkbox_label span').textContent = label;
+    row.querySelector('.stqa_feature_summary').textContent = summary;
+    row.querySelector('.stqa_feature_where span').textContent = WHERE[key] ?? '';
+    row.querySelector('.stqa_feature_where').hidden = !WHERE[key];
+    row.querySelector('.stqa_desc').textContent = rest;
+    row.dataset.search = searchable(`${label} ${description} ${WHERE[key] ?? ''} ${tabTitle}`);
+    const on = getSettings()[key] !== false;
+    row.querySelector('input').checked = on;
+    row.classList.toggle('stqa_feature_off', !on);
+    const toggle = row.querySelector('.stqa_desc_toggle');
+    // Nothing more to tell than the first sentence: no ?
+    toggle.hidden = !rest;
     // ? opens the help under the name, and closes it again
-    row.querySelector('.stqa_desc_toggle').addEventListener('click', () => {
+    toggle.addEventListener('click', () => {
         const desc = row.querySelector('.stqa_desc');
         desc.hidden = !desc.hidden;
         row.classList.toggle('stqa_desc_open', !desc.hidden);
@@ -445,7 +523,8 @@ function buildPanel() {
             <h3>편의성 모음</h3>
             <label class="checkbox_label stqa_master"><input type="checkbox" data-setting="enabled"><span>사용</span></label>
         </div>
-        <div class="stqa_tabs"></div>
+        <div class="stqa_panel_search"><i class="fa-solid fa-magnifying-glass"></i><input class="text_pole" type="search" placeholder="기능 찾기"></div>
+        <div class="stqa_tabs stqa_panel_tabs"></div>
         <div class="stqa_tab_body"></div>`;
     panel.querySelector('[data-setting="enabled"]').checked = settings.enabled !== false;
     const tabs = panel.querySelector('.stqa_tabs');
@@ -453,24 +532,70 @@ function buildPanel() {
     const pages = TABS.map(({ title, features }) => {
         const page = document.createElement('div');
         page.className = 'stqa_tab_page';
+        // The tab's name over its features while searching (all tabs are searched at once)
+        const heading = document.createElement('div');
+        heading.className = 'stqa_page_title';
+        heading.textContent = title;
+        page.append(heading);
         for (const [key, label, description] of features) {
-            const row = featureRow(key, label, description);
+            const row = featureRow(key, label, description, title);
             row.querySelector('.stqa_feature_extra').append(extrasFor(key));
             page.append(row);
         }
         const tab = document.createElement('div');
         tab.className = 'stqa_tab';
-        tab.textContent = title;
+        tab.innerHTML = '<i class="fa-solid"></i><span></span>';
+        tab.querySelector('i').classList.add(TAB_ICONS[title] ?? 'fa-circle');
+        tab.querySelector('span').textContent = title;
         tabs.append(tab);
         body.append(page);
         return { tab, page };
     });
-    const show = (index) => pages.forEach(({ tab, page }, i) => {
-        tab.classList.toggle('stqa_tab_active', i === index);
-        page.hidden = i !== index;
-    });
-    pages.forEach(({ tab }, index) => tab.addEventListener('click', () => show(index)));
+    let current = 0;
+    const show = (index) => {
+        current = index;
+        pages.forEach(({ tab, page }, i) => {
+            tab.classList.toggle('stqa_tab_active', i === index);
+            page.hidden = i !== index;
+        });
+    };
+    pages.forEach(({ tab }, index) => tab.addEventListener('click', () => {
+        // A tab picked while searching ends the search
+        search.value && (search.value = '', find());
+        show(index);
+    }));
     show(0);
+    const empty = document.createElement('div');
+    empty.className = 'stqa_search_empty';
+    empty.textContent = '찾은 기능이 없습니다.';
+    empty.hidden = true;
+    body.append(empty);
+    // Searching: every tab's matching features, under their tab's name
+    const search = panel.querySelector('.stqa_panel_search input');
+    const find = () => {
+        const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean).map(searchable);
+        panel.classList.toggle('stqa_searching', words.length > 0);
+        if (!words.length) {
+            pages.forEach(({ page }) => page.querySelectorAll('.stqa_feature').forEach(row => (row.hidden = false)));
+            empty.hidden = true;
+            show(current);
+            return;
+        }
+        let found = 0;
+        pages.forEach(({ tab, page }) => {
+            let inPage = 0;
+            page.querySelectorAll('.stqa_feature').forEach((row) => {
+                row.hidden = !words.every(word => row.dataset.search.includes(word));
+                row.hidden || inPage++;
+            });
+            page.hidden = !inPage;
+            tab.classList.remove('stqa_tab_active');
+            found += inPage;
+        });
+        empty.hidden = found > 0;
+        body.scrollTop = 0;
+    };
+    search.addEventListener('input', find);
     const syncMaster = () => body.classList.toggle('stqa_off', settings.enabled === false);
     syncMaster();
 
@@ -480,6 +605,8 @@ function buildPanel() {
             settings.floatingButtons = { ...settings.floatingButtons, [target.dataset.floatingButton]: target.checked };
         } else if (target.dataset?.setting) {
             settings[target.dataset.setting] = target.checked;
+            // A feature switched off folds its own settings away
+            target.closest('.stqa_feature')?.classList.toggle('stqa_feature_off', !target.checked);
         } else {
             return;
         }

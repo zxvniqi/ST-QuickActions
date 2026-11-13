@@ -1423,20 +1423,124 @@ details.stqa_section[open] > summary {
 .stqa_tab_page {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 8px;
 }
 
-.stqa_tab_page[hidden] {
+.stqa_tab_page[hidden],
+.stqa_feature[hidden],
+.stqa_search_empty[hidden] {
     display: none;
 }
 
-.stqa_feature {
-    padding: 10px 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 40%, transparent);
+/* Search box over the tabs */
+.stqa_panel_search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 0 10px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 15%, transparent);
 }
 
-.stqa_feature:last-child {
-    border-bottom: none;
+.stqa_panel_search i {
+    opacity: 0.55;
+}
+
+.stqa_panel_search input.text_pole {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+/* The settings window's tabs: icon over name, four to a row */
+.stqa_panel_tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stqa_panel_tabs .stqa_tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 7px 2px;
+    font-size: 0.8em;
+}
+
+.stqa_panel_tabs .stqa_tab i {
+    font-size: 1.15em;
+}
+
+.stqa_searching .stqa_panel_tabs {
+    opacity: 0.5;
+}
+
+/* While searching, each tab's name heads its features */
+.stqa_page_title {
+    display: none;
+    margin: 6px 2px 0;
+    font-size: 0.8em;
+    font-weight: bold;
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_searching .stqa_page_title {
+    display: block;
+}
+
+.stqa_search_empty {
+    padding: 20px 0;
+    text-align: center;
+    opacity: 0.6;
+}
+
+/* A feature: a card with its name and switch, one line on what it does, and where it shows up */
+.stqa_feature {
+    padding: 9px 12px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--SmartThemeBorderColor) 10%, transparent);
+}
+
+.stqa_feature_summary {
+    margin: 2px 0 0 26px;
+    font-size: 0.84em;
+    line-height: 1.4;
+    opacity: 0.72;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+}
+
+.stqa_feature_where {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 5px 0 0 26px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 0.76em;
+    color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
+}
+
+.stqa_feature_where[hidden],
+.stqa_desc_toggle[hidden] {
+    display: none;
+}
+
+/* Switched off: its own settings fold away, the rest dims */
+.stqa_feature_off .stqa_feature_extra {
+    display: none !important;
+}
+
+.stqa_feature_off .stqa_feature_summary,
+.stqa_feature_off .stqa_feature_where {
+    opacity: 0.45;
 }
 
 .stqa_feature_head {
@@ -2465,6 +2569,78 @@ body.stqa_char_tools_on #rm_print_characters_block .character_select .tags {
     min-height: 1.2em;
     font-size: 0.9em;
     opacity: 0.8;
+}
+
+/* What would change: each place with the word struck out and its replacement after it */
+.stqa_replace_preview {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 35vh;
+    overflow-y: auto;
+}
+
+.stqa_replace_preview:empty {
+    display: none;
+}
+
+.stqa_replace_row {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 5px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    font-size: 0.85em;
+}
+
+.stqa_replace_where {
+    font-size: 0.85em;
+    opacity: 0.65;
+}
+
+.stqa_replace_text {
+    overflow-wrap: anywhere;
+}
+
+.stqa_replace_text del {
+    color: #d9534f;
+    text-decoration: line-through;
+}
+
+.stqa_replace_text ins {
+    color: #3c9a5f;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+/* Changes made earlier in this chat, until the page is reloaded */
+.stqa_replace_undo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stqa_replace_undo:empty {
+    display: none;
+}
+
+.stqa_replace_done {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.stqa_replace_done span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.stqa_replace_done .menu_button {
+    flex: none;
+    margin: 0;
 }
 
 .stqa_rename_pick .stqa_hint {
