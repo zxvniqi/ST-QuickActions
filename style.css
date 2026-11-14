@@ -2595,8 +2595,10 @@ body.stqa_char_tools_on #rm_print_characters_block .character_select .tags {
 
 .stqa_replace_row {
     display: flex;
-    flex-direction: column;
-    gap: 1px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
     padding: 5px 8px;
     border: 1px solid var(--SmartThemeBorderColor);
     border-radius: 6px;
@@ -3555,4 +3557,333 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* Quick switch chips: the link to the open chat (lit when linked) */
+.stqa_variant_chip .stqa_set_link {
+    margin-left: 6px;
+    padding: 2px;
+    font-size: 0.8em;
+    opacity: 0.4;
+}
+
+.stqa_variant_chip .stqa_set_link.stqa_linked {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* Word replace: each place has a box to leave it out; 전체 ticks or unticks them all */
+.stqa_replace_row input[type="checkbox"] {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_replace_body {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.stqa_replace_row.stqa_replace_skipped .stqa_replace_body {
+    opacity: 0.45;
+}
+
+.stqa_replace_row.stqa_replace_skipped ins {
+    display: none;
+}
+
+.stqa_replace_row.stqa_replace_skipped del {
+    color: inherit;
+    text-decoration: none;
+}
+
+.stqa_replace_all {
+    margin-left: auto;
+    font-size: 0.95em;
+}
+
+.stqa_replace_all[hidden] {
+    display: none;
+}
+
+/* Settings window: sheets instead of scrolling. The ‹ 1 / 3 › sits over the features (it keeps
+   its place whatever the sheet's height); features on other sheets are out of the layout */
+.stqa_pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: -4px 0 8px;
+    font-size: 0.9em;
+}
+
+.stqa_pager[hidden],
+.stqa_paged_out {
+    display: none !important;
+}
+
+.stqa_pager .menu_button {
+    margin: 0;
+    padding: 4px 14px;
+}
+
+.stqa_pager .menu_button.stqa_dim {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+/* Start screen: ST's own start messages stay hidden without the recent chats panel too */
+body.stqa_welcome_recent.stqa_at_start #chat > .mes {
+    display: none;
+}
+
+/* World info picker: the dropdown takes no taps (its row opens the window instead) */
+body.stqa_world_pick_on #world_editor_select,
+body.stqa_world_pick_on #world_editor_select + .select2 {
+    pointer-events: none;
+}
+
+.stqa_world_pick {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_world_pick h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_world_pick .stqa_panel_search {
+    margin: 0;
+}
+
+.stqa_world_pick .stqa_tabs {
+    margin: 0;
+}
+
+.stqa_world_list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+.stqa_world_row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.stqa_world_row.stqa_active {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 10%, transparent);
+}
+
+.stqa_world_star {
+    flex: none;
+    padding: 4px;
+    opacity: 0.45;
+}
+
+.stqa_world_star.stqa_starred {
+    opacity: 1;
+    color: #e0a526;
+}
+
+.stqa_world_text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+}
+
+.stqa_world_name {
+    overflow-wrap: anywhere;
+}
+
+/* Linked characters: small round avatars (a chat's has a speech mark) */
+.stqa_world_avatars {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+#stqa_world_links {
+    margin: 4px 0 6px;
+}
+
+.stqa_world_avatar {
+    position: relative;
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+}
+
+.stqa_world_avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--SmartThemeBorderColor);
+}
+
+.stqa_world_avatar i {
+    position: absolute;
+    right: -3px;
+    bottom: -2px;
+    font-size: 0.6em;
+    color: var(--SmartThemeQuoteColor);
+}
+
+.stqa_world_more {
+    font-size: 0.8em;
+    opacity: 0.6;
+}
+
+/* Personas: the memo box by the name, connected characters by each name in the list, folder chips */
+#stqa_persona_memo {
+    margin: 4px 0 8px;
+}
+
+#stqa_persona_memo[hidden] {
+    display: none;
+}
+
+.stqa_persona_links {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.stqa_persona_link {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--SmartThemeBorderColor);
+}
+
+i.stqa_persona_link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65em;
+}
+
+.stqa_persona_more {
+    margin-left: 2px;
+    opacity: 0.6;
+}
+
+.stqa_persona_folders {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 8px;
+}
+
+.stqa_persona_folders .stqa_variant_chip small {
+    opacity: 0.6;
+}
+
+.stqa_persona_folder_edit,
+.stqa_persona_pick {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    text-align: left;
+}
+
+.stqa_persona_folder_edit h3,
+.stqa_persona_pick h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_persona_folder_list,
+.stqa_persona_pick_list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 55vh;
+    overflow-y: auto;
+}
+
+.stqa_persona_folder_row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 10px;
+}
+
+.stqa_persona_folder_name {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.stqa_persona_folder_row small {
+    opacity: 0.6;
+}
+
+.stqa_persona_folder_row .menu_button {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_persona_pick .stqa_panel_search {
+    margin: 0;
+}
+
+.stqa_persona_pick_row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.stqa_persona_pick_row[hidden] {
+    display: none;
+}
+
+.stqa_persona_pick_row input {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_persona_pick_row img {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.stqa_persona_pick_text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.stqa_persona_pick_text small {
+    opacity: 0.65;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }

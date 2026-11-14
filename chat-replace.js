@@ -1,8 +1,8 @@
 // "채팅 단어 바꾸기" in the Options menu: one word or phrase replaced in every message of the
 // open chat (e.g. a year in a status panel, 2024 → 2205). Covers the other replies (swipes)
 // and translations shown in place of the original. Plain text, not a pattern. The places it
-// would change are shown before anything is changed, and a change can be taken back until the
-// page is reloaded (its notice, or the list in the window).
+// would change are shown before anything is changed (each can be left out by unticking it), and a
+// change can be taken back until the page is reloaded (its notice, or the list in the window).
 import { MODULE, isOn } from './settings.js';
 
 const OPTION_ID = 'stqa_option_replace';
@@ -48,16 +48,21 @@ function countIn(chat, word, swipes) {
 
 const oneLine = text => text.replace(/\s+/g, ' ');
 
-/** Every place the word is found: [{ index, name, label, before, after }]. */
+/** A place the word is found at: the message, which of its texts, and which find in that text. */
+const placeId = (index, label, nth) => `${index}|${label}|${nth}`;
+
+/** Every place the word is found: [{ id, index, name, label, before, after }]. */
 function previewOf(chat, word, swipes) {
     const found = [];
     chat.forEach((message, index) => {
         for (const [holder, key, label] of textSlots(message, swipes)) {
             const text = holder[key];
+            let nth = 0;
             for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + word.length)) {
                 const start = Math.max(0, at - AROUND);
                 const end = Math.min(text.length, at + word.length + AROUND);
                 found.push({
+                    id: placeId(index, label, nth++),
                     index,
                     name: message.name ?? '',
                     label,
@@ -70,12 +75,23 @@ function previewOf(chat, word, swipes) {
     return found;
 }
 
-/** Draws the preview: each place with the word struck out and its replacement after it. */
-function drawPreview(list, places, replacement) {
-    list.replaceChildren(...places.map(({ index, name, label, before, after }) => {
-        const row = document.createElement('div');
+/**
+ * Draws the preview: each place with the word struck out and its replacement after it, and a box
+ * to leave it out (`skipped`: the ids left out; `onPick` is told when one is ticked or unticked).
+ */
+function drawPreview(list, places, replacement, skipped, onPick) {
+    list.replaceChildren(...places.map(({ id, index, name, label, before, after }) => {
+        const row = document.createElement('label');
         row.className = 'stqa_replace_row';
-        row.innerHTML = '<span class="stqa_replace_where"></span><span class="stqa_replace_text"><span></span><del></del><ins></ins><span></span></span>';
+        row.innerHTML = '<input type="checkbox"><span class="stqa_replace_body"><span class="stqa_replace_where"></span><span class="stqa_replace_text"><span></span><del></del><ins></ins><span></span></span></span>';
+        const box = row.querySelector('input');
+        box.checked = !skipped.has(id);
+        row.classList.toggle('stqa_replace_skipped', !box.checked);
+        box.addEventListener('change', () => {
+            box.checked ? skipped.delete(id) : skipped.add(id);
+            row.classList.toggle('stqa_replace_skipped', !box.checked);
+            onPick();
+        });
         // Message text is set as text: messages hold anything
         row.querySelector('.stqa_replace_where').textContent = `#${index} ${name}${label ? ` · ${label}` : ''}`;
         const parts = row.querySelectorAll('.stqa_replace_text > *');
@@ -177,7 +193,7 @@ async function openReplace() {
         <label>찾을 글자<input class="text_pole" data-field="find" type="text"></label>
         <label>바꿀 글자<input class="text_pole" data-field="to" type="text"></label>
         <label class="checkbox_label"><input type="checkbox" data-field="swipes" checked><span>다른 답변(스와이프)에서도 바꾸기</span></label>
-        <div class="stqa_replace_count"><i class="fa-solid fa-chevron-right"></i><span></span></div>
+        <div class="stqa_replace_count"><i class="fa-solid fa-chevron-right"></i><span></span><label class="checkbox_label stqa_replace_all" hidden><input type="checkbox" checked><span>전체</span></label></div>
         <div class="stqa_replace_preview" hidden></div>
         <div class="stqa_replace_undo"></div>`;
     const field = name => content.querySelector(`[data-field="${name}"]`);
@@ -185,12 +201,22 @@ async function openReplace() {
     const counter = content.querySelector('.stqa_replace_count');
     // The places are folded under the count; tapping it shows them all (drawn only while shown)
     let unfolded = false;
+    // Places unticked in the list: left as they are (for the word and swipes choice they were made for)
+    const skipped = new Set();
+    let skippedFor = '';
+    let total = 0;
+    const allBox = counter.querySelector('.stqa_replace_all input');
+    const showCount = () => {
+        counter.querySelector('span').textContent = total ? (skipped.size ? `${total - skipped.size}/${total}곳` : `${total}곳`) : '0곳';
+        allBox.checked = !skipped.size;
+    };
     const draw = () => {
         const word = field('find').value;
         list.dataset.word = word;
-        drawPreview(list, unfolded && word ? previewOf(chat, word, field('swipes').checked) : [], field('to').value);
+        drawPreview(list, unfolded && word ? previewOf(chat, word, field('swipes').checked) : [], field('to').value, skipped, showCount);
         list.hidden = !unfolded || !word;
         counter.classList.toggle('stqa_open', unfolded);
+        counter.querySelector('.stqa_replace_all').hidden = !unfolded || !total;
     };
     let timer = null;
     const update = () => {
@@ -198,19 +224,36 @@ async function openReplace() {
         // A long chat is searched once typing pauses
         timer = setTimeout(() => {
             const word = field('find').value;
-            const count = word ? countIn(chat, word, field('swipes').checked) : 0;
-            counter.querySelector('span').textContent = word ? `${count}곳` : '';
+            const swipes = field('swipes').checked;
+            // Another word (or other texts searched): the places are other places
+            if (skippedFor !== `${swipes}|${word}`) {
+                skipped.clear();
+                skippedFor = `${swipes}|${word}`;
+            }
+            total = word ? countIn(chat, word, swipes) : 0;
             counter.hidden = !word;
+            showCount();
             draw();
         }, chat.length > 300 ? 250 : 80);
     };
     counter.hidden = true;
-    counter.addEventListener('click', () => {
+    counter.addEventListener('click', (event) => {
+        if (event.target.closest('.stqa_replace_all')) {
+            return;
+        }
         unfolded = !unfolded;
         draw();
     });
-    content.addEventListener('input', update);
-    content.addEventListener('change', update);
+    // 전체: every place ticked, or none
+    allBox.addEventListener('change', (event) => {
+        event.stopPropagation();
+        skipped.clear();
+        allBox.checked || previewOf(chat, field('find').value, field('swipes').checked).forEach(place => skipped.add(place.id));
+        showCount();
+        draw();
+    });
+    content.addEventListener('input', event => event.target.closest('.stqa_replace_preview, .stqa_replace_all') || update());
+    content.addEventListener('change', event => event.target.closest('.stqa_replace_preview, .stqa_replace_all') || update());
     // Changes made earlier in this chat (until the page is reloaded): each can be taken back
     const undoBox = content.querySelector('.stqa_replace_undo');
     let popup = null;
@@ -243,15 +286,19 @@ async function openReplace() {
     const word = field('find').value;
     const replacement = field('to').value;
     const swipes = field('swipes').checked;
-    const count = word ? countIn(chat, word, swipes) : 0;
-    if (!count) {
-        word && toastr.info('찾은 곳이 없습니다.', TITLE);
+    // The typing may still have been waiting to be searched: what was unticked for another word doesn't count
+    skippedFor === `${swipes}|${word}` || skipped.clear();
+    const count = word ? countIn(chat, word, swipes) - skipped.size : 0;
+    if (count <= 0) {
+        word && toastr.info(skipped.size ? '바꿀 곳을 하나도 고르지 않았습니다.' : '찾은 곳이 없습니다.', TITLE);
         return;
     }
     const before = textsOf(chat);
-    for (const message of chat) {
-        for (const [holder, key] of textSlots(message, swipes)) {
-            holder[key] = holder[key].split(word).join(replacement);
+    chat.forEach((message, index) => {
+        for (const [holder, key, label] of textSlots(message, swipes)) {
+            // Each find in turn, the unticked ones left as they are
+            let nth = 0;
+            holder[key] = holder[key].split(word).reduce((text, part) => text + (skipped.has(placeId(index, label, nth++)) ? word : replacement) + part);
         }
         // The reply on show is kept twice (as the message and as its swipe): both say the same
         const shown = message.swipe_id;
@@ -262,7 +309,7 @@ async function openReplace() {
         if (info && typeof info.display_text === 'string' && typeof message.extra?.display_text === 'string') {
             info.display_text = message.extra.display_text;
         }
-    }
+    });
     const changes = [];
     for (const [place, after] of textsOf(chat)) {
         if (before.has(place) && before.get(place) !== after) {

@@ -1,6 +1,6 @@
 // Selecting a character shows its chat list (with rename / export / delete / import)
 // instead of opening the latest chat.
-import { MODULE, getSettings, isOn } from './settings.js';
+import { MODULE, isOn } from './settings.js';
 import { listChats, setActiveChat, renameChat, deleteChat, exportChat } from './chat-api.js';
 import { exportAllChats, importChatFiles } from './chat-export.js';
 import { sortChats, createSortButton } from './chat-sort.js';

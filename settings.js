@@ -98,6 +98,8 @@ const defaultSettings = Object.freeze({
     folders: {},
     // Saved toggle combinations per prompt preset: { preset: [{ name, states: { identifier: on } }] }
     toggleSets: {},
+    // A quick switch linked to a chat (one per chat): { chatKey: { preset, name } }
+    toggleLinks: {},
     // Status panels in translated messages are taken from the original
     keepStatusPanels: true,
     hdAvatars: true,
@@ -105,6 +107,15 @@ const defaultSettings = Object.freeze({
     hideSettingHints: true,
     // Korean for the parts of ST's screens its translation leaves in English
     koFill: true,
+    // World info: the editor's dropdown opens a window (search, starred ones, linked characters)
+    worldPicker: true,
+    worldFavorites: [],
+    // Chats bound to a world, as they were seen: { world: [{ avatar, chat }] }
+    worldChats: {},
+    // Personas: memos shown in the list, connected characters by the name, folders
+    personaTools: true,
+    personaMemos: {},
+    personaFolders: [],
     // Per container selector: { order: string[], hidden: string[] }
     layout: {},
 });

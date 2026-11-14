@@ -145,8 +145,25 @@ function syncPlaceholder() {
     }
 }
 
+// What ST puts in the chat on its start screen: the assistant's greeting and a row of buttons
+const START_MESSAGES = Object.freeze(['assistant_message', 'welcome_prompt']);
+
+/**
+ * Marks the start screen (no chat open, nothing in it but ST's own start messages), so those
+ * messages hide whether or not the recent chats panel made it onto the page: without the panel
+ * (the chat list didn't load) they used to show, as if a chat with the assistant had started.
+ */
+function markStartScreen() {
+    const context = SillyTavern.getContext();
+    const messages = context.chat ?? [];
+    const atStart = context.getCurrentChatId() === undefined && messages.length > 0
+        && messages.every(message => START_MESSAGES.includes(message?.extra?.type));
+    document.body.classList.toggle('stqa_at_start', atStart);
+}
+
 /** Start screen: the recent chats list opened in full (the assistant is hidden by CSS). */
 function expandRecentChats() {
+    markStartScreen();
     if (!isOn('welcomeRecent')) {
         return;
     }
@@ -277,5 +294,7 @@ export function initDisplayTweaks() {
     if (chat) {
         new MutationObserver(expandRecentChats).observe(chat, { childList: true });
     }
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    eventSource.on(eventTypes.CHAT_CHANGED, markStartScreen);
     applyDisplayTweaks();
 }
