@@ -227,7 +227,9 @@ async function pickMembers(folder) {
     root.querySelector('h3').textContent = folder.name;
     const list = root.querySelector('.stqa_persona_pick_list');
     const picked = new Set(folder.keys);
-    const rows = Object.entries(power?.personas ?? {}).sort((a, b) => String(a[1]).localeCompare(String(b[1]))).map(([id, name]) => {
+    // The folder's own personas first, then the rest, each by name
+    const byName = (a, b) => Number(picked.has(b[0])) - Number(picked.has(a[0])) || String(a[1]).localeCompare(String(b[1]));
+    const rows = Object.entries(power?.personas ?? {}).sort(byName).map(([id, name]) => {
         const row = document.createElement('label');
         row.className = 'stqa_persona_pick_row';
         row.innerHTML = '<input type="checkbox"><img alt="" loading="lazy"><span class="stqa_persona_pick_text"><b></b><small></small></span>';

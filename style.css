@@ -3887,3 +3887,19 @@ i.stqa_persona_link {
     white-space: nowrap;
     text-overflow: ellipsis;
 }
+
+/* Word replace rows: the box left of the text (the window's own rule for labels stacks them) */
+.stqa_replace label.stqa_replace_row {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Personas: the connected characters sit right by the name (ST lets the name take the whole line) */
+#user_avatar_block .character_name_block:has(.stqa_persona_links) .ch_name {
+    flex: 0 1 auto;
+}
+
+#user_avatar_block .character_name_block:has(.stqa_persona_links) .ch_additional_info {
+    margin-left: auto;
+}
