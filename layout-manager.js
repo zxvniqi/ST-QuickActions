@@ -101,7 +101,7 @@ const KNOWN_LABELS = Object.freeze({
     stqa_mes_delete: '삭제 (편의성 모음)',
     stqa_mes_to_bottom: '메시지 맨 아래로 (편의성 모음)',
     // Top bar drawers have only icons
-    'ai-config-button': '프리셋 · AI 응답 설정',
+    'ai-config-button': '프롬프트 · AI 응답 설정',
     'sys-settings-button': 'API 연결',
     'advanced-formatting-button': '고급 서식 (프롬프트 템플릿)',
     'WI-SP-button': '월드인포 / 로어북',

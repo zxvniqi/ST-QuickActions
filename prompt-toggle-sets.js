@@ -1,6 +1,8 @@
 // Quick switches of a prompt (preset): saved on / off states of its items ("한국어", "짧게", ...),
 // shown as chips above the item list. Tap one to switch the items as saved; in edit mode (✎) a
 // tap opens its menu: overwrite with the current states, rename, or remove. Kept per preset name.
+// A switch can be linked to the open chat (the link icon on its chip, one per chat): entering
+// that chat picks the switch's prompt and switches its items as saved.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
 
@@ -37,12 +39,54 @@ function saveSets(preset, list) {
     SillyTavern.getContext().saveSettingsDebounced();
 }
 
+/** The open chat's key (as its owner and file name), or null. */
+function chatKey() {
+    const context = SillyTavern.getContext();
+    const chat = context.getCurrentChatId();
+    if (!chat) {
+        return null;
+    }
+    if (context.groupId) {
+        return `g:${context.groupId}:${chat}`;
+    }
+    const avatar = context.characters[context.characterId]?.avatar;
+    return avatar ? `c:${avatar}:${chat}` : null;
+}
+
+// Links: { chatKey: { preset, name } } (one switch per chat)
+const links = () => (getSettings().toggleLinks ??= {});
+const linkedHere = () => links()[chatKey()] ?? null;
+const isLinked = (preset, set) => linkedHere()?.preset === preset && linkedHere()?.name === set.name;
+
+/** Links a switch to the open chat, or takes the link away (a chat keeps one). */
+function toggleLink(preset, set) {
+    const key = chatKey();
+    if (!key) {
+        toastr.info('열린 채팅이 없습니다.', TITLE);
+        return;
+    }
+    const linked = isLinked(preset, set);
+    linked ? delete links()[key] : (links()[key] = { preset, name: set.name });
+    SillyTavern.getContext().saveSettingsDebounced();
+    drawBar();
+    toastr.success(linked ? `'${set.name}' 연결을 끊었습니다.` : `'${set.name}'을(를) 이 채팅에 연결했습니다.`, TITLE);
+}
+
+/** Links follow a switch that was renamed, and go with one that was removed. */
+function relink(preset, oldName, newName) {
+    for (const [key, link] of Object.entries(links())) {
+        if (link.preset === preset && link.name === oldName) {
+            newName ? (link.name = newName) : delete links()[key];
+        }
+    }
+}
+
 /** A set matches when every prompt it names is on / off as saved. */
 function isCurrent(set, order) {
     return order.length > 0 && order.every(entry => !(entry.identifier in set.states) || set.states[entry.identifier] === entry.enabled);
 }
 
-async function applySet(set) {
+async function applySet(set, quiet = false) {
     const pm = manager();
     const counts = pm.tokenHandler?.getCounts?.();
     let changed = false;
@@ -56,13 +100,14 @@ async function applySet(set) {
         }
     }
     if (!changed) {
-        toastr.info(`이미 '${set.name}' 상태입니다.`, TITLE);
-        return;
+        quiet || toastr.info(`이미 '${set.name}' 상태입니다.`, TITLE);
+        return false;
     }
     // The same as switching them by hand: one redraw, saved alongside
     pm.render();
     await pm.saveServiceSettings();
-    toastr.success(`'${set.name}'(으)로 전환했습니다.`, TITLE);
+    quiet || toastr.success(`'${set.name}'(으)로 전환했습니다.`, TITLE);
+    return true;
 }
 
 const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));
@@ -108,9 +153,12 @@ async function editSet(preset, set) {
         }
         // A switch already called that is replaced
         sets.splice(0, sets.length, ...sets.filter(item => item === set || item.name !== name));
+        relink(preset, name, null);
+        relink(preset, set.name, name);
         set.name = name;
     } else if (action === 'remove') {
         sets.splice(sets.indexOf(set), 1);
+        relink(preset, set.name, null);
     } else {
         return;
     }
@@ -147,7 +195,7 @@ function drawBar() {
     const preset = presetName();
     const sets = setsOf(preset);
     const order = promptOrder();
-    const signature = JSON.stringify([preset, editing, sets.map(set => [set.name, isCurrent(set, order)])]);
+    const signature = JSON.stringify([preset, editing, chatKey(), sets.map(set => [set.name, isCurrent(set, order), isLinked(preset, set)])]);
     if (old && old.dataset.signature === signature && old.nextElementSibling === list) {
         return;
     }
@@ -160,6 +208,16 @@ function drawBar() {
     for (const set of sets) {
         const element = chip(isCurrent(set, order) ? 'stqa_active' : '', '', editing ? '편집' : '이 상태로 바꾸기', () => (editing ? editSet(preset, set) : applySet(set)));
         element.textContent = set.name;
+        // Linked to the open chat or not: entering the chat switches to it
+        const linked = isLinked(preset, set);
+        const link = document.createElement('i');
+        link.className = `fa-solid ${linked ? 'fa-link' : 'fa-link-slash'} stqa_set_link${linked ? ' stqa_linked' : ''}`;
+        link.title = linked ? '이 채팅과 연결됨 (누르면 끊기)' : '이 채팅과 연결';
+        link.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleLink(preset, set);
+        });
+        element.append(link);
         bar.append(element);
     }
     bar.append(chip('stqa_variant_add', `<i class="fa-solid fa-plus"></i>${sets.length ? '' : ' 빠른 전환 추가'}`, '지금 상태를 새 빠른 전환으로 저장', () => saveCurrent(preset)));
@@ -174,6 +232,76 @@ function drawBar() {
 
 export function applyToggleSets() {
     drawBar();
+}
+
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** The chat just opened has a switch linked: its prompt is picked, then its items are switched. */
+async function followLink() {
+    const key = chatKey();
+    const link = key && links()[key];
+    if (!link || !isOn('toggleSetChips') || !manager() || SillyTavern.getContext().mainApi !== 'openai') {
+        return;
+    }
+    const select = document.querySelector(PRESET_SELECT);
+    const otherPrompt = presetName() !== link.preset;
+    if (otherPrompt) {
+        const option = [...select?.options ?? []].find(item => item.textContent.trim() === link.preset);
+        if (!option) {
+            toastr.warning(`연결된 프롬프트 '${link.preset}'을(를) 찾지 못했습니다.`, TITLE);
+            return;
+        }
+        // Picked the way a tap on the list picks it; ST tells when it has loaded
+        const { eventSource, eventTypes } = SillyTavern.getContext();
+        const loaded = new Promise((resolve) => {
+            eventTypes.OAI_PRESET_CHANGED_AFTER ? eventSource.once(eventTypes.OAI_PRESET_CHANGED_AFTER, resolve) : resolve();
+            setTimeout(resolve, 3000);
+        });
+        // (through jQuery, as ST and the prompt list pick it)
+        $(select).val(option.value).trigger('change');
+        await loaded;
+        await wait(100);
+    }
+    // Another chat was opened meanwhile: that one's link decides
+    if (chatKey() !== key) {
+        return;
+    }
+    const set = setsOf(link.preset).find(item => item.name === link.name);
+    if (!set) {
+        delete links()[key];
+        SillyTavern.getContext().saveSettingsDebounced();
+        return;
+    }
+    const switched = await applySet(set, true);
+    drawBar();
+    // Told only when something was changed for this chat
+    if (otherPrompt || switched) {
+        toastr.info(`이 채팅에 연결된 '${link.name}'(으)로 전환했습니다.${otherPrompt ? ` (프롬프트: ${link.preset})` : ''}`, TITLE);
+    }
+}
+
+/** A renamed chat keeps its link; a deleted one's goes. */
+function onChatRenamed({ avatarId, groupId, oldFileName, newFileName }) {
+    const strip = name => String(name ?? '').replace(/\.jsonl$/, '');
+    const prefix = groupId ? `g:${groupId}:` : `c:${avatarId}:`;
+    const link = links()[prefix + strip(oldFileName)];
+    if (link) {
+        delete links()[prefix + strip(oldFileName)];
+        links()[prefix + strip(newFileName)] = link;
+        SillyTavern.getContext().saveSettingsDebounced();
+    }
+}
+
+function onChatDeleted(name) {
+    const chat = String(name ?? '').replace(/\.jsonl$/, '');
+    let changed = false;
+    for (const key of Object.keys(links())) {
+        if (key.endsWith(`:${chat}`)) {
+            delete links()[key];
+            changed = true;
+        }
+    }
+    changed && SillyTavern.getContext().saveSettingsDebounced();
 }
 
 export function initToggleSets() {
@@ -197,4 +325,17 @@ export function initToggleSets() {
         }
     }).observe(root, { childList: true, subtree: true });
     drawBar();
+    const { eventSource, eventTypes } = SillyTavern.getContext();
+    // After the chat is in place (the prompt manager follows the chat's character)
+    let entered = null;
+    eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        clearTimeout(entered);
+        entered = setTimeout(() => {
+            drawBar();
+            followLink().catch(error => console.error(`[${MODULE}] Linked switch failed`, error));
+        }, 300);
+    });
+    eventTypes.CHAT_RENAMED && eventSource.on(eventTypes.CHAT_RENAMED, onChatRenamed);
+    eventSource.on(eventTypes.CHAT_DELETED, onChatDeleted);
+    eventSource.on(eventTypes.GROUP_CHAT_DELETED, onChatDeleted);
 }

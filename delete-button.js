@@ -1,5 +1,5 @@
 // A delete button next to the message edit button (no need to enter edit mode).
-import { MODULE, getSettings, isOn } from './settings.js';
+import { MODULE, isOn } from './settings.js';
 
 const DELETE_BTN_CLASS = 'stqa_mes_delete';
 const DELETE_ON_CLASS = 'stqa_delete_on';

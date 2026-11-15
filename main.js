@@ -35,6 +35,8 @@ import { initPromptCopy, applyPromptCopy } from './prompt-copy.js';
 import { initPromptRenderFix } from './prompt-render-fix.js';
 import { DEFAULT_TRANSLATE_PROMPT, initEntryTranslate, applyEntryTranslate } from './entry-translate.js';
 import { initExtensionLinks, applyExtensionLinks, pickExtensionLinks } from './extension-links.js';
+import { initWorldPicker, applyWorldPicker } from './world-pick.js';
+import { initPersonaTools, applyPersonaTools } from './persona-tools.js';
 
 const TOOLBAR_POSITIONS = [
     { value: 'dock', label: '버튼 위치: 화면 아래' },
@@ -62,7 +64,7 @@ const TABS = Object.freeze([
             ['footerTop', '메시지 처음으로 가기', '메시지 아래에 ↑ 버튼이 생깁니다. 누르면 그 메시지의 첫 줄로 갑니다. 위치는 아래에서 고릅니다.'],
             ['selectionTools', '드래그해서 수정·삭제', '글자를 드래그해 고르면 "수정"·"삭제" 버튼이 뜹니다.\n· 수정은 고른 부분만 고치는 창을 엽니다.\n· 삭제는 고른 부분만 지우고, 뜨는 알림을 누르면 되돌립니다.\n· 번역된 메시지면 원문의 같은 부분도 함께 바뀝니다.\n· 버튼 위치는 아래에서 고릅니다.'],
             ['emptyReplyDelete', '빈 답변 자동 삭제·재생성', '오류 등으로 답변이 아무것도 없이 오면 알림을 띄우고 아래에서 고른 대로 합니다. QR이 만든 답변에도 적용됩니다.\n· 지우기만: 그 메시지(스와이프면 그 스와이프만)를 지웁니다.\n· 다시 생성만: 빈 메시지는 두고 새로 생성합니다(일반 답변은 새 스와이프로).\n· 지우고 다시 생성: 지운 뒤 새로 생성합니다.\n· 다시 생성은 적은 횟수(최대 10번)만큼 하고, 그래도 비어 있으면 멈추고 알려 줍니다.\n· 글자, 추론, 사진·파일이 하나도 없을 때만 빈 답변으로 봅니다. 직접 멈춘 생성은 건드리지 않습니다.'],
-            ['keepStatusPanels', '상태창 렌더링 픽스', '주점 도우미(Tavern Helper) 상태창이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다. 번역문은 그대로 둡니다.'],
+            ['keepStatusPanels', '정규식 렌더링 픽스', '정규식이 만든 HTML 화면(상태창 등)이 번역이나 다시 불러오기 뒤에 코드로 보이면 다시 그립니다.\n· 주점 도우미(Tavern Helper)가 그리는 화면에 적용됩니다.\n· 번역문은 그대로 둡니다.'],
         ],
     },
     {
@@ -76,7 +78,7 @@ const TABS = Object.freeze([
             ['rangeHide', '메시지 범위 숨기기', '옵션 메뉴에 "메시지 범위 숨기기"가 생깁니다.\n· 범위 삭제처럼 첫·끝 메시지를 눌러 고른 뒤 숨깁니다.\n· 숨긴 메시지는 채팅에 남지만 AI에게 보내지 않고, 눈 버튼으로 다시 보이게 합니다.\n· 바로가기 버튼에서는 번호를 적어서 숨깁니다.'],
             ['messageTrash', '메시지 휴지통', '지운 메시지를 휴지통에 보관합니다. 옵션 메뉴 "휴지통"에서 되살리거나 완전히 지웁니다.\n· 어떤 방법으로 지워도 담기고, 스와이프 하나만 지운 것도 담깁니다. 같은 메시지 것은 한 묶음입니다.\n· 되살리면 그 메시지 스와이프 맨 뒤에 붙고, 메시지가 없으면 원래 자리에 새로 생깁니다.\n· 보관 기간이 지난 것은 실리를 켤 때 정리합니다.\n· 최대 개수를 정하면 채팅마다 넘는 것을 오래된 것부터 지웁니다.\n· 채팅을 지우면 그 휴지통도 지워집니다.\n· 서버에 따로 저장하므로 그만큼 공간을 씁니다. ST 백업과는 별개입니다.'],
             ['backupView', '채팅 백업 캐릭터별로 보기·불러오기', '채팅 목록 창의 "Backups"를 누르면 백업이 창으로 뜹니다.\n· 지금 캐릭터(그룹) 백업만 최신순으로 보이고, "전체"로 모든 캐릭터 것을 봅니다.\n· 파일 이름 대신 저장 시각과 메시지 수가 보입니다.\n· 보기는 채팅처럼 보여 주고, 긴 메시지는 눌러서 펼칩니다.\n· 불러오기는 새 채팅으로 들어오고, 지금 채팅은 그대로 둡니다.'],
-            ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 단어를 한꺼번에 바꿉니다(예: 상태창 2024 → 2205).\n· 스와이프와 번역문도 같이 바꿉니다.\n· 답변 생성 중에는 쓸 수 없습니다.'],
+            ['chatReplace', '채팅 단어 한꺼번에 바꾸기', '옵션 메뉴에 "채팅 단어 바꾸기"가 생깁니다. 지금 채팅의 모든 메시지에서 단어를 한꺼번에 바꿉니다(예: 상태창 2024 → 2205).\n· 찾은 개수를 누르면 바뀔 곳이 모두 펼쳐지고, 체크를 풀면 그곳은 바꾸지 않습니다.\n· 바꾼 뒤에도 새로고침 전까지는 알림이나 창의 되돌리기 버튼으로 되돌립니다.\n· 스와이프와 번역문도 같이 바꿉니다.\n· 답변 생성 중에는 쓸 수 없습니다.'],
             ['chatSearch', '채팅에서 찾기', '옵션 메뉴에 "채팅에서 찾기"가 생깁니다. 위에 검색칸, 입력창 자리에 ▲ ▼ ✕ 가 뜹니다.\n· 가장 최근에 나온 곳으로 가서 형광펜을 칠하고, 지금 위치는 진한 주황색입니다.\n· ▲ 는 위쪽(더 옛날), ▼ 는 아래쪽 결과로 갑니다.\n· 아래 칸에 "몇 번째 메시지 · 그 안에서 몇 번째"가 보입니다.\n· 안 불러온 옛 메시지도 찾아서 불러옵니다.\n· 폰은 엔터를 누르면 검색만 하고, 컴퓨터는 엔터마다 다음 결과로 갑니다.'],
             ['welcomeRecent', '시작 화면에 최근 채팅 펼치기', '채팅을 열기 전 시작 화면에서 어시스턴트 메시지, 로고·버전, 링크·임시 채팅 버튼을 숨기고 최근 채팅을 모두 펼칩니다.'],
         ],
@@ -85,6 +87,7 @@ const TABS = Object.freeze([
         title: '캐릭터',
         features: [
             ['charListTools', '목록에서 바로 즐겨찾기·태그', '캐릭터 목록의 캐릭터마다 ☆와 태그 버튼이 생깁니다. 캐릭터를 열지 않고 즐겨찾기와 태그를 바꿀 수 있습니다.'],
+            ['personaTools', '페르소나 메모·연결 캐릭터·폴더', '페르소나 목록에서 원하는 페르소나를 찾기 쉽게 합니다.\n· 메모: 페르소나 이름 아래 칸에 적으면 목록에 설명 대신 보이고, 검색으로도 찾습니다.\n· 연결 캐릭터: 페르소나에 연결된 캐릭터가 이름 옆에 작은 프로필 사진으로 보입니다.\n· 폴더: 목록 위 버튼으로 폴더를 만들고 페르소나를 넣습니다. 폴더를 누르면 그 폴더의 페르소나만 보입니다.'],
             ['hdAvatars', '프로필 사진 고화질', '채팅과 캐릭터 목록의 프로필 사진을 썸네일 대신 원본으로 보여 줍니다.\n· 목록 사진은 화면에 보일 때, 원본을 다 받은 뒤에 바꿉니다.\n· 큰 사진이 많아 느리면 이것부터 꺼 보세요.'],
         ],
     },
@@ -106,10 +109,9 @@ const TABS = Object.freeze([
     {
         title: '프롬프트',
         features: [
-            ['presetFolders', '프롬프트 폴더·관리', '프롬프트(프리셋) 선택 칸을 누르면 폴더로 정리된 목록이 열립니다.\n· 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지웁니다.'],
-            ['toggleSetChips', '빠른 전환 (항목 켜기·끄기 저장)', '프롬프트 항목 목록 위에 빠른 전환 버튼 줄이 생깁니다.\n· "+ 빠른 전환 추가"로 지금 켜고 끈 상태를 이름 붙여 저장합니다.\n· 저장한 버튼을 누르면 그 상태로 돌아갑니다.\n· ✎ 로 덮어쓰기·이름 바꾸기·지우기를 하고, 프롬프트마다 따로 저장됩니다.'],
+            ['presetFolders', '프롬프트 폴더·관리', '프롬프트 선택 칸을 누르면 폴더로 정리된 목록이 열립니다.\n· 목록 맨 아래 "프롬프트 관리"에서 순서를 바꾸고, 폴더를 만들거나 옮기고, 여러 개를 한꺼번에 지웁니다.'],
+            ['toggleSetChips', '빠른 전환 (항목 켜기·끄기 저장)', '프롬프트 항목 목록 위에 빠른 전환 버튼 줄이 생깁니다.\n· "+ 빠른 전환 추가"로 지금 켜고 끈 상태를 이름 붙여 저장합니다.\n· 저장한 버튼을 누르면 그 상태로 돌아갑니다.\n· 버튼의 연결 아이콘을 누르면 지금 채팅과 연결됩니다. 그 채팅에 들어가면 그 프롬프트와 그 상태로 자동으로 바뀌고 알림이 뜹니다(채팅마다 하나).\n· ✎ 로 덮어쓰기·이름 바꾸기·지우기를 하고, 프롬프트마다 따로 저장됩니다.'],
             ['promptCopy', '프롬프트 항목 메뉴 (···)', '프롬프트 항목 목록의 연필 옆에 ··· 버튼이 생깁니다. 누르면 복사, 맨 위로, 맨 아래로, 삭제가 뜹니다.\n· 복사: 사본이 바로 아래에 꺼진 채로 들어가고, 이름 뒤에 "(복사)"가 붙습니다. 마커 항목(채팅 기록, 캐릭터 설명 등)은 복사할 수 없습니다.\n· 삭제: 목록에서 빼는 것(연결 끊기)이 아니라 항목을 아예 지웁니다. 지우기 전에 묻고, 되돌릴 수 없습니다. ST 기본 항목은 지울 수 없습니다.'],
-            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다. 프롬프트 편집 창과 월드인포 항목은 文A·지우개를 누르면 이름만, 내용만, 전체 중에서 고릅니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
         ],
     },
     {
@@ -129,6 +131,8 @@ const TABS = Object.freeze([
             ['hideSettingHints', 'ST 설정 설명 글씨 숨기기', 'ST 설정 항목 아래의 흐린 설명 글씨를 모두 숨깁니다.'],
             ['errorLog', '오류 알림 자세히 보기', '빨간 오류 알림에 돋보기 버튼이 생깁니다. 누르면 최근 오류 내용이 창으로 뜨고 복사할 수 있습니다.\n· 서버가 돌려준 오류(API 오류 문구 등), 화면 스크립트 오류, 오류 알림을 최근 30개까지 모읍니다.\n· 터묵스 화면에 찍힌 글은 읽을 수 없습니다.\n· 새로고침하면 사라집니다.'],
             ['vertexProfileFix', '연결 프로필 버텍스(서비스 계정) 오류 픽스', '확장이 연결 프로필로 요청할 때(번역, 요약 등) 버텍스 AI 서비스 계정에서 나는 오류를 고칩니다.\n· 빠진 로그인 방식을 지금 버텍스 설정(서비스 계정, 프로젝트·지역)으로 채워 보냅니다.\n· 연결 프로필을 쓰는 다른 확장에도 적용됩니다.'],
+            ['worldPicker', '월드인포 목록 창', '월드인포 편집 창의 선택 칸을 누르면 긴 목록 대신 창이 뜹니다.\n· 이름으로 찾고, ★ 를 누른 것은 즐겨찾기 탭에 모입니다.\n· 이름 아래에 그 월드인포가 연결된 캐릭터가 작은 프로필 사진으로 보이고, 누르면 그 캐릭터로 갑니다.\n· 채팅에 연결한 월드인포는 말풍선 표시가 붙고, 누르면 그 채팅으로 갑니다(이 기능을 켠 뒤 열어 본 채팅만 압니다).\n· 찾기 칸 옆 정렬 버튼으로 기본 순, 최근 본 순 중에서 고릅니다.'],
+            ['entryTranslate', '프롬프트·월드인포·설명 번역해서 보기', '프롬프트, 월드인포, 캐릭터 설명을 한국어로 번역해서 봅니다. 저장되거나 AI에게 보내지는 건 항상 원문입니다.\n· 목록 전체: 프롬프트 목록(✚ 옆 文A)과 월드인포(페이지 넘김 옆 文A, 월드인포를 고른 뒤 보임)에서 번역하고 지웁니다.\n· 하나씩: 편집 창·항목·캐릭터 설명의 文A로 번역하고, ⇄ 로 원문과 번역을 바꿔 보고, 지우개로 지웁니다. 프롬프트 편집 창과 월드인포 항목은 文A·지우개를 누르면 이름만, 내용만, 전체 중에서 고릅니다.\n· 번역 중엔 버튼이 돌고, 다시 누르면 멈춥니다.\n· 번역문을 보는 동안은 고칠 수 없으니, ⇄ 로 원문으로 돌린 뒤 고치세요.\n· 번역은 이 기기에 저장합니다. 다른 방식으로 다시 하려면 지우개로 먼저 지우세요.\n· 방식은 아래에서 고릅니다: 구글(기본) 또는 AI(API와 번역 프롬프트를 따로 지정).'],
         ],
     },
 ]);
@@ -163,9 +167,67 @@ function applyAll() {
     applyBackupView();
     applyEntryTranslate();
     applyExtensionLinks();
+    applyWorldPicker();
+    applyPersonaTools();
 }
 
-function featureRow(key, label, description) {
+/** Where each feature shows up (or 자동: it works by itself). */
+const WHERE = Object.freeze({
+    deleteButton: '메시지 연필 옆',
+    menuToBottom: '메시지 메뉴',
+    footerSwipe: '마지막 답변 아래',
+    swipeList: '스와이프 번호',
+    footerTop: '메시지 아래',
+    selectionTools: '글자 드래그',
+    emptyReplyDelete: '자동',
+    keepStatusPanels: '자동',
+    chatPicker: '캐릭터 목록',
+    chatExportAll: '채팅 목록 창',
+    chatSort: '채팅 목록 창',
+    chatQuickRename: '채팅 목록 창',
+    rangeDelete: '☰ 옵션 메뉴',
+    rangeHide: '☰ 옵션 메뉴',
+    messageTrash: '☰ 옵션 메뉴',
+    backupView: '채팅 목록 창 › Backups',
+    chatReplace: '☰ 옵션 메뉴',
+    chatSearch: '☰ 옵션 메뉴',
+    welcomeRecent: '시작 화면',
+    charListTools: '캐릭터 목록',
+    personaTools: '페르소나 관리 창',
+    worldPicker: '월드인포 선택 칸',
+    hdAvatars: '자동',
+    qrBar: '입력창 위',
+    qrHistory: 'QR 입력창',
+    qrSwipe: 'QR 메시지 스와이프',
+    hideInputPlaceholder: '입력창',
+    presetFolders: '프롬프트 선택 칸',
+    toggleSetChips: '프롬프트 목록 위',
+    promptCopy: '프롬프트 항목 ···',
+    entryTranslate: '프롬프트·월드인포 文A',
+    layoutManager: '아래 "메뉴 정리 열기"',
+    extensionLinks: '☰ · 마법봉 · 메시지 메뉴',
+    wandGrid: '마법봉',
+    optionsGrid: '☰ 옵션 메뉴',
+    regexFolders: '정규식 창 › 폴더',
+    koFill: '자동',
+    hideSettingHints: '자동',
+    errorLog: '빨간 오류 알림',
+    vertexProfileFix: '자동',
+});
+
+/** A description's first sentence (shown under the name) and the rest (behind ?). */
+function splitDescription(text) {
+    const firstLine = text.split('\n')[0];
+    const end = firstLine.search(/다\.(\s|$)/);
+    const summary = end === -1 ? firstLine : firstLine.slice(0, end + 2);
+    return { summary, rest: text.slice(summary.length).trim() };
+}
+
+// Text a feature is found by (its name, description, place and tab), without spaces
+const searchable = text => text.toLowerCase().replace(/\s+/g, '');
+
+function featureRow(key, label, description, tabTitle) {
+    const { summary, rest } = splitDescription(description);
     const row = document.createElement('div');
     row.className = 'stqa_feature';
     row.innerHTML = `
@@ -173,13 +235,24 @@ function featureRow(key, label, description) {
             <label class="checkbox_label"><input type="checkbox" data-setting="${key}"><span></span></label>
             <div class="stqa_desc_toggle fa-solid fa-circle-question" title="도움말"></div>
         </div>
-        <div class="stqa_desc" hidden></div>
+        <div class="stqa_feature_summary"></div>
+        <div class="stqa_desc" hidden><div class="stqa_desc_text"></div><div class="stqa_feature_where"><i class="fa-solid fa-location-dot"></i><span></span></div></div>
         <div class="stqa_feature_extra"></div>`;
-    row.querySelector('span').textContent = label;
-    row.querySelector('.stqa_desc').textContent = description;
-    row.querySelector('input').checked = getSettings()[key] !== false;
+    row.querySelector('.checkbox_label span').textContent = label;
+    row.querySelector('.stqa_feature_summary').textContent = summary;
+    // Where it shows up: at the end of the help
+    row.querySelector('.stqa_feature_where span').textContent = WHERE[key] ?? '';
+    row.querySelector('.stqa_feature_where').hidden = !WHERE[key];
+    row.querySelector('.stqa_desc_text').textContent = rest;
+    row.dataset.search = searchable(`${label} ${description} ${WHERE[key] ?? ''} ${tabTitle}`);
+    const on = getSettings()[key] !== false;
+    row.querySelector('input').checked = on;
+    row.classList.toggle('stqa_feature_off', !on);
+    const toggle = row.querySelector('.stqa_desc_toggle');
+    // Nothing more to tell than the first sentence: no ?
+    toggle.hidden = !rest && !WHERE[key];
     // ? opens the help under the name, and closes it again
-    row.querySelector('.stqa_desc_toggle').addEventListener('click', () => {
+    toggle.addEventListener('click', () => {
         const desc = row.querySelector('.stqa_desc');
         desc.hidden = !desc.hidden;
         row.classList.toggle('stqa_desc_open', !desc.hidden);
@@ -445,16 +518,23 @@ function buildPanel() {
             <h3>편의성 모음</h3>
             <label class="checkbox_label stqa_master"><input type="checkbox" data-setting="enabled"><span>사용</span></label>
         </div>
-        <div class="stqa_tabs"></div>
-        <div class="stqa_tab_body"></div>`;
+        <div class="stqa_panel_search"><i class="fa-solid fa-magnifying-glass"></i><input class="text_pole" type="search" placeholder="기능 찾기"></div>
+        <div class="stqa_tabs stqa_panel_tabs"></div>
+        <div class="stqa_tab_body"></div>
+        <div class="stqa_pager" hidden><div class="menu_button fa-solid fa-chevron-left" data-turn="-1" title="이전"></div><span></span><div class="menu_button fa-solid fa-chevron-right" data-turn="1" title="다음"></div></div>`;
     panel.querySelector('[data-setting="enabled"]').checked = settings.enabled !== false;
     const tabs = panel.querySelector('.stqa_tabs');
     const body = panel.querySelector('.stqa_tab_body');
     const pages = TABS.map(({ title, features }) => {
         const page = document.createElement('div');
         page.className = 'stqa_tab_page';
+        // The tab's name over its features while searching (all tabs are searched at once)
+        const heading = document.createElement('div');
+        heading.className = 'stqa_page_title';
+        heading.textContent = title;
+        page.append(heading);
         for (const [key, label, description] of features) {
-            const row = featureRow(key, label, description);
+            const row = featureRow(key, label, description, title);
             row.querySelector('.stqa_feature_extra').append(extrasFor(key));
             page.append(row);
         }
@@ -465,12 +545,132 @@ function buildPanel() {
         body.append(page);
         return { tab, page };
     });
-    const show = (index) => pages.forEach(({ tab, page }, i) => {
-        tab.classList.toggle('stqa_tab_active', i === index);
-        page.hidden = i !== index;
+    // Features that don't fit the window's height go on further sheets, turned with ‹ › under
+    // them (nothing scrolls): which sheet each feature shown is on, and the sheet on show
+    const pager = panel.querySelector('.stqa_pager');
+    let sheet = 0;
+    let sheets = 1;
+    const showSheet = () => {
+        sheet = Math.min(Math.max(0, sheet), sheets - 1);
+        for (const { page } of pages) {
+            let any = false;
+            page.querySelectorAll('.stqa_feature').forEach((row) => {
+                const out = Number(row.dataset.sheet) !== sheet;
+                row.classList.toggle('stqa_paged_out', out);
+                any ||= !out && !row.hidden;
+            });
+            page.classList.toggle('stqa_paged_out', !any);
+        }
+        pager.hidden = sheets < 2;
+        pager.querySelector('span').textContent = `${sheet + 1} / ${sheets}`;
+        pager.querySelector('[data-turn="-1"]').classList.toggle('stqa_dim', sheet === 0);
+        pager.querySelector('[data-turn="1"]').classList.toggle('stqa_dim', sheet === sheets - 1);
+    };
+    /** Sorts the features shown into sheets by their heights. `keep`: a feature to stay on show. */
+    const paginate = (keep = null) => {
+        if (!panel.isConnected) {
+            return;
+        }
+        // Measured with every feature laid out
+        panel.querySelectorAll('.stqa_paged_out').forEach(element => element.classList.remove('stqa_paged_out'));
+        const room = Math.max(200, Math.floor(window.innerHeight * 0.6) - 40);
+        let used = 0;
+        let number = 0;
+        for (const { page } of pages) {
+            if (page.hidden) {
+                continue;
+            }
+            const heading = page.querySelector('.stqa_page_title');
+            let first = true;
+            page.querySelectorAll('.stqa_feature').forEach((row) => {
+                if (row.hidden) {
+                    return;
+                }
+                // A tab's name (while searching) goes with its first feature
+                const height = row.offsetHeight + 8 + (first ? heading.offsetHeight + 8 : 0);
+                first = false;
+                if (used && used + height > room) {
+                    number++;
+                    used = 0;
+                }
+                used += height;
+                row.dataset.sheet = String(number);
+            });
+        }
+        sheets = number + 1;
+        if (keep?.dataset.sheet !== undefined && !keep.hidden) {
+            sheet = Number(keep.dataset.sheet);
+        }
+        showSheet();
+    };
+    pager.addEventListener('click', (event) => {
+        const turn = Number(event.target.closest('[data-turn]')?.dataset.turn);
+        if (turn) {
+            sheet += turn;
+            showSheet();
+        }
     });
-    pages.forEach(({ tab }, index) => tab.addEventListener('click', () => show(index)));
+    let current = 0;
+    const show = (index) => {
+        current = index;
+        pages.forEach(({ tab, page }, i) => {
+            tab.classList.toggle('stqa_tab_active', i === index);
+            page.hidden = i !== index;
+        });
+        sheet = 0;
+        paginate();
+    };
+    pages.forEach(({ tab }, index) => tab.addEventListener('click', () => {
+        // A tab picked while searching ends the search
+        search.value && (search.value = '', find());
+        show(index);
+    }));
     show(0);
+    const empty = document.createElement('div');
+    empty.className = 'stqa_search_empty';
+    empty.textContent = '찾은 기능이 없습니다.';
+    empty.hidden = true;
+    body.append(empty);
+    // Searching: every tab's matching features, under their tab's name
+    const search = panel.querySelector('.stqa_panel_search input');
+    const find = () => {
+        const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean).map(searchable);
+        panel.classList.toggle('stqa_searching', words.length > 0);
+        if (!words.length) {
+            pages.forEach(({ page }) => page.querySelectorAll('.stqa_feature').forEach(row => (row.hidden = false)));
+            empty.hidden = true;
+            show(current);
+            return;
+        }
+        let found = 0;
+        pages.forEach(({ tab, page }) => {
+            let inPage = 0;
+            page.querySelectorAll('.stqa_feature').forEach((row) => {
+                row.hidden = !words.every(word => row.dataset.search.includes(word));
+                row.hidden || inPage++;
+            });
+            page.hidden = !inPage;
+            tab.classList.remove('stqa_tab_active');
+            found += inPage;
+        });
+        empty.hidden = found > 0;
+        sheet = 0;
+        paginate();
+    };
+    search.addEventListener('input', find);
+    // Heights change when a help opens or a feature's own settings fold: sorted again, the
+    // feature touched staying on show
+    panel.addEventListener('click', (event) => {
+        const row = event.target.closest('.stqa_desc_toggle')?.closest('.stqa_feature');
+        row && requestAnimationFrame(() => paginate(row));
+    });
+    // Once the window is up (nothing can be measured before), and when the screen turns
+    // (given up after a few seconds, should the window never come up)
+    let waited = 0;
+    const whenShown = () => (panel.isConnected ? paginate() : ++waited < 300 && requestAnimationFrame(whenShown));
+    requestAnimationFrame(whenShown);
+    const onResize = () => (panel.isConnected ? paginate() : window.removeEventListener('resize', onResize));
+    window.addEventListener('resize', onResize);
     const syncMaster = () => body.classList.toggle('stqa_off', settings.enabled === false);
     syncMaster();
 
@@ -480,6 +680,10 @@ function buildPanel() {
             settings.floatingButtons = { ...settings.floatingButtons, [target.dataset.floatingButton]: target.checked };
         } else if (target.dataset?.setting) {
             settings[target.dataset.setting] = target.checked;
+            // A feature switched off folds its own settings away
+            const row = target.closest('.stqa_feature');
+            row?.classList.toggle('stqa_feature_off', !target.checked);
+            row && paginate(row);
         } else {
             return;
         }
@@ -492,7 +696,7 @@ function buildPanel() {
 
 async function openPanel() {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
-    // The tabs stay on top; the features scroll under them, so the window keeps its size
+    // The tabs stay on top; features that don't fit go on further sheets (‹ ›), nothing scrolls
     await new Popup(buildPanel(), POPUP_TYPE.TEXT, '', { okButton: '닫기', leftAlign: true }).show();
 }
 
@@ -543,10 +747,13 @@ function addMenuButton() {
     initPromptCopy();
     initSwipeList();
     initBackupView();
-    try {
-        initExtensionLinks();
-    } catch (error) {
-        console.error(`[${MODULE}] Extension links failed`, error);
+    // Later features start on their own: one failing leaves the others (and the ones above) running
+    for (const [name, start] of [['Extension links', initExtensionLinks], ['World picker', initWorldPicker], ['Persona tools', initPersonaTools]]) {
+        try {
+            start();
+        } catch (error) {
+            console.error(`[${MODULE}] ${name} failed`, error);
+        }
     }
     initKoFill();
     initEntryTranslate();
