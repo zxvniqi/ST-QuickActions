@@ -3760,9 +3760,11 @@ body.stqa_world_pick_on #world_editor_select + .select2 {
     display: none;
 }
 
+/* Centred on the name (ST lines the name row up by the text baseline, which an image has none of) */
 .stqa_persona_links {
     display: inline-flex;
     align-items: center;
+    align-self: center;
     gap: 2px;
     margin-left: 6px;
     vertical-align: middle;
@@ -3929,4 +3931,9 @@ i.stqa_persona_link {
 .stqa_world_row .stqa_world_star {
     margin-left: auto;
     padding: 6px;
+}
+
+/* The world info window's sort button is the chat lists' one, but stays with chat sorting off */
+body:not(.stqa_chat_sort_on) .stqa_chat_sort.stqa_world_sort {
+    display: flex;
 }

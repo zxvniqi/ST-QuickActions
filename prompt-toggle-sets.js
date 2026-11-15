@@ -65,9 +65,11 @@ function toggleLink(preset, set) {
         toastr.info('열린 채팅이 없습니다.', TITLE);
         return;
     }
-    isLinked(preset, set) ? delete links()[key] : (links()[key] = { preset, name: set.name });
+    const linked = isLinked(preset, set);
+    linked ? delete links()[key] : (links()[key] = { preset, name: set.name });
     SillyTavern.getContext().saveSettingsDebounced();
     drawBar();
+    toastr.success(linked ? `'${set.name}' 연결을 끊었습니다.` : `'${set.name}'을(를) 이 채팅에 연결했습니다.`, TITLE);
 }
 
 /** Links follow a switch that was renamed, and go with one that was removed. */

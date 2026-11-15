@@ -146,6 +146,11 @@ function noteOpened() {
     save();
 }
 
+export const WORLD_SORTS = Object.freeze([
+    { value: 'default', label: '기본 순' },
+    { value: 'recent', label: '최근 본 순' },
+]);
+
 /** The worlds in the order chosen: ST's own, or the ones looked at lately first. */
 function ordered(names) {
     if (getSettings().worldSort !== 'recent') {
@@ -166,11 +171,16 @@ async function openPicker() {
     root.innerHTML = `
         <div class="stqa_world_top">
             <div class="stqa_panel_search"><i class="fa-solid fa-magnifying-glass"></i><input class="text_pole" type="search" placeholder="월드인포 찾기"></div>
-            <div class="menu_button stqa_world_sort fa-solid"></div>
         </div>
         <div class="stqa_tabs"><div class="stqa_tab" data-tab="all">전체</div><div class="stqa_tab" data-tab="fav"><i class="fa-solid fa-star"></i> 즐겨찾기</div></div>
         <div class="stqa_world_list"></div>`;
-    const sort = root.querySelector('.stqa_world_sort');
+    // The same sort button as the chat lists: an icon over the device's own option list
+    const sort = document.createElement('label');
+    sort.className = 'stqa_chat_sort stqa_world_sort menu_button menu_button_icon fa-solid fa-arrow-down-wide-short';
+    const sortSelect = document.createElement('select');
+    sortSelect.append(...WORLD_SORTS.map(item => new Option(item.label, item.value)));
+    sort.append(sortSelect);
+    root.querySelector('.stqa_world_top').append(sort);
     const list = root.querySelector('.stqa_world_list');
     const search = root.querySelector('input');
     let tab = 'all';
@@ -181,10 +191,8 @@ async function openPicker() {
         const stars = new Set(favorites());
         root.querySelectorAll('.stqa_tab').forEach(item => item.classList.toggle('stqa_tab_active', item.dataset.tab === tab));
         // The order in use: ST's own (by name), or the ones looked at lately first
-        const byRecent = getSettings().worldSort === 'recent';
-        sort.classList.toggle('fa-clock-rotate-left', byRecent);
-        sort.classList.toggle('fa-arrow-down-a-z', !byRecent);
-        sort.title = byRecent ? '최근 본 순 (누르면 기본 순)' : '기본 순 (누르면 최근 본 순)';
+        sortSelect.value = getSettings().worldSort === 'recent' ? 'recent' : 'default';
+        sort.title = `정렬: ${WORLD_SORTS.find(item => item.value === sortSelect.value).label}`;
         const shown = ordered(worldNames()).filter(name => (tab === 'all' || stars.has(name)) && (!term || name.toLowerCase().includes(term)));
         list.replaceChildren(...shown.map((name) => {
             const row = document.createElement('div');
@@ -220,8 +228,8 @@ async function openPicker() {
         render();
     }));
     search.addEventListener('input', render);
-    sort.addEventListener('click', () => {
-        getSettings().worldSort = getSettings().worldSort === 'recent' ? 'default' : 'recent';
+    sortSelect.addEventListener('change', () => {
+        getSettings().worldSort = sortSelect.value;
         save();
         render();
         list.scrollTop = 0;
