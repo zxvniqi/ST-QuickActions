@@ -99,12 +99,13 @@ async function applySet(set, quiet = false) {
     }
     if (!changed) {
         quiet || toastr.info(`이미 '${set.name}' 상태입니다.`, TITLE);
-        return;
+        return false;
     }
     // The same as switching them by hand: one redraw, saved alongside
     pm.render();
     await pm.saveServiceSettings();
-    toastr.success(`'${set.name}'(으)로 전환했습니다.`, TITLE);
+    quiet || toastr.success(`'${set.name}'(으)로 전환했습니다.`, TITLE);
+    return true;
 }
 
 const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry.identifier, entry.enabled]));
@@ -241,7 +242,8 @@ async function followLink() {
         return;
     }
     const select = document.querySelector(PRESET_SELECT);
-    if (presetName() !== link.preset) {
+    const otherPrompt = presetName() !== link.preset;
+    if (otherPrompt) {
         const option = [...select?.options ?? []].find(item => item.textContent.trim() === link.preset);
         if (!option) {
             toastr.warning(`연결된 프롬프트 '${link.preset}'을(를) 찾지 못했습니다.`, TITLE);
@@ -253,8 +255,8 @@ async function followLink() {
             eventTypes.OAI_PRESET_CHANGED_AFTER ? eventSource.once(eventTypes.OAI_PRESET_CHANGED_AFTER, resolve) : resolve();
             setTimeout(resolve, 3000);
         });
-        select.value = option.value;
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+        // (through jQuery, as ST and the prompt list pick it)
+        $(select).val(option.value).trigger('change');
         await loaded;
         await wait(100);
     }
@@ -268,8 +270,12 @@ async function followLink() {
         SillyTavern.getContext().saveSettingsDebounced();
         return;
     }
-    await applySet(set, true);
+    const switched = await applySet(set, true);
     drawBar();
+    // Told only when something was changed for this chat
+    if (otherPrompt || switched) {
+        toastr.info(`이 채팅에 연결된 '${link.name}'(으)로 전환했습니다.${otherPrompt ? ` (프롬프트: ${link.preset})` : ''}`, TITLE);
+    }
 }
 
 /** A renamed chat keeps its link; a deleted one's goes. */

@@ -110,6 +110,9 @@ const defaultSettings = Object.freeze({
     // World info: the editor's dropdown opens a window (search, starred ones, linked characters)
     worldPicker: true,
     worldFavorites: [],
+    // Worlds looked at lately (newest first), and the order the window shows: default | recent
+    worldRecent: [],
+    worldSort: 'default',
     // Chats bound to a world, as they were seen: { world: [{ avatar, chat }] }
     worldChats: {},
     // Personas: memos shown in the list, connected characters by the name, folders

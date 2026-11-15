@@ -1,14 +1,15 @@
 // World info, easier to pick. The editor's dropdown opens a window instead of the browser's
-// long list: a search box, every world or only the ones starred (즐겨찾기), and under each name the
-// characters it is linked to as small round avatars. Tapping an avatar goes to that character
-// (or, for a world bound to a chat, to that chat). The world being edited shows its avatars
-// under the dropdown too. Chats are known once they were opened with the feature on: ST keeps a
-// chat's world inside the chat's own file, so there is no list of them to read.
+// long list: a search box, every world or only the ones starred (즐겨찾기), in ST's order or the
+// ones looked at lately first, and under each name the characters it is linked to as small round
+// avatars. Tapping an avatar goes to that character (or, for a world bound to a chat, to that
+// chat). Chats are known once they were opened with the feature on: ST keeps a chat's world
+// inside the chat's own file, so there is no list of them to read.
 import { MODULE, getSettings, isOn } from './settings.js';
 
 const TITLE = '편의성 모음';
 const SELECT = '#world_editor_select';
-const LINKS_ID = 'stqa_world_links';
+// Worlds remembered as looked at lately
+const RECENT_MAX = 40;
 const ON_CLASS = 'stqa_world_pick_on';
 const MAX_AVATARS = 8;
 
@@ -133,22 +134,25 @@ function pick(name) {
     $(SELECT).val(index === -1 ? '' : String(index)).trigger('change');
 }
 
-/** The avatars of the world being edited, under the dropdown. */
-function drawCurrentLinks() {
-    const select = document.querySelector(SELECT);
-    const host = select?.closest('.flex-container');
-    document.getElementById(LINKS_ID)?.remove();
+const recent = () => (Array.isArray(getSettings().worldRecent) ? getSettings().worldRecent : (getSettings().worldRecent = []));
+
+/** The world opened in the editor goes to the front of the ones looked at lately. */
+function noteOpened() {
     const world = currentWorld();
-    if (!host || !world || !isOn('worldPicker')) {
+    if (!world || !isOn('worldPicker') || recent()[0] === world) {
         return;
     }
-    const entries = linksByWorld().get(world) ?? [];
-    if (!entries.length) {
-        return;
+    getSettings().worldRecent = [world, ...recent().filter(name => name !== world)].slice(0, RECENT_MAX);
+    save();
+}
+
+/** The worlds in the order chosen: ST's own, or the ones looked at lately first. */
+function ordered(names) {
+    if (getSettings().worldSort !== 'recent') {
+        return names;
     }
-    const row = avatarRow(entries);
-    row.id = LINKS_ID;
-    host.after(row);
+    const rank = new Map(recent().map((name, index) => [name, index]));
+    return [...names].sort((a, b) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
 }
 
 async function openPicker() {
@@ -160,10 +164,13 @@ async function openPicker() {
     const root = document.createElement('div');
     root.className = 'stqa_world_pick';
     root.innerHTML = `
-        <h3>월드인포</h3>
-        <div class="stqa_panel_search"><i class="fa-solid fa-magnifying-glass"></i><input class="text_pole" type="search" placeholder="찾기"></div>
+        <div class="stqa_world_top">
+            <div class="stqa_panel_search"><i class="fa-solid fa-magnifying-glass"></i><input class="text_pole" type="search" placeholder="월드인포 찾기"></div>
+            <div class="menu_button stqa_world_sort fa-solid"></div>
+        </div>
         <div class="stqa_tabs"><div class="stqa_tab" data-tab="all">전체</div><div class="stqa_tab" data-tab="fav"><i class="fa-solid fa-star"></i> 즐겨찾기</div></div>
         <div class="stqa_world_list"></div>`;
+    const sort = root.querySelector('.stqa_world_sort');
     const list = root.querySelector('.stqa_world_list');
     const search = root.querySelector('input');
     let tab = 'all';
@@ -173,11 +180,16 @@ async function openPicker() {
         const term = search.value.trim().toLowerCase();
         const stars = new Set(favorites());
         root.querySelectorAll('.stqa_tab').forEach(item => item.classList.toggle('stqa_tab_active', item.dataset.tab === tab));
-        const shown = worldNames().filter(name => (tab === 'all' || stars.has(name)) && (!term || name.toLowerCase().includes(term)));
+        // The order in use: ST's own (by name), or the ones looked at lately first
+        const byRecent = getSettings().worldSort === 'recent';
+        sort.classList.toggle('fa-clock-rotate-left', byRecent);
+        sort.classList.toggle('fa-arrow-down-a-z', !byRecent);
+        sort.title = byRecent ? '최근 본 순 (누르면 기본 순)' : '기본 순 (누르면 최근 본 순)';
+        const shown = ordered(worldNames()).filter(name => (tab === 'all' || stars.has(name)) && (!term || name.toLowerCase().includes(term)));
         list.replaceChildren(...shown.map((name) => {
             const row = document.createElement('div');
             row.className = `stqa_world_row${name === current ? ' stqa_active' : ''}`;
-            row.innerHTML = '<i class="stqa_world_star fa-star"></i><div class="stqa_world_text"><span class="stqa_world_name"></span></div>';
+            row.innerHTML = '<div class="stqa_world_text"><span class="stqa_world_name"></span></div><i class="stqa_world_star fa-star"></i>';
             const star = row.querySelector('.stqa_world_star');
             star.classList.add(stars.has(name) ? 'fa-solid' : 'fa-regular');
             star.classList.toggle('stqa_starred', stars.has(name));
@@ -208,6 +220,12 @@ async function openPicker() {
         render();
     }));
     search.addEventListener('input', render);
+    sort.addEventListener('click', () => {
+        getSettings().worldSort = getSettings().worldSort === 'recent' ? 'default' : 'recent';
+        save();
+        render();
+        list.scrollTop = 0;
+    });
     render();
     popup = new Popup(root, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
     const shown = popup.show();
@@ -243,7 +261,6 @@ function noteChatWorld() {
 
 export function applyWorldPicker() {
     document.body.classList.toggle(ON_CLASS, Boolean(wi) && isOn('worldPicker'));
-    drawCurrentLinks();
 }
 
 export function initWorldPicker() {
@@ -269,12 +286,9 @@ export function initWorldPicker() {
         }
     }, true);
     // ST picks worlds through jQuery, which only its own listeners hear
-    $(select).on('change', () => setTimeout(drawCurrentLinks));
+    $(select).on('change', () => setTimeout(noteOpened));
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    eventSource.on(eventTypes.CHAT_CHANGED, () => {
-        noteChatWorld();
-        drawCurrentLinks();
-    });
+    eventSource.on(eventTypes.CHAT_CHANGED, noteChatWorld);
     eventSource.on(eventTypes.APP_READY, applyWorldPicker);
     applyWorldPicker();
 }

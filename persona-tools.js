@@ -270,7 +270,7 @@ async function openFolders() {
         for (const folder of folders()) {
             const row = document.createElement('div');
             row.className = 'stqa_persona_folder_row';
-            row.innerHTML = '<span class="stqa_persona_folder_name"></span><small></small><div class="menu_button fa-solid fa-user-check" title="페르소나 고르기"></div><div class="menu_button fa-solid fa-pen" title="이름 바꾸기"></div><div class="menu_button fa-solid fa-trash caution" title="폴더 삭제"></div>';
+            row.innerHTML = '<span class="stqa_persona_folder_name"></span><small></small><div class="menu_button fa-solid fa-plus" title="페르소나 넣기·빼기"></div><div class="menu_button fa-solid fa-pen" title="이름 바꾸기"></div><div class="menu_button fa-solid fa-trash caution" title="폴더 삭제"></div>';
             row.querySelector('.stqa_persona_folder_name').textContent = folder.name;
             row.querySelector('small').textContent = `${folder.keys.length}`;
             const [members, rename, remove] = row.querySelectorAll('.menu_button');

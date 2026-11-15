@@ -3903,3 +3903,30 @@ i.stqa_persona_link {
 #user_avatar_block .character_name_block:has(.stqa_persona_links) .ch_additional_info {
     margin-left: auto;
 }
+
+/* Settings window: the ‹ 1 / 3 › goes under the features */
+.stqa_tab_body + .stqa_pager {
+    margin: 8px 0 0;
+}
+
+/* World info window: the search box with the order button beside it; the star at a row's right */
+.stqa_world_top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_world_top .stqa_panel_search {
+    flex: 1;
+    min-width: 0;
+}
+
+.stqa_world_top .stqa_world_sort {
+    flex: none;
+    margin: 0;
+}
+
+.stqa_world_row .stqa_world_star {
+    margin-left: auto;
+    padding: 6px;
+}
