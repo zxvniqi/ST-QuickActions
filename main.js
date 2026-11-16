@@ -664,8 +664,8 @@ function buildPanel() {
     // change of width (a phone's keyboard opening changes the height alone)
     // (given up after a few seconds, should the window never come up)
     let waited = 0;
-    const whenShown = () => (panel.isConnected ? paginate() : ++waited < 300 && requestAnimationFrame(whenShown));
-    requestAnimationFrame(whenShown);
+    const whenShown = () => (panel.isConnected ? paginate() : ++waited < 300 && setTimeout(whenShown, 20));
+    setTimeout(whenShown, 20);
     let width = window.innerWidth;
     const onResize = () => {
         if (!panel.isConnected) {
