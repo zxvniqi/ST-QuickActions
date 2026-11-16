@@ -3937,3 +3937,9 @@ i.stqa_persona_link {
 body:not(.stqa_chat_sort_on) .stqa_chat_sort.stqa_world_sort {
     display: flex;
 }
+
+/* World info window: 전체 and 즐겨찾기 take half the row each */
+.stqa_world_pick .stqa_tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
