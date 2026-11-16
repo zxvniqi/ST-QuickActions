@@ -14,6 +14,8 @@ const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
 const LONG_PRESS_MS = 400;
 const MOVE_TOLERANCE = 8; // px a finger may wobble before a press counts as a scroll attempt
+// Holding 한 메시지 위로 / 아래로 scrolls the chat slowly, this many px a second, until let go
+const CREEP_PX_PER_SECOND = 220;
 const EDGE = 4;
 const TITLE = '편의성 모음';
 
@@ -560,6 +562,27 @@ function setOpen(value) {
  * Pointer handling: a short tap runs the button under the finger (or opens / folds the panel);
  * holding for a moment picks the floating panel up, and it follows the finger until released.
  */
+/** Scrolls the chat slowly one way (-1 up, 1 down) until `stop` is called. */
+function creep(direction) {
+    const chat = document.getElementById('chat');
+    if (!chat) {
+        return () => {};
+    }
+    let last = performance.now();
+    // Kept as a fraction, so a slow speed doesn't round away to nothing on a fast screen
+    let position = chat.scrollTop;
+    // A plain timer (about 60 steps a second): it keeps going where screen frames are held back
+    const timer = setInterval(() => {
+        const now = performance.now();
+        // The chat scrolled by something else meanwhile (older messages drawn in): go on from there
+        Math.abs(chat.scrollTop - position) > 2 && (position = chat.scrollTop);
+        position = Math.min(chat.scrollHeight - chat.clientHeight, Math.max(0, position + direction * CREEP_PX_PER_SECOND * (now - last) / 1000));
+        last = now;
+        chat.scrollTop = position;
+    }, 16);
+    return () => clearInterval(timer);
+}
+
 function enableMoving() {
     let press = null;
 
@@ -568,10 +591,11 @@ function enableMoving() {
             return;
         }
         clearTimeout(press.timer);
+        press.stopCreeping?.();
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', end);
         document.removeEventListener('pointercancel', end);
-        const { dragging, moved, button } = press;
+        const { dragging, moved, button, stopCreeping } = press;
         press = null;
         panel.classList.remove('stqa_floating_dragging');
         if (dragging) {
@@ -581,7 +605,7 @@ function enableMoving() {
             saveAnchor();
             // Open, it may now have to open out the other way from ···
             open && restorePosition();
-        } else if (!moved && button && event.type === 'pointerup') {
+        } else if (!moved && !stopCreeping && button && event.type === 'pointerup') {
             button.dataset.key === 'toggle' ? setOpen(!open) : runAction(button.dataset.key);
         }
     };
@@ -611,12 +635,20 @@ function enableMoving() {
             x: event.clientX, y: event.clientY, left: box.left, top: box.top,
             button: event.target.closest('[data-key]'), dragging: false, moved: false,
         };
-        // Only ··· picks the panel up: the buttons' row can be scrolled when it is long
+        // Only ··· picks the panel up: the buttons' row can be scrolled when it is long. Held,
+        // 한 메시지 위로 / 아래로 scroll the chat slowly instead of moving one message
         press.timer = setTimeout(() => {
-            if (press && !press.moved && !inInputBar() && press.button?.dataset.key === 'toggle') {
+            if (!press || press.moved) {
+                return;
+            }
+            const key = press.button?.dataset.key;
+            if (key === 'toggle' && !inInputBar()) {
                 press.dragging = true;
                 panel.classList.add('stqa_floating_dragging');
                 navigator.vibrate?.(15);
+            } else if (key === 'up' || key === 'down') {
+                press.stopCreeping = creep(key === 'up' ? -1 : 1);
+                navigator.vibrate?.(10);
             }
         }, LONG_PRESS_MS);
         document.addEventListener('pointermove', onMove, { passive: false });
