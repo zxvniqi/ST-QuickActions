@@ -568,18 +568,19 @@ function creep(direction) {
     if (!chat) {
         return () => {};
     }
-    let frame = 0;
     let last = performance.now();
     // Kept as a fraction, so a slow speed doesn't round away to nothing on a fast screen
     let position = chat.scrollTop;
-    const step = (now) => {
+    // A plain timer (about 60 steps a second): it keeps going where screen frames are held back
+    const timer = setInterval(() => {
+        const now = performance.now();
+        // The chat scrolled by something else meanwhile (older messages drawn in): go on from there
+        Math.abs(chat.scrollTop - position) > 2 && (position = chat.scrollTop);
         position = Math.min(chat.scrollHeight - chat.clientHeight, Math.max(0, position + direction * CREEP_PX_PER_SECOND * (now - last) / 1000));
         last = now;
         chat.scrollTop = position;
-        frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
+    }, 16);
+    return () => clearInterval(timer);
 }
 
 function enableMoving() {
