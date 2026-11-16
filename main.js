@@ -658,18 +658,23 @@ function buildPanel() {
         paginate();
     };
     search.addEventListener('input', find);
-    // Heights change when a help opens or a feature's own settings fold: sorted again, the
-    // feature touched staying on show
-    panel.addEventListener('click', (event) => {
-        const row = event.target.closest('.stqa_desc_toggle')?.closest('.stqa_feature');
-        row && requestAnimationFrame(() => paginate(row));
-    });
-    // Once the window is up (nothing can be measured before), and when the screen turns
+    // Sheets are sorted when a tab or a search changes, never under the finger: a help opened or
+    // a feature switched only makes its own sheet taller, which then scrolls inside the window.
+    // Once the window is up (nothing can be measured before), and when the screen turns: only a
+    // change of width (a phone's keyboard opening changes the height alone)
     // (given up after a few seconds, should the window never come up)
     let waited = 0;
     const whenShown = () => (panel.isConnected ? paginate() : ++waited < 300 && requestAnimationFrame(whenShown));
     requestAnimationFrame(whenShown);
-    const onResize = () => (panel.isConnected ? paginate() : window.removeEventListener('resize', onResize));
+    let width = window.innerWidth;
+    const onResize = () => {
+        if (!panel.isConnected) {
+            window.removeEventListener('resize', onResize);
+        } else if (window.innerWidth !== width) {
+            width = window.innerWidth;
+            paginate();
+        }
+    };
     window.addEventListener('resize', onResize);
     const syncMaster = () => body.classList.toggle('stqa_off', settings.enabled === false);
     syncMaster();
@@ -683,7 +688,6 @@ function buildPanel() {
             // A feature switched off folds its own settings away
             const row = target.closest('.stqa_feature');
             row?.classList.toggle('stqa_feature_off', !target.checked);
-            row && paginate(row);
         } else {
             return;
         }
