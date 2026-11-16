@@ -356,7 +356,7 @@ async function markMadeMessage(started, chatId, finishedRun) {
     }
     const made = madeMessage(context.chat.slice(started));
     if (!made) {
-        return;
+        return false;
     }
     made.extra ??= {};
     made.extra.stqa_qr = {
@@ -366,6 +366,7 @@ async function markMadeMessage(started, chatId, finishedRun) {
     };
     await context.saveChat();
     refreshQrMessage();
+    return true;
 }
 
 /**
@@ -375,7 +376,8 @@ async function markMadeMessage(started, chatId, finishedRun) {
  */
 // 별지 (Sideleaf) names a QR's messages by the QR and the first answer typed, when they arrive
 // soon after the tap. What a QR makes again later (a new swipe, a run again after an empty
-// answer) comes too late for it: those get the same name here, the way it writes it.
+// answer) comes too late for it, and a run it lost track of gets nothing: those get the same
+// name here, the way it writes it.
 const SIDELEAF_SOURCE = 'sideleafSource';
 const sideleafOn = () => Boolean(document.querySelector('#message_template .sideleaf-archive-button, #chat .sideleaf-archive-button'));
 
@@ -396,19 +398,22 @@ function sideleafSourceOf(finished) {
     return { label, ...(subject ? { subject: subject.slice(0, 160) } : {}) };
 }
 
-/** A run again (after an empty answer): its messages named as the first run's would have been. */
-async function nameRunAgain(added, finished) {
+/**
+ * A run's messages 별지 left unnamed (a run again after an empty answer, or one it lost track of
+ * otherwise) named as it would have. True: some were (the chat is to be saved).
+ */
+function nameRun(added, finished) {
     const source = sideleafOn() ? sideleafSourceOf(finished) : null;
     const context = SillyTavern.getContext();
     const unnamed = added.filter(message => context.chat.includes(message) && !message.extra?.[SIDELEAF_SOURCE]);
     if (!source || !unnamed.length) {
-        return;
+        return false;
     }
     for (const message of unnamed) {
         message.extra ??= {};
         message.extra[SIDELEAF_SOURCE] = structuredClone(source);
     }
-    await context.saveChat();
+    return true;
 }
 
 async function afterRun(started, chatId, finished, attempt) {
@@ -429,8 +434,10 @@ async function afterRun(started, chatId, finished, attempt) {
         tellEmpty('QR을 다시 실행', again ? attempt + 1 : 0, attempt);
         return again;
     }
-    attempt > 0 && await nameRunAgain(added, finished);
-    await markMadeMessage(started, chatId, finished);
+    // (Stopped by the user: 별지 names nothing after that either)
+    const named = !finished.stopped && nameRun(added, finished);
+    const saved = await markMadeMessage(started, chatId, finished);
+    named && !saved && await context.saveChat();
     return false;
 }
 /* ---------- swiping a QR message ---------- */
