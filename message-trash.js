@@ -14,6 +14,11 @@ const DAY = 24 * 60 * 60 * 1000;
 let shadow = [];
 let shadowKey = null;
 let swipeShadow = new Map();
+// 별지 (Sideleaf) keeps messages put away in the chat's own data, with a new revision on every
+// change it makes: messages gone with that revision changed went to 별지, not to the trash
+const SIDELEAF_KEY = 'sideleaf_v1';
+const sideleafRevision = () => String(SillyTavern.getContext().chatMetadata?.[SIDELEAF_KEY]?.revision ?? '');
+let shadowSideleaf = '';
 let wasOn = false;
 // Deletions our own code makes on the way to something else (not the user's)
 let paused = 0;
@@ -165,6 +170,7 @@ function snapshot() {
     const chat = SillyTavern.getContext().chat;
     shadow = chat.slice();
     shadowKey = openChat()?.key ?? null;
+    shadowSideleaf = sideleafRevision();
     const swipes = new Map();
     for (const message of chat) {
         if (Array.isArray(message.swipes) && message.swipes.length > 1) {
@@ -204,7 +210,12 @@ function collect() {
     gathering = null;
     const before = shadow;
     const key = shadowKey;
+    const sideleafBefore = shadowSideleaf;
     snapshot();
+    // Put away in 별지 (it saved a new revision meanwhile): not deleted
+    if (sideleafRevision() !== sideleafBefore) {
+        return;
+    }
     const chat = openChat();
     if (!isOn('messageTrash') || !chat || chat.key !== key) {
         return;
