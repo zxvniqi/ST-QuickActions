@@ -83,7 +83,11 @@ function syncArrowButton(wanted) {
         });
     }
     const wand = document.getElementById('extensionsMenuButton');
-    if (wand && arrow.previousElementSibling !== wand) {
+    // Anywhere after the wand in its row is fine: other buttons (e.g. a WI monitor script) also want
+    // the spot right beside it, and insisting on it would swap places with them forever
+    const afterWand = wand && arrow.parentElement === wand.parentElement
+        && (wand.compareDocumentPosition(arrow) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (wand && !afterWand) {
         wand.after(arrow);
     } else if (!wand && !arrow.isConnected) {
         document.getElementById('leftSendForm')?.append(arrow);
