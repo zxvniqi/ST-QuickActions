@@ -366,7 +366,8 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort {
 }
 
 .stqa_picker_export,
-.stqa_picker_import {
+.stqa_picker_import,
+.stqa_picker_delete {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
@@ -2945,7 +2946,8 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 #stqa_chat_io .menu_button,
 .stqa_qr_btn,
 .stqa_picker_export,
-.stqa_picker_import {
+.stqa_picker_import,
+.stqa_picker_delete {
     gap: 0 !important;
     justify-content: center;
 }
@@ -3942,4 +3944,35 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort.stqa_world_sort {
 .stqa_world_pick .stqa_tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
+}
+
+/* Translation shown bigger (⤢ on a translated box): read only */
+.stqa_tr_big textarea {
+    width: 100%;
+    height: 65vh;
+    resize: none;
+}
+
+/* Chat word replace: the range of messages, two small number boxes in a row */
+.stqa_replace_range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_replace .stqa_replace_range input.text_pole {
+    width: 5.5em;
+    flex: 0 0 auto;
+}
+
+/* Error details: the earlier errors folded under the notice's own */
+.stqa_error_earlier {
+    margin-top: 10px;
+    text-align: left;
+}
+
+.stqa_error_earlier > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    opacity: 0.8;
 }

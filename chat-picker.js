@@ -113,6 +113,28 @@ async function askDelete(character, name) {
 }
 
 /**
+ * The character itself deleted, the way ST's own delete button does it (the chat open now is
+ * closed first, as ST does). Its chats go too unless unticked. True: it was deleted.
+ */
+async function askDeleteCharacter(character, chatCount) {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
+    const content = document.createElement('div');
+    content.innerHTML = '<h3>캐릭터 삭제</h3><div></div>';
+    content.querySelector('div').textContent = `"${character.name}" 삭제. 되돌릴 수 없음`;
+    const popup = new Popup(content, POPUP_TYPE.CONFIRM, '', {
+        okButton: '삭제',
+        cancelButton: '취소',
+        customInputs: [{ id: 'stqa_delete_chats', label: `채팅 ${chatCount}개도 삭제`, defaultState: true }],
+    });
+    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) {
+        return false;
+    }
+    const deleteChats = Boolean(popup.inputResults?.get('stqa_delete_chats') ?? true);
+    const { deleteCharacter } = await import('../../../../script.js');
+    return (await deleteCharacter(character.avatar, { deleteChats })) !== false;
+}
+
+/**
  * @returns {Promise<{chat?: string, newChat?: boolean}|null>} The user's choice, or null if cancelled.
  */
 async function showChatPicker(character, initialChats) {
@@ -133,6 +155,7 @@ async function showChatPicker(character, initialChats) {
                 <i class="fa-solid fa-folder-open"></i>&#8203;
                 <input type="file" accept=".zip,.jsonl" multiple hidden>
             </label>
+            <div class="menu_button menu_button_icon stqa_picker_delete caution" title="캐릭터 삭제"><i class="fa-solid fa-skull"></i>&#8203;</div>
         </div>
         <div class="stqa_picker_searchbar"><input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색..."></div>
         <div class="stqa_chat_list"></div>`;
@@ -222,6 +245,15 @@ async function showChatPicker(character, initialChats) {
         } catch (error) {
             console.error(`[${MODULE}] Importing chats failed`, error);
             toastr.error('불러오지 못했습니다.', TITLE);
+        }
+    });
+
+    root.querySelector('.stqa_picker_delete').addEventListener('click', async () => {
+        try {
+            (await askDeleteCharacter(character, fetched.length)) && popup.complete(POPUP_RESULT.CANCELLED);
+        } catch (error) {
+            console.error(`[${MODULE}] Deleting the character failed`, error);
+            toastr.error('캐릭터를 삭제하지 못했습니다.', TITLE);
         }
     });
 

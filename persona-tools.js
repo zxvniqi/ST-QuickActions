@@ -3,7 +3,8 @@
 //    (typed in a box by the persona's name; the search finds it too),
 //  - the characters a persona is connected to, as small round avatars by its name,
 //  - folders: chips over the list show one folder's personas (ST's own search, order and pages
-//    keep working on what is shown).
+//    keep working on what is shown); in a chat, a chip of its character shows the personas
+//    connected to it.
 // ST's list is drawn page by page, so the folder is applied where ST filters the list, and the
 // memo and avatars are put on each row as ST draws it.
 import { MODULE, getSettings, isOn } from './settings.js';
@@ -15,6 +16,8 @@ const MEMO_ID = 'stqa_persona_memo';
 const MAX_AVATARS = 5;
 // Personas in no folder
 const LOOSE = 'none';
+// Personas connected to the character (or group) of the open chat
+const HERE = 'here';
 
 let personas = null;
 let power = null;
@@ -158,6 +161,27 @@ function addMemoBox() {
 
 const folderOf = id => folders().find(folder => folder.keys.includes(id)) ?? null;
 
+/** The character (or group) of the open chat: { type, id, name }, or null. */
+function chatOwner() {
+    const context = SillyTavern.getContext();
+    if (context.groupId) {
+        const group = context.groups?.find(item => item.id === context.groupId);
+        return group ? { type: 'group', id: group.id, name: group.name } : null;
+    }
+    const character = context.characters?.[context.characterId];
+    return character?.avatar ? { type: 'character', id: character.avatar, name: character.name } : null;
+}
+
+/** The personas connected to the open chat's character (or group). */
+function connectedHere() {
+    const owner = chatOwner();
+    if (!owner) {
+        return [];
+    }
+    return Object.keys(power?.personas ?? {}).filter(id => (power.persona_descriptions?.[id]?.connections ?? [])
+        .some(connection => connection.type === owner.type && connection.id === owner.id));
+}
+
 /** The chips over the list: every persona, each folder, the ones in none, and the folder editor. */
 function drawBar() {
     const list = document.querySelector(LIST);
@@ -176,14 +200,24 @@ function drawBar() {
         list.before(bar);
     }
     const all = Object.keys(power?.personas ?? {});
-    // A folder taken away while on show: back to every persona
-    if (shownFolder && shownFolder !== LOOSE && !folders().some(folder => folder.id === shownFolder)) {
+    const owner = chatOwner();
+    const here = connectedHere();
+    // A folder taken away while on show, or a chat with no connected persona: back to every persona
+    const gone = shownFolder === HERE ? !here.length : shownFolder && shownFolder !== LOOSE && !folders().some(folder => folder.id === shownFolder);
+    if (gone) {
         shownFolder = null;
+        redrawList();
     }
-    const chip = (label, count, value) => {
+    // Drawn again only when something on it changed (the list's redraws ask often)
+    const signature = JSON.stringify([shownFolder, all.length, owner?.name, here.length, folders().map(folder => [folder.id, folder.name, folder.keys.length])]);
+    if (bar.dataset.signature === signature) {
+        return;
+    }
+    bar.dataset.signature = signature;
+    const chip = (label, count, value, icon = '') => {
         const element = document.createElement('span');
         element.className = `stqa_variant_chip${shownFolder === value ? ' stqa_active' : ''}`;
-        element.innerHTML = '<span></span><small></small>';
+        element.innerHTML = `${icon ? `<i class="fa-solid ${icon}"></i> ` : ''}<span></span><small></small>`;
         element.querySelector('span').textContent = label;
         element.querySelector('small').textContent = ` ${count}`;
         element.addEventListener('click', () => {
@@ -195,6 +229,8 @@ function drawBar() {
     };
     const inFolders = new Set(folders().flatMap(folder => folder.keys));
     const chips = [chip('전체', all.length, null)];
+    // The open chat's character, while some persona is connected to it
+    here.length && chips.push(chip(owner.name, here.length, HERE, 'fa-link'));
     for (const folder of folders()) {
         chips.push(chip(folder.name, folder.keys.filter(id => all.includes(id)).length, folder.id));
     }
@@ -336,7 +372,10 @@ function hookFilter() {
             const found = new Set(result);
             result = [...result, ...data.filter(id => !found.has(id) && String(memos()[id] ?? '').toLowerCase().includes(term))];
         }
-        if (shownFolder === LOOSE) {
+        if (shownFolder === HERE) {
+            const here = new Set(connectedHere());
+            result = result.filter(id => here.has(id));
+        } else if (shownFolder === LOOSE) {
             const inFolders = new Set(folders().flatMap(folder => folder.keys));
             result = result.filter(id => !inFolders.has(id));
         } else if (shownFolder) {
@@ -376,12 +415,19 @@ export function initPersonaTools() {
         scheduled = true;
         requestAnimationFrame(() => {
             scheduled = false;
+            // (Connections may have changed: the open chat's chip counts them)
+            drawBar();
             decorate();
         });
     }).observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     const { eventSource, eventTypes } = SillyTavern.getContext();
     eventSource.on(eventTypes.APP_READY, applyPersonaTools);
     // The persona in use changes with the chat (connections, locks)
-    eventSource.on(eventTypes.CHAT_CHANGED, () => setTimeout(syncMemoBox, 300));
+    // and the chip of the open chat's character with it
+    eventSource.on(eventTypes.CHAT_CHANGED, () => setTimeout(() => {
+        syncMemoBox();
+        drawBar();
+        shownFolder === HERE && redrawList();
+    }, 300));
     applyPersonaTools();
 }

@@ -15,13 +15,21 @@ const entries = [];
 function add(kind, title, detail = '', time = new Date()) {
     // Off: nothing is gathered
     if (!isOn('errorLog')) {
-        return;
+        return null;
     }
-    entries.push({ time, kind, title: String(title ?? '').slice(0, 300), detail: String(detail ?? '').slice(0, MAX_TEXT) });
+    const entry = { time, kind, title: String(title ?? '').slice(0, 300), detail: String(detail ?? '').slice(0, MAX_TEXT) };
+    entries.push(entry);
     // In time order (an answer is read a moment after it arrives)
     entries.sort((a, b) => a.time - b.time);
     entries.splice(0, Math.max(0, entries.length - KEEP));
+    return entry;
 }
+
+// What belongs to a notice: what went wrong just before it (the failed request it tells of) and
+// right after (an answer read a moment late)
+const BEFORE_MS = 10000;
+const AFTER_MS = 3000;
+const aboutNotice = (entry, notice) => entry.time - notice.time <= AFTER_MS && notice.time - entry.time <= BEFORE_MS;
 
 const short = url => String(url ?? '').replace(location.origin, '').split('?')[0];
 
@@ -67,7 +75,7 @@ function watchScripts() {
 function watchNotices() {
     const original = toastr.error;
     toastr.error = function (message, title) {
-        add('알림', [title, message].filter(Boolean).join(' · ').replace(/<[^>]*>/g, ' '));
+        const own = add('알림', [title, message].filter(Boolean).join(' · ').replace(/<[^>]*>/g, ' '));
         const notice = original.apply(this, arguments);
         try {
             const element = notice?.[0] ?? notice;
@@ -77,7 +85,7 @@ function watchNotices() {
                 button.title = '자세히 보기';
                 button.addEventListener('click', (event) => {
                     event.stopPropagation();
-                    showLog().catch(error => console.error(`[${MODULE}] Error log failed`, error));
+                    showLog(own).catch(error => console.error(`[${MODULE}] Error log failed`, error));
                 });
                 element.append(button);
             }
@@ -107,33 +115,50 @@ async function copy(text) {
     }
 }
 
-/** The log, newest first, with Copy and Close. */
-async function showLog() {
+function itemOf(entry) {
+    const item = document.createElement('div');
+    item.className = 'stqa_error_item';
+    item.innerHTML = '<div class="stqa_error_head"><b></b><span></span></div><div class="stqa_error_title"></div><pre class="stqa_error_detail"></pre>';
+    item.querySelector('b').textContent = entry.kind;
+    item.querySelector('span').textContent = entry.time.toLocaleTimeString();
+    item.querySelector('.stqa_error_title').textContent = entry.title;
+    const detail = item.querySelector('pre');
+    entry.detail ? (detail.textContent = entry.detail) : detail.remove();
+    return item;
+}
+
+/**
+ * The log, newest first, with Copy and Close. From a notice (`notice`: its entry): what belongs
+ * to it, and the earlier ones folded under it; Copy takes what is unfolded.
+ */
+async function showLog(notice = null) {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const list = [...entries].reverse();
+    const current = notice && entries.includes(notice) ? list.filter(entry => aboutNotice(entry, notice)) : list;
+    const rest = list.filter(entry => !current.includes(entry));
     const content = document.createElement('div');
     content.className = 'stqa_error_log';
     content.innerHTML = '<h3>오류 내용</h3><div class="stqa_hint">최근 오류부터 보입니다. 서버(터묵스) 화면 자체는 볼 수 없지만, 서버가 돌려준 오류 내용은 그대로 담겨 있습니다.</div>';
     if (!list.length) {
         content.insertAdjacentHTML('beforeend', '<div class="stqa_hint">모아 둔 오류가 없습니다.</div>');
     }
-    for (const entry of list) {
-        const item = document.createElement('div');
-        item.className = 'stqa_error_item';
-        item.innerHTML = '<div class="stqa_error_head"><b></b><span></span></div><div class="stqa_error_title"></div><pre class="stqa_error_detail"></pre>';
-        item.querySelector('b').textContent = entry.kind;
-        item.querySelector('span').textContent = entry.time.toLocaleTimeString();
-        item.querySelector('.stqa_error_title').textContent = entry.title;
-        const detail = item.querySelector('pre');
-        entry.detail ? (detail.textContent = entry.detail) : detail.remove();
-        content.append(item);
+    content.append(...current.map(itemOf));
+    let fold = null;
+    if (rest.length) {
+        fold = document.createElement('details');
+        fold.className = 'stqa_error_earlier';
+        fold.innerHTML = '<summary></summary>';
+        fold.querySelector('summary').textContent = `이전 오류 ${rest.length}개`;
+        fold.append(...rest.map(itemOf));
+        content.append(fold);
     }
     const popup = new Popup(content, POPUP_TYPE.TEXT, '', {
         okButton: '닫기',
         cancelButton: false,
         // No result: Copy leaves the window open
         customButtons: list.length ? [{ text: '복사', action: async () => {
-            (await copy(asText(list))) ? toastr.success('오류 내용을 복사했습니다.', TITLE) : toastr.error('복사하지 못했습니다.', TITLE);
+            const shown = fold?.open ? [...current, ...rest] : current;
+            (await copy(asText(shown))) ? toastr.success('오류 내용을 복사했습니다.', TITLE) : toastr.error('복사하지 못했습니다.', TITLE);
         } }] : [],
         allowVerticalScrolling: true,
         leftAlign: true,

@@ -1,6 +1,7 @@
 // "채팅 단어 바꾸기" in the Options menu: one word or phrase replaced in every message of the
 // open chat (e.g. a year in a status panel, 2024 → 2205). Covers the other replies (swipes)
-// and translations shown in place of the original. Plain text, not a pattern. The places it
+// and translations shown in place of the original. Plain text, not a pattern; as a word of its
+// own only (between spaces) if asked, and in a range of messages if given. The places it
 // would change are shown before anything is changed (each can be left out by unticking it), and a
 // change can be taken back until the page is reloaded (its notice, or the list in the window).
 import { MODULE, isOn } from './settings.js';
@@ -36,11 +37,31 @@ function textSlots(message, swipes) {
     return slots.filter(([holder, key]) => typeof holder[key] === 'string');
 }
 
-function countIn(chat, word, swipes) {
+/**
+ * Where the word is in a text. `whole`: only as a word of its own, with a space (or the text's
+ * start / end) on both sides: 20 then isn't found in 2025.
+ */
+function findAll(text, word, whole) {
+    const found = [];
+    const apart = at => at < 0 || at >= text.length || /\s/.test(text[at]);
+    for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + word.length)) {
+        (!whole || (apart(at - 1) && apart(at + word.length))) && found.push(at);
+    }
+    return found;
+}
+
+/**
+ * The messages searched: [message, index] of those in the range (`start` / `end`: message
+ * numbers, either left empty for the chat's start / end).
+ */
+const inRange = (chat, { start, end }) => chat.map((message, index) => [message, index])
+    .filter(([, index]) => (start === null || index >= start) && (end === null || index <= end));
+
+function countIn(chat, word, options) {
     let count = 0;
-    for (const message of chat) {
-        for (const [holder, key] of textSlots(message, swipes)) {
-            count += holder[key].split(word).length - 1;
+    for (const [message] of inRange(chat, options)) {
+        for (const [holder, key] of textSlots(message, options.swipes)) {
+            count += findAll(holder[key], word, options.whole).length;
         }
     }
     return count;
@@ -52,13 +73,13 @@ const oneLine = text => text.replace(/\s+/g, ' ');
 const placeId = (index, label, nth) => `${index}|${label}|${nth}`;
 
 /** Every place the word is found: [{ id, index, name, label, before, after }]. */
-function previewOf(chat, word, swipes) {
+function previewOf(chat, word, options) {
     const found = [];
-    chat.forEach((message, index) => {
-        for (const [holder, key, label] of textSlots(message, swipes)) {
+    inRange(chat, options).forEach(([message, index]) => {
+        for (const [holder, key, label] of textSlots(message, options.swipes)) {
             const text = holder[key];
             let nth = 0;
-            for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + word.length)) {
+            for (const at of findAll(text, word, options.whole)) {
                 const start = Math.max(0, at - AROUND);
                 const end = Math.min(text.length, at + word.length + AROUND);
                 found.push({
@@ -193,10 +214,22 @@ async function openReplace() {
         <label>찾을 글자<input class="text_pole" data-field="find" type="text"></label>
         <label>바꿀 글자<input class="text_pole" data-field="to" type="text"></label>
         <label class="checkbox_label"><input type="checkbox" data-field="swipes" checked><span>다른 답변(스와이프)에서도 바꾸기</span></label>
+        <label class="checkbox_label"><input type="checkbox" data-field="whole"><span>단어 단위로만 (띄어쓰기 기준)</span></label>
+        <div class="stqa_replace_range"><span>범위 #</span><input class="text_pole" data-field="start" type="number" min="0" inputmode="numeric"><span>~ #</span><input class="text_pole" data-field="end" type="number" min="0" inputmode="numeric"></div>
         <div class="stqa_replace_count"><i class="fa-solid fa-chevron-right"></i><span></span><label class="checkbox_label stqa_replace_all" hidden><input type="checkbox" checked><span>전체</span></label></div>
         <div class="stqa_replace_preview" hidden></div>
         <div class="stqa_replace_undo"></div>`;
     const field = name => content.querySelector(`[data-field="${name}"]`);
+    // The range starts out as the whole chat (empty boxes: its first / last message)
+    field('start').placeholder = '0';
+    field('end').placeholder = String(chat.length - 1);
+    const number = (name) => {
+        const value = field(name).value.trim();
+        return value === '' || !Number.isFinite(Number(value)) ? null : Math.max(0, Math.floor(Number(value)));
+    };
+    const optionsNow = () => ({ swipes: field('swipes').checked, whole: field('whole').checked, start: number('start'), end: number('end') });
+    // What the places found depend on (other options: other places)
+    const optionsKey = options => JSON.stringify(options);
     const list = content.querySelector('.stqa_replace_preview');
     const counter = content.querySelector('.stqa_replace_count');
     // The places are folded under the count; tapping it shows them all (drawn only while shown)
@@ -213,7 +246,7 @@ async function openReplace() {
     const draw = () => {
         const word = field('find').value;
         list.dataset.word = word;
-        drawPreview(list, unfolded && word ? previewOf(chat, word, field('swipes').checked) : [], field('to').value, skipped, showCount);
+        drawPreview(list, unfolded && word ? previewOf(chat, word, optionsNow()) : [], field('to').value, skipped, showCount);
         list.hidden = !unfolded || !word;
         counter.classList.toggle('stqa_open', unfolded);
         counter.querySelector('.stqa_replace_all').hidden = !unfolded || !total;
@@ -224,13 +257,13 @@ async function openReplace() {
         // A long chat is searched once typing pauses
         timer = setTimeout(() => {
             const word = field('find').value;
-            const swipes = field('swipes').checked;
+            const options = optionsNow();
             // Another word (or other texts searched): the places are other places
-            if (skippedFor !== `${swipes}|${word}`) {
+            if (skippedFor !== `${optionsKey(options)}|${word}`) {
                 skipped.clear();
-                skippedFor = `${swipes}|${word}`;
+                skippedFor = `${optionsKey(options)}|${word}`;
             }
-            total = word ? countIn(chat, word, swipes) : 0;
+            total = word ? countIn(chat, word, options) : 0;
             counter.hidden = !word;
             showCount();
             draw();
@@ -248,7 +281,7 @@ async function openReplace() {
     allBox.addEventListener('change', (event) => {
         event.stopPropagation();
         skipped.clear();
-        allBox.checked || previewOf(chat, field('find').value, field('swipes').checked).forEach(place => skipped.add(place.id));
+        allBox.checked || previewOf(chat, field('find').value, optionsNow()).forEach(place => skipped.add(place.id));
         showCount();
         draw();
     });
@@ -285,20 +318,26 @@ async function openReplace() {
     }
     const word = field('find').value;
     const replacement = field('to').value;
-    const swipes = field('swipes').checked;
+    const options = optionsNow();
     // The typing may still have been waiting to be searched: what was unticked for another word doesn't count
-    skippedFor === `${swipes}|${word}` || skipped.clear();
-    const count = word ? countIn(chat, word, swipes) - skipped.size : 0;
+    skippedFor === `${optionsKey(options)}|${word}` || skipped.clear();
+    const count = word ? countIn(chat, word, options) - skipped.size : 0;
     if (count <= 0) {
         word && toastr.info(skipped.size ? '바꿀 곳을 하나도 고르지 않았습니다.' : '찾은 곳이 없습니다.', TITLE);
         return;
     }
     const before = textsOf(chat);
-    chat.forEach((message, index) => {
-        for (const [holder, key, label] of textSlots(message, swipes)) {
+    inRange(chat, options).forEach(([message, index]) => {
+        for (const [holder, key, label] of textSlots(message, options.swipes)) {
             // Each find in turn, the unticked ones left as they are
-            let nth = 0;
-            holder[key] = holder[key].split(word).reduce((text, part) => text + (skipped.has(placeId(index, label, nth++)) ? word : replacement) + part);
+            const text = holder[key];
+            let out = '';
+            let from = 0;
+            findAll(text, word, options.whole).forEach((at, nth) => {
+                out += text.slice(from, at) + (skipped.has(placeId(index, label, nth)) ? word : replacement);
+                from = at + word.length;
+            });
+            holder[key] = out + text.slice(from);
         }
         // The reply on show is kept twice (as the message and as its swipe): both say the same
         const shown = message.swipe_id;
