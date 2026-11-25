@@ -1,5 +1,7 @@
 // Server calls for one character's chat files (the same endpoints ST's own chat manager uses).
 import { MODULE } from './settings.js';
+import { forgetChat, withOwnChatDeletes } from './message-trash.js';
+import { forgetLinkedChat } from './prompt-toggle-sets.js';
 
 const JSONL = /\.jsonl$/;
 
@@ -103,8 +105,11 @@ export async function deleteChat(character, name) {
         const { humanizedDateTime } = SillyTavern.getContext();
         await setActiveChat(character, remaining?.[0]?.name ?? `${character.name} - ${humanizedDateTime()}`);
     }
+    // Its trash goes with it (this character's: ST's notice says only the chat's name)
+    forgetChat('c', character.avatar, name).catch(error => console.error(`[${MODULE}] Trash cleanup failed`, error));
+    forgetLinkedChat(character.avatar, name);
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    await eventSource.emit(eventTypes.CHAT_DELETED, name);
+    await withOwnChatDeletes(() => eventSource.emit(eventTypes.CHAT_DELETED, name));
 }
 
 /** @param {'jsonl'|'txt'} format */

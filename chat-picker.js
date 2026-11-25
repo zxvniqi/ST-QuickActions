@@ -1,7 +1,10 @@
 // Selecting a character shows its chat list (with rename / export / delete / import)
 // instead of opening the latest chat.
 import { MODULE, isOn } from './settings.js';
-import { listChats, setActiveChat, renameChat, deleteChat, exportChat } from './chat-api.js';
+import { isGenerating, escapeHtml } from './util.js';
+import { listChats, setActiveChat, renameChat, deleteChat, exportChat, importChats } from './chat-api.js';
+import { withOwnChatDeletes } from './message-trash.js';
+import { openBackups } from './backup-view.js';
 import { exportAllChats, importChatFiles } from './chat-export.js';
 import { sortChats, createSortButton } from './chat-sort.js';
 
@@ -23,6 +26,11 @@ let isPickerOpen = false;
 async function openCharacterAtChat(characterId, chatName) {
     const context = SillyTavern.getContext();
     const character = context.characters[characterId];
+    // ST doesn't switch while a reply is written, but the chat to open would already be noted
+    if (isGenerating()) {
+        toastr.info('답변 생성 중에는 채팅을 바꿀 수 없습니다.', TITLE);
+        return;
+    }
     // The character already open: selecting it again would not switch chats, so the chat is
     // opened directly (ST's own way, which saves the current one first)
     if (!context.groupId && String(context.characterId) === String(characterId)) {
@@ -97,10 +105,6 @@ async function askRename(character, name) {
     return renameChat(character, name, newName);
 }
 
-function escapeHtml(text) {
-    return text.replace(/[&<>"']/g, char => `&#${char.charCodeAt(0)};`);
-}
-
 async function askDelete(character, name) {
     const { Popup, POPUP_RESULT } = SillyTavern.getContext();
     // The popup renders HTML, and chat names are user-defined
@@ -110,6 +114,33 @@ async function askDelete(character, name) {
     }
     await deleteChat(character, name);
     return true;
+}
+
+/**
+ * The character itself deleted, the way ST's own delete button does it (the chat open now is
+ * closed first, as ST does). Its chats go too unless unticked. True: it was deleted.
+ */
+async function askDeleteCharacter(character, chatCount) {
+    const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
+    const content = document.createElement('div');
+    content.innerHTML = '<h3>캐릭터 삭제</h3><div></div>';
+    content.querySelector('div').textContent = `"${character.name}" 삭제. 되돌릴 수 없음`;
+    const popup = new Popup(content, POPUP_TYPE.CONFIRM, '', {
+        okButton: '삭제',
+        cancelButton: '취소',
+        customInputs: [{ id: 'stqa_delete_chats', label: `채팅 ${chatCount}개도 삭제`, defaultState: true }],
+    });
+    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) {
+        return false;
+    }
+    const deleteChats = Boolean(popup.inputResults?.get('stqa_delete_chats') ?? true);
+    const { deleteCharacter } = await import('../../../../script.js');
+    if (typeof deleteCharacter !== 'function') {
+        throw new Error('deleteCharacter not available');
+    }
+    // ST names each deleted chat while the open chat may be another character's: the trash goes
+    // by the character (CHARACTER_DELETED), not by those names
+    return (await withOwnChatDeletes(() => deleteCharacter(character.avatar, { deleteChats }))) !== false;
 }
 
 /**
@@ -133,6 +164,12 @@ async function showChatPicker(character, initialChats) {
                 <i class="fa-solid fa-folder-open"></i>&#8203;
                 <input type="file" accept=".zip,.jsonl" multiple hidden>
             </label>
+            <label class="menu_button menu_button_icon stqa_picker_import_one" title="채팅 하나 불러오기 (ST의 채팅 가져오기)">
+                <i class="fa-solid fa-file-import"></i>&#8203;
+                <input type="file" accept=".jsonl,.json" hidden>
+            </label>
+            <div class="menu_button menu_button_icon stqa_picker_backups" title="백업 보기"><i class="fa-solid fa-box-open"></i>&#8203;</div>
+            <div class="menu_button menu_button_icon stqa_picker_delete caution" title="캐릭터 삭제"><i class="fa-solid fa-skull"></i>&#8203;</div>
         </div>
         <div class="stqa_picker_searchbar"><input class="text_pole stqa_picker_search" type="search" placeholder="채팅 검색..."></div>
         <div class="stqa_chat_list"></div>`;
@@ -144,6 +181,8 @@ async function showChatPicker(character, initialChats) {
     const nameOf = chat => chat.name;
     // The list as fetched (latest message first): a new sort only reorders it
     let fetched = initialChats;
+    // How many chats the character has (what deleting it deletes), whatever the search shows
+    let allCount = initialChats.length;
 
     // Stale search responses (and sorts) are dropped by sequence number
     let refreshSeq = 0;
@@ -156,9 +195,12 @@ async function showChatPicker(character, initialChats) {
     };
     const refresh = async (highlight = []) => {
         const seq = ++refreshSeq;
-        const chats = await listChats(character.avatar, searchInput.value.trim());
+        const query = searchInput.value.trim();
+        const chats = await listChats(character.avatar, query);
         if (seq === refreshSeq && chats) {
             fetched = chats;
+            // (A search shows some of them: the count stays all of them)
+            query || (allCount = chats.length);
             await show(highlight);
         }
     };
@@ -222,6 +264,40 @@ async function showChatPicker(character, initialChats) {
         } catch (error) {
             console.error(`[${MODULE}] Importing chats failed`, error);
             toastr.error('불러오지 못했습니다.', TITLE);
+        }
+    });
+
+    root.querySelector('.stqa_picker_import_one input').addEventListener('change', async (event) => {
+        const files = [...event.target.files];
+        event.target.value = '';
+        if (!files.length) {
+            return;
+        }
+        try {
+            const imported = await importChats(character, files);
+            imported.length ? toastr.success(`불러왔습니다: ${imported.join(', ')}`, TITLE) : toastr.error('불러오지 못했습니다.', TITLE);
+            imported.length && await refresh(imported);
+        } catch (error) {
+            console.error(`[${MODULE}] Importing a chat failed`, error);
+            toastr.error('불러오지 못했습니다.', TITLE);
+        }
+    });
+    root.querySelector('.stqa_picker_backups').addEventListener('click', async () => {
+        try {
+            const restored = await openBackups(character);
+            restored?.length && await refresh(restored.map(name => String(name).replace(/\.jsonl$/, '')));
+        } catch (error) {
+            console.error(`[${MODULE}] Backups failed`, error);
+            toastr.error('백업을 열지 못했습니다.', TITLE);
+        }
+    });
+
+    root.querySelector('.stqa_picker_delete').addEventListener('click', async () => {
+        try {
+            (await askDeleteCharacter(character, allCount)) && popup.complete(POPUP_RESULT.CANCELLED);
+        } catch (error) {
+            console.error(`[${MODULE}] Deleting the character failed`, error);
+            toastr.error('캐릭터를 삭제하지 못했습니다.', TITLE);
         }
     });
 

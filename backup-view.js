@@ -3,8 +3,9 @@
 // they were saved instead of their file name. A backup shows as a chat, with the name of the chat
 // it is from; restoring makes a new chat (the open one untouched), as ST's own restore does.
 import { MODULE, isOn } from './settings.js';
-import { displayPastChats, importCharacterChat } from '../../../../script.js';
-import { importGroupChat } from '../../../group-chats.js';
+// Whole modules, not names: one ST renames leaves the rest of this extension loading
+import * as script from '../../../../script.js';
+import * as groupChats from '../../../group-chats.js';
 
 const TITLE = '편의성 모음';
 
@@ -64,15 +65,21 @@ function backupKey(name) {
     return /[^\x20-\x7E]/.test(name) ? `${sanitized}_${sha256(name).slice(0, 8)}` : sanitized;
 }
 
-/** The open character (or group): its name, and the start of its backup file names. */
-function owner() {
+/**
+ * The open character (or group), or the one given: its name, the start of its backup file
+ * names, and (given) the character.
+ */
+function owner(character = null) {
     const context = SillyTavern.getContext();
+    if (character?.avatar) {
+        return { name: character.name, prefix: `chat_${backupKey(character.avatar.replace(/\.png$/, ''))}_`, character };
+    }
     if (context.groupId) {
         const group = context.groups?.find(item => String(item.id) === String(context.groupId));
         return { name: group?.name ?? '그룹', prefix: `chat_${backupKey(String(context.groupId))}_` };
     }
-    const character = context.characters[context.characterId];
-    return character?.avatar ? { name: character.name, prefix: `chat_${backupKey(character.avatar.replace(/\.png$/, ''))}_` } : null;
+    const open = context.characters[context.characterId];
+    return open?.avatar ? { name: open.name, prefix: `chat_${backupKey(open.avatar.replace(/\.png$/, ''))}_` } : null;
 }
 
 /** Backup file name start -> whose backups they are, for every character and group. */
@@ -113,9 +120,18 @@ function button(icon, text, onClick, caution = false) {
     return element;
 }
 
-/** ST's own restore: the backup comes in as a new chat of the open character, which then opens. */
-async function restoreBackup(file) {
+/**
+ * ST's own restore: the backup comes in as a new chat of the open character (ST's chat list then
+ * shows it), or of the one given (from the chat list window, which shows it itself). The new
+ * chats' names, or false.
+ */
+async function restoreBackup(file, character = null, { showList = false, groupId } = {}) {
     const context = SillyTavern.getContext();
+    // A group's backup goes to the group open (ST's group import takes that one): still that one
+    if (!character && groupId !== undefined && context.groupId !== groupId) {
+        toastr.warning('그사이 다른 채팅이 열려 불러오지 않았습니다.', TITLE);
+        return false;
+    }
     const response = await fetch('/api/backups/chat/download', {
         method: 'POST',
         headers: context.getRequestHeaders(),
@@ -128,17 +144,25 @@ async function restoreBackup(file) {
     const form = new FormData();
     form.set('file_type', 'jsonl');
     form.set('avatar', new File([await response.blob()], file, { type: 'application/octet-stream' }));
-    form.set('avatar_url', context.characters[context.characterId]?.avatar || '');
+    form.set('avatar_url', character?.avatar ?? context.characters[context.characterId]?.avatar ?? '');
     form.set('user_name', context.name1);
-    form.set('character_name', context.name2);
-    const result = await (context.groupId ? importGroupChat : importCharacterChat)(form, { refresh: false });
+    form.set('character_name', character?.name ?? context.name2);
+    const group = !character && context.groupId;
+    const importer = group ? groupChats.importGroupChat : script.importCharacterChat;
+    if (typeof importer !== 'function') {
+        toastr.error('이 ST 버전에서는 불러올 수 없습니다.', TITLE);
+        return false;
+    }
+    const result = await importer(form, { refresh: false });
     if (!result?.length) {
         toastr.error('백업을 새 채팅으로 불러오지 못했습니다.', TITLE);
         return false;
     }
-    toastr.success(`새 채팅으로 불러왔습니다: ${result.join(', ')}`, TITLE);
-    await displayPastChats(result);
-    return true;
+    const whose = character && character !== context.characters[context.characterId] ? ` (${character.name})` : '';
+    toastr.success(`새 채팅으로 불러왔습니다: ${result.join(', ')}${whose}`, TITLE);
+    // (From the chat list window: that window shows the new chat itself)
+    showList && await script.displayPastChats?.(result);
+    return result;
 }
 
 async function deleteBackup(file) {
@@ -168,10 +192,10 @@ const chatLists = new Map();
  * The open character's chats by the mark each chat file carries (a backup has its chat's mark,
  * not its name). Groups' chats aren't listed this way.
  */
-function chatNames(fresh = false) {
+function chatNames(fresh = false, character = null) {
     const context = SillyTavern.getContext();
-    const avatar = context.characters[context.characterId]?.avatar;
-    if (context.groupId || !avatar) {
+    const avatar = character?.avatar ?? (context.groupId ? null : context.characters[context.characterId]?.avatar);
+    if (!avatar) {
         return Promise.resolve(new Map());
     }
     if (!fresh && chatLists.has(avatar)) {
@@ -281,7 +305,8 @@ async function markOf(file) {
             mark = JSON.parse(text.split('\n')[0])?.chat_metadata?.integrity ?? null;
         }
     } catch {
-        // No mark: the name stays unknown
+        // Not read this time (a busy server): asked again next time, not remembered as unknown
+        return null;
     }
     backupMarks.set(file, mark);
     saveMarks();
@@ -289,8 +314,8 @@ async function markOf(file) {
 }
 
 /** Fills in each card's chat name, a few backups at a time (cards redrawn meanwhile are skipped). */
-async function fillChatNames(cards) {
-    let chats = chatNames();
+async function fillChatNames(cards, character = null) {
+    let chats = chatNames(false, character);
     let refreshed = false;
     // The backups are read while the chat list is still coming; remembered ones need no reading
     const queue = [...cards].sort((a, b) => Number(backupMarks.has(b[1])) - Number(backupMarks.has(a[1])));
@@ -306,7 +331,7 @@ async function fillChatNames(cards) {
             // A chat made or renamed since the list was read: read it again, once
             if (mark && !names.has(mark) && !refreshed) {
                 refreshed = true;
-                chats = chatNames(true);
+                chats = chatNames(true, character);
                 names = await chats;
             }
             const line = card.querySelector('.stqa_backup_card_chat');
@@ -316,12 +341,12 @@ async function fillChatNames(cards) {
             }
         }
     };
-    // Six backups read at a time
-    await Promise.all(Array.from({ length: 6 }, worker));
+    // A few at a time (a slow server reads them from disk)
+    await Promise.all(Array.from({ length: 3 }, worker));
 }
 
 /** Shows a backup as a chat, with the name of the chat it is from. */
-async function viewBackup(file, closeList, names) {
+async function viewBackup(file, closeList, names, restore) {
     const context = SillyTavern.getContext();
     const { Popup, POPUP_TYPE } = context;
     const response = await fetch('/api/backups/chat/download', {
@@ -371,14 +396,10 @@ async function viewBackup(file, closeList, names) {
     messages.forEach((message, index) => {
         const bubble = document.createElement('div');
         bubble.className = `stqa_backup_message${message.is_user ? ' stqa_backup_user' : ''}`;
-        bubble.innerHTML = '<div class="stqa_backup_name"><b></b></div><div class="mes_text"></div>';
+        bubble.innerHTML = '<div class="stqa_backup_name"><b></b></div><div class="stqa_raw_text"></div>';
         bubble.querySelector('b').textContent = `#${index} ${message.name ?? ''}`;
-        const text = bubble.querySelector('.mes_text');
-        if (typeof context.messageFormatting === 'function') {
-            text.innerHTML = context.messageFormatting(message.mes, message.name ?? '', Boolean(message.is_system), Boolean(message.is_user), -1);
-        } else {
-            text.textContent = message.mes;
-        }
+        // As written, as text (tags regexes turn into screens read as they are)
+        bubble.querySelector('.stqa_raw_text').textContent = String(message.mes ?? '');
         // Long messages are folded; a tap opens one
         bubble.addEventListener('click', () => bubble.classList.toggle('stqa_backup_open'));
         list.append(bubble);
@@ -387,9 +408,10 @@ async function viewBackup(file, closeList, names) {
     const tools = content.querySelector('.stqa_backup_tools');
     let popup = null;
     tools.append(button('fa-rotate-left', '새 채팅으로', async () => {
-        if (await restoreBackup(file)) {
+        const done = await restore();
+        if (done?.names) {
             popup?.completeCancelled();
-            closeList?.();
+            closeList?.(done.own ? done.names : null);
         }
     }));
 
@@ -397,25 +419,58 @@ async function viewBackup(file, closeList, names) {
     await popup.show();
 }
 
-/** The backups window: the open character's backups, newest first (all of them on request). */
-async function openBackups() {
+/**
+ * The backups window: the open character's backups (or the given one's), newest first (all of
+ * them on request). The names of the chats a backup was brought in as, or null.
+ */
+export async function openBackups(character = null) {
     const context = SillyTavern.getContext();
+    // Whose chat a restored backup becomes is fixed now, not once the download is done (another
+    // character may be open by then)
+    const target = character ?? (context.groupId ? null : context.characters[context.characterId] ?? null);
+    const restoreOptions = { showList: !character, groupId: target ? undefined : (context.groupId ?? null) };
     const { Popup, POPUP_TYPE } = context;
     // The chat list (for the chat names) comes alongside the backups list
-    chatNames();
+    chatNames(false, character);
     const response = await fetch('/api/backups/chat/get', { method: 'POST', headers: context.getRequestHeaders() });
     if (!response.ok) {
         toastr.error('백업 목록을 불러오지 못했습니다.', TITLE);
-        return;
+        return null;
     }
     const backups = (await response.json()).sort((a, b) => stamp(b.file_name).localeCompare(stamp(a.file_name)));
-    const who = owner();
+    const who = owner(character);
+    let restored = null;
     let showAll = !who;
     let popup = null;
     // Whose each backup is: worked out once, the first time the full list is shown
     let names = null;
     const content = document.createElement('div');
     content.className = 'stqa_trash stqa_backup_list';
+    // Where a backup goes back to: one of this character (or group) to the one fixed above; another
+    // character's (in the full list) to that character. Another group's can't (ST brings a group's
+    // chat only into the group open). One at a time.
+    let restoring = false;
+    const restoreOne = async (file) => {
+        if (restoring) {
+            return null;
+        }
+        restoring = true;
+        try {
+            if (who && isOwn(file, who.prefix)) {
+                return { names: await restoreBackup(file, target, restoreOptions), own: true };
+            }
+            const prefix = file.replace(/d{8}-d{6}.jsonl$/, '');
+            const other = context.characters.find(item => item?.avatar && `chat_${backupKey(item.avatar.replace(/.png$/, ''))}_` === prefix);
+            if (!other) {
+                const group = (context.groups ?? []).some(item => `chat_${backupKey(String(item.id))}_` === prefix);
+                toastr.warning(group ? '그룹 백업은 그 그룹을 열고 불러와 주세요.' : '누구의 백업인지 알 수 없어 불러오지 않았습니다.', TITLE);
+                return null;
+            }
+            return { names: await restoreBackup(file, other), own: false };
+        } finally {
+            restoring = false;
+        }
+    };
 
     const render = () => {
         const shown = showAll ? backups : backups.filter(backup => isOwn(backup.file_name, who.prefix));
@@ -442,7 +497,7 @@ async function openBackups() {
             const card = document.createElement('div');
             card.className = 'stqa_trash_item stqa_backup_card';
             card.innerHTML = '<div class="stqa_backup_card_text"><b></b><span class="stqa_backup_card_chat"></span><small></small></div><div class="stqa_backup_card_actions"></div>';
-            if (!showAll && !context.groupId) {
+            if (!showAll && (character || !context.groupId)) {
                 // "…" until the chat's name is found
                 card.querySelector('.stqa_backup_card_chat').textContent = '…';
                 named.push([card, backup.file_name]);
@@ -463,17 +518,21 @@ async function openBackups() {
                 actions.append(element);
             };
             // The open character's chats tell which chat one of its backups is from
-            const view = () => viewBackup(backup.file_name, () => popup?.completeCancelled(), who && isOwn(backup.file_name, who.prefix) ? chatNames() : null)
+            // Restoring brings it in as the chat of the character (or group) fixed above
+            const close = (names) => {
+                restored = names ?? restored;
+                popup?.completeCancelled();
+            };
+            const view = () => viewBackup(backup.file_name, close, who && isOwn(backup.file_name, who.prefix) ? chatNames(false, character) : null, () => restoreOne(backup.file_name))
                 .catch(error => console.error(`[${MODULE}] Backup view failed`, error));
             icon('fa-eye', '보기', view);
             icon('fa-rotate-left', '새 채팅으로 불러오기', async () => {
-                if (await restoreBackup(backup.file_name)) {
-                    popup?.completeCancelled();
-                }
+                const done = await restoreOne(backup.file_name);
+                done?.names && close(done.own ? done.names : null);
             });
             icon('fa-trash', '백업 삭제', async () => {
                 if (await ask('백업 삭제', `${timeOf(backup.file_name)} 백업을 지웁니다. 되돌릴 수 없습니다.`, '삭제') && await deleteBackup(backup.file_name)) {
-                    backups.splice(backups.indexOf(backup), 1);
+                    backups.includes(backup) && backups.splice(backups.indexOf(backup), 1);
                     render();
                 }
             }, true);
@@ -481,13 +540,16 @@ async function openBackups() {
             list.append(card);
         }
         if (named.length) {
-            fillChatNames(named).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
+            fillChatNames(named, character).catch(error => console.error(`[${MODULE}] Backup chat names failed`, error));
         }
     };
 
     render();
     popup = new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기' });
     await popup.show();
+    // Chat names still being read for the closed window: no more downloads for it
+    content.querySelectorAll('.stqa_backup_card').forEach(card => (card.dataset.stqaGone = '1'));
+    return restored;
 }
 
 /** ST's Backups button (beside the chat search) opens our window instead of its list. */

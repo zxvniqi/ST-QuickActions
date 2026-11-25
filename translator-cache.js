@@ -37,19 +37,23 @@ export async function rememberTranslation(original, translation) {
         const settings = SillyTavern.getContext().extensionSettings[SETTINGS_KEY] ?? {};
         // The translator writes Korean time as an ISO string; same here
         const date = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
-        await new Promise((resolve, reject) => {
-            const transaction = db.transaction(STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME);
-            const lookup = store.index('originalText').get(original);
-            lookup.onsuccess = () => {
-                const record = lookup.result;
-                const entry = { translation, provider: settings.llm_provider, model: settings.llm_model, date };
-                record ? store.put({ ...record, ...entry }) : store.add({ originalText: original, ...entry });
-            };
-            transaction.oncomplete = resolve;
-            transaction.onerror = () => reject(transaction.error);
-        });
-        db.close();
+        try {
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction(STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(STORE_NAME);
+                const lookup = store.index('originalText').get(original);
+                lookup.onsuccess = () => {
+                    const record = lookup.result;
+                    const entry = { translation, provider: settings.llm_provider, model: settings.llm_model, date };
+                    record ? store.put({ ...record, ...entry }) : store.add({ originalText: original, ...entry });
+                };
+                transaction.oncomplete = resolve;
+                transaction.onerror = () => reject(transaction.error);
+            });
+        } finally {
+            // (Also when it failed: the connection isn't left open)
+            db.close();
+        }
     } catch (error) {
         console.warn(`[${MODULE}] Couldn't update the translator's saved translations`, error);
     }

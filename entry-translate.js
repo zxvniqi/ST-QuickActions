@@ -8,7 +8,8 @@
 //  - a translation shows in a stand-in that looks exactly like the box, in its place; the box
 //    itself is never written to
 // Google (through ST's translator) by default, or an AI connection with a prompt of one's own
-// (settings window); one job at a time. Stored translations load only once they are shown.
+// (settings window); several jobs may run at once, each a few texts at a time. Stored
+// translations load only once they are shown. ST's ⤢ on a translated box shows the translation.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
 
@@ -24,6 +25,8 @@ let openai = null;
 let worldInfo = null;
 // original → translation
 let cache = null;
+// (Being read: callers at the same time wait for all of it)
+let loading = null;
 let db = null;
 
 /* ---------- storage ---------- */
@@ -35,14 +38,25 @@ function openDb() {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
+    // A failure is not kept: the next time opens it again
+    db.catch(() => (db = null));
     return db;
 }
 
-async function loadCache() {
+function loadCache() {
     if (cache) {
-        return cache;
+        return Promise.resolve(cache);
     }
-    cache = new Map();
+    loading ??= readCache().then((read) => {
+        cache = read;
+        loading = null;
+        return read;
+    });
+    return loading;
+}
+
+async function readCache() {
+    const cache = new Map();
     try {
         const store = (await openDb()).transaction(STORE).objectStore(STORE);
         await new Promise((resolve) => {
@@ -91,6 +105,21 @@ function chunks(text) {
     return parts;
 }
 
+/**
+ * Translations kept here for the given texts (only those translated before): Map original →
+ * translation. Whether they are on show: translationsShown().
+ */
+export async function knownTranslations(texts) {
+    const kept = await loadCache();
+    return new Map(texts.filter(text => kept.has(text)).map(text => [text, kept.get(text)]));
+}
+
+/** Whether prompts and world info are being shown translated. */
+export const translationsShown = () => isOn('entryTranslate') && isOn('entryTranslatePrompts') && getSettings().translationView === true;
+
+/** One of the places (prompts, world info, character description) switched on. */
+const placeOn = place => isOn('entryTranslate') && isOn({ prompts: 'entryTranslatePrompts', world: 'entryTranslateWorld', character: 'entryTranslateCharacter' }[place]);
+
 export const DEFAULT_TRANSLATE_PROMPT = 'Translate the text below into natural, fluent Korean. Keep line breaks, Markdown, HTML tags, macros such as {{char}} and {{user}}, and proper nouns exactly as they are. Reply with the translation only, without any notes or explanations.\n\n{{text}}';
 
 /** One piece through the chosen engine: Google (ST's translator) or an AI connection. */
@@ -109,65 +138,110 @@ async function translatePiece(part) {
         const result = await context.ConnectionManagerRequestService.sendRequest(settings.translateProfile, [{ role: 'user', content: prompt }], maxTokens, { stream: false, extractData: true, includePreset: false, includeInstruct: false });
         return result?.content;
     }
-    return context.generateRaw({ prompt, responseLength: maxTokens });
+    // ST's generateRaw keeps the response length it replaces in one place: two at once would lose
+    // the user's own setting for good. These go one after another
+    const run = rawChain.then(() => context.generateRaw({ prompt, responseLength: maxTokens }));
+    rawChain = run.catch(() => {});
+    return run;
 }
 
-async function translateText(text) {
+let rawChain = Promise.resolve();
+
+// Texts being translated now (by any job): another job wanting one waits for it, not asks again.
+// text → { running, states }: the jobs waiting for it (it stops only once all of them are stopped)
+const inFlight = new Map();
+
+async function translateText(text, state) {
     if (cache.has(text)) {
         return cache.get(text);
     }
-    const parts = [];
-    for (const part of chunks(text)) {
-        // A long text stops between its pieces too
-        if (stopAsked) {
-            throw new Error('Stopped');
-        }
-        const result = part.trim() ? await translatePiece(part) : part;
-        if (typeof result !== 'string' || (part.trim() && !result.trim())) {
-            throw new Error('No translation');
-        }
-        parts.push(result.trim() ? result : part);
+    if (!inFlight.has(text)) {
+        const states = new Set([state]);
+        const running = (async () => {
+            const parts = [];
+            for (const part of chunks(text)) {
+                // A long text stops between its pieces too
+                if ([...states].every(waiting => waiting.stop)) {
+                    throw new Error('Stopped');
+                }
+                const result = part.trim() ? await translatePiece(part) : part;
+                if (typeof result !== 'string' || (part.trim() && !result.trim())) {
+                    throw new Error('No translation');
+                }
+                parts.push(result.trim() ? result : part);
+            }
+            const translation = parts.join('\n');
+            await remember(text, translation);
+            return translation;
+        })().finally(() => inFlight.delete(text));
+        inFlight.set(text, { running, states });
     }
-    const translation = parts.join('\n');
-    await remember(text, translation);
-    return translation;
+    const entry = inFlight.get(text);
+    entry.states.add(state);
+    return entry.running;
 }
 
-// Set by tapping the spinning button: the running job stops before its next text
-let stopAsked = false;
+// Jobs translating now: [{ done, failed, total }], counted together in one notice
+const progress = [];
+let progressToast = null;
 
-/** Translates the texts not translated yet, with a running count; returns how many failed. */
-async function translateAll(texts) {
+function showProgress() {
+    if (!progress.length) {
+        progressToast && toastr.clear(progressToast);
+        progressToast = null;
+        return;
+    }
+    const sum = key => progress.reduce((total, counts) => total + counts[key], 0);
+    const text = `번역하는 중… ${sum('done') + sum('failed')}/${sum('total')} (돌고 있는 버튼을 누르면 멈춥니다)`;
+    if (progressToast?.closest('body').length) {
+        progressToast.find('.toast-message').text(text);
+    } else {
+        progressToast = toastr.info(text, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
+    }
+}
+
+// Texts of one job translated at the same time (an AI connection is often limited per minute)
+const atOnce = () => (getSettings().translateEngine !== 'ai' ? 8 : getSettings().translateProfile ? 4 : 1);
+
+/**
+ * Translates the texts not translated yet, a few at a time, with a running count; returns how
+ * many failed. `state.stop`: set by tapping the job's spinning button (no new text is started).
+ */
+async function translateAll(texts, state = { stop: false }) {
     await loadCache();
     const todo = [...new Set(texts)].filter(text => text?.trim() && !isKorean(text) && !cache.has(text));
     if (!todo.length) {
         toastr.info('새로 번역할 것이 없습니다. 이미 번역했거나 한국어입니다.', TITLE);
         return 0;
     }
-    const toast = toastr.info(`번역하는 중… 0/${todo.length} (돌고 있는 버튼을 누르면 멈춥니다)`, TITLE, { timeOut: 0, extendedTimeOut: 0, tapToDismiss: false });
-    let failed = 0;
-    let done = 0;
-    try {
-        for (const text of todo) {
-            if (stopAsked) {
-                break;
-            }
-            toast.find('.toast-message').text(`번역하는 중… ${done + failed + 1}/${todo.length} (돌고 있는 버튼을 누르면 멈춥니다)`);
+    const counts = { done: 0, failed: 0, total: todo.length };
+    progress.push(counts);
+    showProgress();
+    let next = 0;
+    const worker = async () => {
+        while (!state.stop && next < todo.length) {
+            const text = todo[next++];
             try {
-                await translateText(text);
-                done++;
+                await translateText(text, state);
+                counts.done++;
             } catch (error) {
-                if (stopAsked) {
-                    break;
+                if (state.stop) {
+                    return;
                 }
                 console.error(`[${MODULE}] Translating failed`, error);
-                failed++;
+                counts.failed++;
             }
+            showProgress();
         }
+    };
+    try {
+        await Promise.all(Array.from({ length: Math.min(atOnce(), todo.length) }, worker));
     } finally {
-        toastr.clear(toast);
+        progress.splice(progress.indexOf(counts), 1);
+        showProgress();
     }
-    if (stopAsked) {
+    const { done, failed } = counts;
+    if (state.stop) {
         toastr.info(`멈췄습니다. ${done}개를 번역했습니다.`, TITLE);
     } else if (failed) {
         const hint = getSettings().translateEngine === 'ai' ? 'AI 연결(API)이 되어 있는지 확인합니다.' : '인터넷 연결을 확인하거나 잠시 뒤 다시 합니다.';
@@ -287,17 +361,18 @@ const boxValue = box => box.value;
 function targets() {
     const found = [];
     const add = (element, text) => element && found.push({ element, text });
+    // (A place switched off shows its originals)
     // Prompt list names
-    for (const name of document.querySelectorAll('.completion_prompt_manager_prompt_name > [title]:not(.fa-solid)')) {
+    for (const name of placeOn('prompts') ? document.querySelectorAll('.completion_prompt_manager_prompt_name > [title]:not(.fa-solid)') : []) {
         add(name, name.getAttribute('title'));
     }
     // The prompt edit form and the character description
-    for (const id of [...PROMPT_FIELDS, ...CHARACTER_FIELDS]) {
+    for (const id of [...placeOn('prompts') ? PROMPT_FIELDS : [], ...placeOn('character') ? CHARACTER_FIELDS : []]) {
         const field = document.getElementById(id);
         field && add(field, field.value);
     }
     // World info entries: name, and content while unfolded
-    for (const field of document.querySelectorAll('#world_popup_entries_list .world_entry textarea[name="comment"], #world_popup_entries_list .world_entry textarea[name="content"]')) {
+    for (const field of placeOn('world') ? document.querySelectorAll('#world_popup_entries_list .world_entry textarea[name="comment"], #world_popup_entries_list .world_entry textarea[name="content"]') : []) {
         add(field, field.value);
     }
     return found;
@@ -399,60 +474,56 @@ const LISTS = {
 
 const allTexts = texts => [...(texts?.names ?? []), ...(texts?.contents ?? [])];
 
-/* ---------- actions (one at a time) ---------- */
+/* ---------- actions (several may run at once, each from its own button) ---------- */
 
-let busy = null;
+// Jobs running: [{ button, stop }]
+const jobs = [];
 
 // The same button, also when the list drew it anew meanwhile (it keeps its id)
 const sameButton = (a, b) => Boolean(a && b) && (a === b || (Boolean(a.id) && a.id === b.id));
 
-/** Whether this button's job is the one running (tapping it then means stop). */
-const runs = button => Boolean(busy) && sameButton(busy, button);
+/** The job this button runs, if one is running (tapping the button then means stop). */
+const jobOf = button => jobs.find(running => sameButton(running.button, button)) ?? null;
+const runs = button => Boolean(jobOf(button));
 
 /**
- * Runs a translating job with its button spinning. Tapping that button again stops it; any
- * other translate button meanwhile only says one is running.
+ * Runs a translating job with its button spinning. Tapping that button again stops it; other
+ * buttons start jobs of their own meanwhile.
  */
 async function job(button, task) {
-    if (busy) {
-        if (sameButton(button, busy)) {
-            stopAsked = true;
-            toastr.info('멈추는 중입니다. 지금 번역 중인 글까지만 마칩니다.', TITLE);
-        } else {
-            toastr.info('이미 번역하고 있습니다. 멈추려면 돌고 있는 버튼을 누르세요.', TITLE);
-        }
+    const running = jobOf(button);
+    if (running) {
+        running.stop = true;
+        toastr.info('멈추는 중입니다. 지금 번역 중인 글까지만 마칩니다.', TITLE);
         return;
     }
-    busy = button;
-    stopAsked = false;
+    const state = { button, stop: false };
+    jobs.push(state);
     button?.classList.add('stqa_busy');
-    document.body.classList.add('stqa_translating');
     try {
-        await task();
+        await task?.(state);
     } catch (error) {
         console.error(`[${MODULE}] Translation failed`, error);
         toastr.error('번역하지 못했습니다.', TITLE);
     } finally {
-        busy = null;
-        stopAsked = false;
+        jobs.splice(jobs.indexOf(state), 1);
         button?.classList.remove('stqa_busy');
         // Drawn anew meanwhile: the new one stops spinning too
         button?.id && document.getElementById(button.id)?.classList.remove('stqa_busy');
-        document.body.classList.remove('stqa_translating');
     }
 }
 
 /** Names or contents of a list translated, then shown translated. */
-async function translatePart(list, part, button) {
+async function translatePart(list, part, button, state) {
     const texts = await LISTS[list](button);
     if (texts) {
-        await translateAll(texts[part]);
+        await translateAll(texts[part], state);
         await setView(true);
     }
 }
 
 /** One item: translated and shown if it isn't yet, otherwise switched between the two. */
-async function toggleOne(texts) {
+async function toggleOne(texts, state) {
     const present = texts.filter(text => text?.trim());
     if (!present.length) {
         toastr.info('번역할 내용이 없습니다.', TITLE);
@@ -462,7 +533,10 @@ async function toggleOne(texts) {
     // Only when all of it is shown translated does a tap go back to the original
     const showing = present.every(text => cache.has(text) && showsTranslation(text));
     if (!showing) {
-        await translateAll(present);
+        await translateAll(present, state);
+        if (state?.stop) {
+            return;
+        }
     }
     present.forEach(text => itemView.set(text, showing ? 'original' : 'translation'));
     render();
@@ -599,7 +673,7 @@ function addEntryButtons(entry) {
  * is put back right away, before the page is painted, so it never blinks out.
  */
 function placePromptButton() {
-    if (!isOn('entryTranslate')) {
+    if (!placeOn('prompts')) {
         return;
     }
     const add = document.querySelector('.completion_prompt_manager_footer .fa-plus-square')
@@ -617,19 +691,38 @@ function placePromptButton() {
     }
 }
 
+/** The buttons of places switched off taken away (world info entries' own three back in their row). */
+function removeButtons() {
+    if (!placeOn('prompts')) {
+        document.getElementById('stqa_prompt_tr')?.remove();
+        document.getElementById('stqa_prompt_form_tr')?.remove();
+    }
+    if (!placeOn('world')) {
+        document.getElementById('stqa_wi_tr')?.remove();
+        document.querySelectorAll('.stqa_wi_grid').forEach((grid) => {
+            grid.after(...grid.querySelectorAll(':scope > :not(.stqa_tr_icon)'));
+            grid.remove();
+        });
+    }
+    if (!placeOn('character')) {
+        document.getElementById('stqa_description_tr')?.remove();
+    }
+}
+
 function addButtons() {
+    removeButtons();
     if (!isOn('entryTranslate')) {
         return;
     }
     // Prompt edit form: in the middle of its bottom row (✕ on the left, ↺ 💾 on the right)
     const close = document.getElementById('completion_prompt_manager_popup_entry_form_close');
-    if (close && !document.getElementById('stqa_prompt_form_tr')) {
+    if (placeOn('prompts') && close && !document.getElementById('stqa_prompt_form_tr')) {
         close.after(buttonGroup('stqa_prompt_form_tr', 'promptForm', ONE_BUTTONS));
     }
     placePromptButton();
     // World info: one 文A beside the page controls (no room there for four); it opens a menu
     const pages = document.getElementById('world_info_pagination');
-    if (pages && !document.getElementById('stqa_wi_tr')) {
+    if (placeOn('world') && pages && !document.getElementById('stqa_wi_tr')) {
         const button = document.createElement('div');
         button.id = 'stqa_wi_tr';
         button.className = 'menu_button fa-solid fa-language stqa_tr_icon';
@@ -637,10 +730,10 @@ function addButtons() {
         button.dataset.trMenu = 'world';
         pages.after(button);
     }
-    document.querySelectorAll('#world_popup_entries_list .world_entry').forEach(addEntryButtons);
+    placeOn('world') && document.querySelectorAll('#world_popup_entries_list .world_entry').forEach(addEntryButtons);
     // Character description: next to its Ext. Media button
     const media = document.getElementById('character_open_media_overrides');
-    if (media && !document.getElementById('stqa_description_tr')) {
+    if (placeOn('character') && media && !document.getElementById('stqa_description_tr')) {
         media.before(buttonGroup('stqa_description_tr', 'character', ONE_BUTTONS, true));
     }
     syncToggles();
@@ -737,13 +830,34 @@ function onClick(event) {
     } else if (action === 'switch') {
         LISTS[list](icon).then(texts => switchOne(allTexts(texts)));
     } else if (action === 'one') {
-        job(icon, async () => {
+        job(icon, async (state) => {
             const texts = await LISTS[list](icon);
-            await toggleOne(scope ?(texts?.[scope] ?? []) : allTexts(texts));
+            await toggleOne(scope ? (texts?.[scope] ?? []) : allTexts(texts), state);
         });
     } else {
-        job(icon, () => translatePart(list, action, icon));
+        job(icon, state => translatePart(list, action, icon, state));
     }
+}
+
+/**
+ * ST's ⤢ (bigger editor) on a box showing its translation: the translation, bigger, to read
+ * (ST's own would show and edit the original). A box showing its original keeps ST's own.
+ */
+function onMaximize(event) {
+    const button = event.target.closest?.('.editor_maximize');
+    const box = button && document.getElementById(button.dataset.for ?? '');
+    const stand = box?.classList.contains(HIDDEN) && box.nextElementSibling?.classList.contains(STAND_IN) ? box.nextElementSibling : null;
+    if (!stand || !isOn('entryTranslate')) {
+        return;
+    }
+    event.stopImmediatePropagation();
+    event.preventDefault();
+    const { Popup, POPUP_TYPE } = SillyTavern.getContext();
+    const content = document.createElement('div');
+    content.className = 'stqa_tr_big';
+    content.innerHTML = '<div class="stqa_hint"><i class="fa-solid fa-language"></i> 번역문 · <i class="fa-solid fa-lock"></i></div><textarea class="text_pole" readonly></textarea>';
+    content.querySelector('textarea').value = stand.textContent;
+    new Popup(content, POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, large: true, allowVerticalScrolling: false }).show();
 }
 
 /** Stored translations are needed only while some are shown. */
@@ -755,6 +869,8 @@ export function applyEntryTranslate() {
     if (cache || showingAny()) {
         loadCache().then(render);
     }
+    // (Also switched off: what it shows in place goes back to the originals)
+    !isOn('entryTranslate') && cache && render();
 }
 
 export function initEntryTranslate() {
@@ -783,7 +899,9 @@ export function initEntryTranslate() {
         target && new MutationObserver(refresh).observe(target, { childList: true, subtree: true });
     }
     document.addEventListener('click', onClick, true);
-   // Forms filled in place (no new elements): look again when they are opened or switched
+    // Before ST's own handler, wherever it is bound
+    window.addEventListener('click', onMaximize, true);
+    // Forms filled in place (no new elements): look again when they are opened or switched
     const later = () => cache && setTimeout(render, 50);
     document.addEventListener('click', event => event.target.closest?.('.prompt-manager-edit-action, .prompt-manager-inspect-action, .world_entry .inline-drawer-toggle') && later());
     $('#world_editor_select').on('change', syncToggles);

@@ -1,11 +1,13 @@
 // Buttons on each message:
 //  - a row under the message (left, middle or right, as set): previous / next reply (the swipe arrows as
 //    plain buttons; "next" on the newest reply generates a new one) and "to the top of it"
-//  - in the message menu: "to the bottom of this message"
+//  - in the message menu: "to the bottom of this message", and "draw it again" (regex screens
+//    that came out as code)
 // ST clones #message_template for every new message, so patching the template covers all
 // future messages; already-rendered messages are patched once. Which buttons show is set by
 // classes on <body>, so switching them costs nothing per message.
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating, announceUpdated } from './util.js';
 
 /** Where ‹ 1/3 › and ↑ sit under the message. */
 export const FOOTER_POSITIONS = Object.freeze([
@@ -16,6 +18,7 @@ export const FOOTER_POSITIONS = Object.freeze([
 
 const FOOTER_CLASS = 'stqa_mes_footer';
 const TO_BOTTOM_CLASS = 'stqa_mes_to_bottom';
+const REDRAW_CLASS = 'stqa_mes_redraw';
 const FOOTER_BUTTONS = Object.freeze([
     { action: 'prev', icon: 'fa-chevron-left', title: '이전 답변', swipe: true },
     { action: 'count', title: '답변 번호', swipe: true },
@@ -53,9 +56,41 @@ function injectToBottom(box) {
     box.append(button);
 }
 
+function injectRedraw(box) {
+    if (box.querySelector(`.${REDRAW_CLASS}`)) {
+        return;
+    }
+    const button = document.createElement('div');
+    button.className = `mes_button ${REDRAW_CLASS} fa-solid fa-arrows-rotate`;
+    button.title = '다시 그리기';
+    box.append(button);
+}
+
+/**
+ * The message drawn again from its text (regexes, HTML screens) and announced as updated, so
+ * screen renderers (Tavern Helper) draw their panels again too. Its text is not changed.
+ */
+async function redraw(element) {
+    // (A reply being written is drawn as it comes; announcing it as changed would hand half of it on)
+    if (isGenerating()) {
+        return;
+    }
+    const context = SillyTavern.getContext();
+    const id = Number(element.getAttribute('mesid'));
+    const message = context.chat[id];
+    if (!message || typeof context.updateMessageBlock !== 'function') {
+        return;
+    }
+    context.updateMessageBlock(id, message);
+    await announceUpdated(id);
+}
+
 function patchMessages(root = document) {
     root.querySelectorAll('#message_template .mes_block, #chat .mes .mes_block').forEach(injectFooter);
-    root.querySelectorAll('#message_template .extraMesButtons, #chat .mes .extraMesButtons').forEach(injectToBottom);
+    root.querySelectorAll('#message_template .extraMesButtons, #chat .mes .extraMesButtons').forEach((box) => {
+        injectToBottom(box);
+        injectRedraw(box);
+    });
 }
 
 /**
@@ -75,6 +110,11 @@ function scrollToMessageEdge(message, edge) {
  * works even with ST's swipe arrows / gestures switched off (the point of these buttons).
  */
 async function swipe(message, direction) {
+    // ST skips its own checks for a swipe from a slash command: a reply being written, or a
+    // message being edited, is never swiped from here
+    if (isGenerating() || document.querySelector('#chat .edit_textarea')) {
+        return;
+    }
     const context = SillyTavern.getContext();
     const target = context.chat[Number(message.getAttribute('mesid'))];
     const to = context.swipe?.to;
@@ -114,16 +154,24 @@ function canMakeNew(element) {
 }
 
 function onChatClick(event) {
-    const button = event.target.closest(`.${FOOTER_CLASS} [data-stqa-action], .${TO_BOTTOM_CLASS}`);
+    const button = event.target.closest(`.${FOOTER_CLASS} [data-stqa-action], .${TO_BOTTOM_CLASS}, .${REDRAW_CLASS}`);
     const message = button?.closest('.mes');
     if (!message) {
         return;
     }
     const action = button.classList.contains(TO_BOTTOM_CLASS) ? 'bottom' : button.dataset.stqaAction;
     try {
+        if (button.classList.contains(REDRAW_CLASS)) {
+            redraw(message).catch(error => console.error(`[${MODULE}] Redraw failed`, error));
+            return;
+        }
         if (action === 'prev' || action === 'next') {
             // (Nothing happens, as with ST's own arrows on messages it doesn't swipe)
             if (action === 'next' && !canMakeNew(message)) {
+                return;
+            }
+            // (On its first version: nothing before it, and a swipe back would make it swipeable)
+            if (action === 'prev' && !(Number(SillyTavern.getContext().chat[Number(message.getAttribute('mesid'))]?.swipe_id) > 0)) {
                 return;
             }
             swipe(message, action).catch(error => console.error(`[${MODULE}] Swipe failed`, error));
@@ -144,6 +192,7 @@ export function applyMessageToolSettings() {
         FOOTER_POSITIONS.forEach(option => document.body.classList.toggle(`stqa_${name}_at_${option.value}`, option.value === position));
     }
     document.body.classList.toggle('stqa_to_bottom_on', isOn('menuToBottom'));
+    document.body.classList.toggle('stqa_redraw_on', isOn('redrawButton'));
     updateCount();
 }
 
@@ -168,7 +217,7 @@ export function initMessageTools() {
         new MutationObserver(updateCount).observe(chat, { childList: true });
     }
     const { eventSource, eventTypes } = SillyTavern.getContext();
-    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.MESSAGE_UPDATED, eventTypes.MESSAGE_DELETED]) {
-        eventSource.on(event, updateCount);
+    for (const event of [eventTypes.MESSAGE_SWIPED, eventTypes.MESSAGE_SWIPE_DELETED, eventTypes.CHARACTER_MESSAGE_RENDERED, eventTypes.MESSAGE_UPDATED, eventTypes.MESSAGE_DELETED]) {
+        event && eventSource.on(event, updateCount);
     }
 }

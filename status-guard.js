@@ -3,6 +3,7 @@
 // without telling (a translation, a reload, a swipe back, another extension) leaves the raw code
 // on screen. Such messages are drawn again (as after an edit), keeping the translation.
 import { MODULE, isOn } from './settings.js';
+import { announceUpdated } from './util.js';
 
 const CHECK_DELAY_MS = 600;
 // A panel still raw after a redraw is tried again a few times (the renderer may not have been
@@ -52,7 +53,7 @@ async function redraw(messageId) {
     }
     redrawn.set(messageId, { text: shown, tries: tries + 1 });
     context.updateMessageBlock(messageId, message);
-    await context.eventSource.emit(context.eventTypes.MESSAGE_UPDATED, messageId);
+    await announceUpdated(messageId);
     // Looked at again a little later, in case the renderer wasn't ready this time
     if (tries + 1 < MAX_TRIES) {
         setTimeout(scheduleCheck, RETRY_DELAY_MS);

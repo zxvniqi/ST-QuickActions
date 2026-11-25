@@ -4,7 +4,7 @@
 // themselves are moved into the window while it is up and put back where they were after, so
 // they work as they always do (settings hidden in 메뉴 정리 included). An extension with tabs can
 // be set to open on one tab, and each can have an icon of its own.
-import { MODULE, getSettings, isOn } from './settings.js';
+import { MODULE, getSettings, isOn, paintPalette } from './settings.js';
 import { describeItem } from './layout-manager.js';
 
 const TITLE = '편의성 모음';
@@ -143,6 +143,43 @@ function tabsOf(content) {
         return kids.map((element, index) => ({ name: names[index], element }));
     }
     return null;
+}
+
+/**
+ * The tab choice of an extension's settings, as 확장 설정 바로가기 shows it: a select ("처음 탭"),
+ * or null when its settings have no tabs (and none is set).
+ */
+export function tabSelectFor(entry) {
+    const tabs = tabsOf(drawerOf(entry.element).content);
+    const pinned = links().find(link => link.key === entry.key)?.tab ?? '';
+    if (!tabs && !pinned) {
+        return null;
+    }
+    const select = document.createElement('select');
+    select.className = 'text_pole stqa_link_tab';
+    select.dataset.key = entry.key;
+    select.append(new Option('처음 탭: 그대로', ''));
+    for (const tab of new Set([...(tabs ?? []).map(item => item.name), ...(pinned ? [pinned] : [])])) {
+        select.append(new Option(`처음 탭: ${tab}`, tab, false, tab === pinned));
+    }
+    return select;
+}
+
+/** Saves the tabs extensions' settings open on ({ key: tab }, '' = as they are), the same ones 확장 설정 바로가기 sets. */
+export function savePinnedTabs(chosen) {
+    const settings = getSettings();
+    const list = links().map(link => ({ ...link }));
+    for (const [key, tab] of Object.entries(chosen)) {
+        const link = list.find(item => item.key === key);
+        if (link) {
+            link.tab = tab;
+        } else if (tab) {
+            const entry = settingsOnPage().find(item => item.key === key);
+            entry && list.push({ key, label: entry.label, icon: entry.icon, places: [], tab });
+        }
+    }
+    settings.extensionLinkList = list.filter(link => link.places?.length || link.tab);
+    applyExtensionLinks();
 }
 
 /** Taps the tab an extension is set to open on (if it is there). */
@@ -298,10 +335,11 @@ export function applyExtensionLinks() {
  * Picks an icon from the built-in ones ('' = the extension's own, or its first letter).
  * @returns {Promise<string|null>} the classes, '' for the default, null if nothing was picked
  */
-async function pickIcon(label) {
+export async function pickIcon(label) {
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const root = document.createElement('div');
     root.className = 'stqa_icon_pick';
+    paintPalette(root);
     root.innerHTML = '<h3></h3><div class="stqa_icon_grid"></div>';
     root.querySelector('h3').textContent = label;
     const grid = root.querySelector('.stqa_icon_grid');
@@ -338,6 +376,8 @@ export async function pickExtensionLinks() {
     const icons = { ...pickedIcons() };
     const root = document.createElement('div');
     root.className = 'stqa_panel stqa_link_pick';
+    // (Opened from the settings window: in its colours)
+    paintPalette(root);
     root.innerHTML = '<h3>확장 설정 바로가기</h3><div class="stqa_link_grid"><span></span></div>';
     const grid = root.querySelector('.stqa_link_grid');
     for (const place of LINK_PLACES) {

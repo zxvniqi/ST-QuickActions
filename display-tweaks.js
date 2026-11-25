@@ -4,14 +4,30 @@
 import { isOn } from './settings.js';
 
 // Thumbnail address -> full picture address, per kind of picture
-const FULL_PICTURE = { avatar: file => `/characters/${file}`, persona: file => `/User Avatars/${file}` };
+const FULL_PICTURE = { avatar: '/characters/', persona: '/User Avatars/' };
+// Full pictures that couldn't be loaded: not asked for again (the thumbnail stays)
+const failedPictures = new Set();
 const AVATAR_SCOPES = '#chat, #rm_print_characters_block, #rm_group_members, #rm_group_add_members';
 
 let listWatcher = null;
 
+/**
+ * The full picture's address. It ends in "?file=" and the thumbnail's own file value: ST reads
+ * whose picture a chat avatar is from what follows the last "=" (tapping it to see it bigger).
+ */
 function fullPictureOf(src) {
     const match = src?.match(/^\/thumbnail\?type=(avatar|persona)&file=([^&]+)/);
-    return match ? encodeURI(FULL_PICTURE[match[1]](decodeURIComponent(match[2]))) : null;
+    // (A "%" in the name that isn't an encoding: as it is)
+    const decoded = (text) => {
+        try {
+            return decodeURIComponent(text);
+        } catch {
+            return text;
+        }
+    };
+    // The file name encoded as a whole ("#" or "?" in it would end the path otherwise)
+    const full = match ? `${encodeURI(FULL_PICTURE[match[1]])}${encodeURIComponent(decoded(match[2]))}?file=${match[2]}` : null;
+    return full && !failedPictures.has(full) ? full : null;
 }
 
 function sharpen(img) {
@@ -21,7 +37,12 @@ function sharpen(img) {
     }
     // Keep the thumbnail if the full picture can't be loaded
     const thumbnail = img.getAttribute('src');
-    img.addEventListener('error', () => img.getAttribute('src') === full && img.setAttribute('src', thumbnail), { once: true });
+    img.addEventListener('error', () => {
+        if (img.getAttribute('src') === full) {
+            failedPictures.add(full);
+            img.setAttribute('src', thumbnail);
+        }
+    }, { once: true });
     // Big card pictures are decoded off the main thread, so scrolling doesn't stall on them
     img.decoding = 'async';
     swapTo(img, full);
@@ -69,7 +90,7 @@ function loadListPictures() {
                     swapTo(img, full);
                 }
             })
-            .catch(() => {})
+            .catch(() => failedPictures.add(full))
             .finally(() => {
                 listLoads--;
                 loadListPictures();
@@ -112,6 +133,10 @@ function scan(root) {
 function watchAvatars() {
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
+            // Message text never holds avatars, and streaming changes it all the time
+            if (mutation.target.closest?.('.mes_text')) {
+                continue;
+            }
             if (mutation.type === 'attributes') {
                 onImage(mutation.target);
             } else {

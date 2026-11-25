@@ -5,6 +5,7 @@
 // that chat picks the switch's prompt and switches its items as saved.
 import { MODULE, getSettings, isOn } from './settings.js';
 import { onlyOwnChanges } from './mutations.js';
+import { ownChatDelete } from './message-trash.js';
 
 const PREFIX = 'completion_';
 const PRESET_SELECT = '#settings_preset_openai';
@@ -114,7 +115,7 @@ const currentStates = () => Object.fromEntries(promptOrder().map(entry => [entry
 
 async function saveCurrent(preset) {
     const { Popup } = SillyTavern.getContext();
-    const name = String(await Popup.show.input('빠른 전환 추가', '지금 켜고 끈 항목 상태를 이 이름으로 저장합니다.', '') || '').trim();
+    const name = String(await Popup.show.input('빠른 전환 추가', '프롬프트 항목 세팅을 이 이름으로 저장합니다.', '') || '').trim();
     if (!name) {
         return;
     }
@@ -237,7 +238,14 @@ export function applyToggleSets() {
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /** The chat just opened has a switch linked: its prompt is picked, then its items are switched. */
+// The latest chat's turn: an earlier one still waiting for its prompt stops there
+let followTurn = 0;
+
+/** The prompt ST has loaded (not only the one picked in the list), if it can be told. */
+const loadedPreset = () => openai?.oai_settings?.preset_settings_openai ?? presetName();
+
 async function followLink() {
+    const turn = ++followTurn;
     const key = chatKey();
     const link = key && links()[key];
     if (!link || !isOn('toggleSetChips') || !manager() || SillyTavern.getContext().mainApi !== 'openai') {
@@ -251,19 +259,28 @@ async function followLink() {
             toastr.warning(`연결된 프롬프트 '${link.preset}'을(를) 찾지 못했습니다.`, TITLE);
             return;
         }
-        // Picked the way a tap on the list picks it; ST tells when it has loaded
+        // Picked the way a tap on the list picks it (through jQuery, as ST and the prompt list do)
         const { eventSource, eventTypes } = SillyTavern.getContext();
-        const loaded = new Promise((resolve) => {
+        const told = new Promise((resolve) => {
             eventTypes.OAI_PRESET_CHANGED_AFTER ? eventSource.once(eventTypes.OAI_PRESET_CHANGED_AFTER, resolve) : resolve();
-            setTimeout(resolve, 3000);
         });
-        // (through jQuery, as ST and the prompt list pick it)
         $(select).val(option.value).trigger('change');
-        await loaded;
+        // The set is put on that prompt only once ST has it loaded: ST names the new prompt at
+        // once and loads its items after (other extensions may take a while), not forever
+        const applying = openai.getPresetApplicationPromise?.() ?? told;
+        const loaded = await Promise.race([Promise.resolve(applying).then(() => true, () => true), wait(15000).then(() => false)]);
+        if (!loaded) {
+            turn === followTurn && toastr.warning(`연결된 프롬프트 '${link.preset}'을(를) 다 불러오지 못해 빠른 전환을 적용하지 않았습니다.`, TITLE);
+            return;
+        }
         await wait(100);
     }
-    // Another chat was opened meanwhile: that one's link decides
-    if (chatKey() !== key) {
+    // Another chat was opened meanwhile (that one's link decides), or the prompt never came
+    if (turn !== followTurn || chatKey() !== key) {
+        return;
+    }
+    if (loadedPreset() !== link.preset) {
+        toastr.warning(`연결된 프롬프트 '${link.preset}'(으)로 바뀌지 않아 빠른 전환을 적용하지 않았습니다.`, TITLE);
         return;
     }
     const set = setsOf(link.preset).find(item => item.name === link.name);
@@ -292,11 +309,28 @@ function onChatRenamed({ avatarId, groupId, oldFileName, newFileName }) {
     }
 }
 
+/** A chat this extension deleted (its character known): its link goes. */
+export function forgetLinkedChat(avatar, name) {
+    const key = `c:${avatar}:${String(name ?? '').replace(/\.jsonl$/, '')}`;
+    if (links()[key]) {
+        delete links()[key];
+        SillyTavern.getContext().saveSettingsDebounced();
+    }
+}
+
 function onChatDeleted(name) {
+    // (This extension's own deletions were handled with their character, which may not be the open one)
+    if (ownChatDelete()) {
+        return;
+    }
     const chat = String(name ?? '').replace(/\.jsonl$/, '');
+    // A chat of the open character (or group): another one's chat of the same name keeps its link
+    const context = SillyTavern.getContext();
+    const avatar = context.characters[context.characterId]?.avatar;
+    const prefix = context.groupId ? `g:${context.groupId}:` : avatar ? `c:${avatar}:` : null;
     let changed = false;
     for (const key of Object.keys(links())) {
-        if (key.endsWith(`:${chat}`)) {
+        if (prefix && key === prefix + chat) {
             delete links()[key];
             changed = true;
         }
@@ -314,7 +348,8 @@ export function initToggleSets() {
     // that took the bar away it is put back at once, before the screen is drawn; otherwise only
     // which chip is lit may have changed, which can wait a moment.
     new MutationObserver((records) => {
-        if (onlyOwnChanges(records)) {
+        // (Off, with no bar left to take away: nothing to do)
+        if (onlyOwnChanges(records) || (!isOn('toggleSetChips') && !root.querySelector(`.${BAR_CLASS}`))) {
             return;
         }
         clearTimeout(timer);

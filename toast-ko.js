@@ -1,6 +1,7 @@
 // Korean for ST's pop-up notices (toasts) its Korean translation leaves in English. A notice is
 // matched as it is shown: word for word, or with its changing parts (${0}...) kept as they are.
 // Part of "ST 한국어 번역 채우기·고치기".
+import { isOn } from './settings.js';
 
 const TOASTS = Object.freeze({
     // Chat and characters
@@ -584,7 +585,10 @@ export function translateToasts() {
             continue;
         }
         toastr[kind] = function (message, title, ...rest) {
-            return original.call(this, toastKorean(message), toastKorean(title), ...rest);
+            // Switched off: as they come (the wrapper stays, it can't be taken out from under others)
+            return isOn('koFill')
+                ? original.call(this, toastKorean(message), toastKorean(title), ...rest)
+                : original.call(this, message, title, ...rest);
         };
     }
 }

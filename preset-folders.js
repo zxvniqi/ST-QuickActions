@@ -1,7 +1,7 @@
 // Folders where the lists are. The prompt (preset) dropdown stays as it is; when it opens, a list
 // like its own unfolds right under it: folders (tap the arrow row to unfold its prompts below
-// it) and the prompts in no folder, in the order set in 프롬프트 관리 (the last row,
-// preset-manage.js). The regex panel gets a folder button.
+// it) and the prompts in no folder, in the order set in 프롬프트 관리 (the first row, kept in
+// sight while the list scrolls: preset-manage.js, with a search box beside it). Folders opened fold again when the list closes. The regex panel gets a folder button.
 import { isOn } from './settings.js';
 import { FOLDER_AREAS, getFolders } from './folders.js';
 import { openFolderEditor } from './folder-editor.js';
@@ -13,7 +13,17 @@ const REGEX_BUTTON_ID = 'stqa_regex_folders';
 const GAP = 2;
 
 let list = null;
-// Folders unfolded in the list (the one holding the prompt in use opens by itself)
+// The first row (프롬프트 관리 and the search box), made once per opening so typing keeps its focus
+let top = null;
+let query = '';
+const searchable = text => String(text).toLowerCase().replace(/\s+/g, '');
+// When the search box was last tapped: a phone's keyboard comes up a moment later (the page
+// resizes and scrolls, maybe before the box has its focus), and that must not close the list
+let typingAt = 0;
+const TYPING_GRACE_MS = 1500;
+const typing = () => Boolean(list) && (list.contains(document.activeElement) || Date.now() - typingAt < TYPING_GRACE_MS);
+
+// Folders unfolded while the list is open (the one holding the prompt in use opens by itself)
 const unfoldedFolders = new Set();
 
 const nameOf = option => FOLDER_AREAS.presets.describe(option).key;
@@ -21,9 +31,17 @@ const nameOf = option => FOLDER_AREAS.presets.describe(option).key;
 function closeList() {
     list?.remove();
     list = null;
+    top = null;
+    query = '';
+    unfoldedFolders.clear();
+    clearInterval(anchorWatch);
+    drawerWatch?.disconnect();
+    drawerWatch = null;
+    window.removeEventListener('popstate', closeList);
+    document.removeEventListener('keydown', onEscape, true);
     document.removeEventListener('pointerdown', onOutside, true);
     document.removeEventListener('scroll', onScroll, true);
-    window.removeEventListener('resize', closeList);
+    window.removeEventListener('resize', onResize);
 }
 
 const isOnSelect = (event, select) => {
@@ -34,9 +52,24 @@ const isOnSelect = (event, select) => {
 /** A tap elsewhere closes the list (a tap on the dropdown itself toggles it, on click). */
 function onOutside(event) {
     const select = document.querySelector(PRESET_SELECT);
-    if (list && !list.contains(event.target) && !(select && isOnSelect(event, select))) {
-        closeList();
+    if (!list || list.contains(event.target) || (select && isOnSelect(event, select))) {
+        return;
     }
+    // A panel's own icon on the top bar closes the panel when the finger lifts (a tap elsewhere
+    // closes it as it lands): the list goes at the same moment, not one step before it
+    if (event.target.closest?.('#top-settings-holder .drawer-toggle, #top-settings-holder .drawer-icon')) {
+        const shown = list;
+        const go = () => {
+            document.removeEventListener('click', go, true);
+            document.removeEventListener('pointercancel', go, true);
+            list === shown && closeList();
+        };
+        document.addEventListener('click', go, true);
+        document.addEventListener('pointercancel', go, true);
+        setTimeout(go, 1500);
+        return;
+    }
+    closeList();
 }
 
 function pick(select, name) {
@@ -59,6 +92,22 @@ function itemRow(select, name, current, nested) {
 function renderList(select) {
     const current = select.selectedOptions[0] ? nameOf(select.selectedOptions[0]) : '';
     const rows = [];
+    // Searching: every prompt whose name has the words, folders or not, in the list's order
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean).map(searchable);
+    if (words.length) {
+        const names = presetEntries().flatMap(({ name, folder, members }) => (folder ? members : [name]));
+        const found = names.filter(name => words.every(word => searchable(name).includes(word)));
+        rows.push(...found.map(name => itemRow(select, name, current, false)));
+        if (!found.length) {
+            const none = document.createElement('div');
+            none.className = 'stqa_preset_none';
+            none.textContent = '없음';
+            rows.push(none);
+        }
+        showRows(rows);
+        list.scrollTop = 0;
+        return;
+    }
     for (const { name, folder, members } of presetEntries()) {
         if (!folder) {
             rows.push(itemRow(select, name, current, false));
@@ -82,17 +131,89 @@ function renderList(select) {
             rows.push(...members.map(name => itemRow(select, name, current, true)));
         }
     }
-    const edit = document.createElement('div');
-    edit.className = 'stqa_preset_edit';
-    edit.innerHTML = '<i class="fa-solid fa-list-check"></i><span>프롬프트 관리</span>';
-    edit.addEventListener('click', () => {
+    const scroll = list.scrollTop;
+    showRows(rows);
+    list.scrollTop = scroll;
+}
+
+/**
+ * The rows under the first one, put in anew. The first row stays where it is: taken out and put
+ * back, its search box would lose its focus (a phone's keyboard sends an input event as it comes
+ * up, which draws the list again, and the keyboard would close at once).
+ */
+function showRows(rows) {
+    if (top.parentElement !== list) {
+        list.prepend(top);
+    }
+    while (top.nextSibling) {
+        top.nextSibling.remove();
+    }
+    list.append(...rows);
+}
+
+/** 프롬프트 관리 and, beside it, a box to find a prompt by its name. */
+function topRow(select) {
+    const row = document.createElement('div');
+    row.className = 'stqa_preset_top';
+    row.innerHTML = '<div class="stqa_preset_edit" title="프롬프트 관리"><i class="fa-solid fa-list-check"></i></div><div class="stqa_preset_search"><i class="fa-solid fa-magnifying-glass"></i><input type="search" class="text_pole" placeholder="찾기"></div>';
+    row.querySelector('.stqa_preset_edit').addEventListener('click', () => {
         closeList();
         openPresetManager();
     });
-    rows.push(edit);
-    const scroll = list.scrollTop;
-    list.replaceChildren(...rows);
-    list.scrollTop = scroll;
+    const input = row.querySelector('input');
+    const mark = () => (typingAt = Date.now());
+    input.addEventListener('pointerdown', mark);
+    input.addEventListener('focus', mark);
+    input.addEventListener('input', () => {
+        query = input.value;
+        renderList(select);
+    });
+    // Enter picks the only prompt found
+    input.addEventListener('keydown', (event) => {
+        // (Not the Enter that finishes a Korean syllable)
+        if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+            event.preventDefault();
+            const found = list.querySelectorAll('.stqa_preset_item');
+            found.length === 1 && found[0].click();
+        }
+    });
+    return row;
+}
+
+/** Typing (a phone's keyboard opening) changes the height: the list stays, put in place again. */
+function onResize() {
+    if (list && typing()) {
+        keepInView();
+        return;
+    }
+    closeList();
+}
+
+/**
+ * While typing: the keyboard takes the bottom of the screen, and the dropdown may now be under it.
+ * The list no longer follows the dropdown; it stays where it is, moved up only as far as needed
+ * for its search box and a few rows to show (a search box out of sight loses its focus, which
+ * closes the keyboard).
+ */
+function keepInView() {
+    const box = list.getBoundingClientRect();
+    const room = window.innerHeight;
+    const top = Math.max(8, Math.min(box.top, room - 160));
+    list.style.maxHeight = `${Math.max(120, room - top - 8)}px`;
+    putAt(box.left, top);
+}
+
+/**
+ * Puts the list's top left corner at a point of the screen. Measured: some themes move what is
+ * "fixed" (a transformed page), so top: 0 is not always the top of the screen.
+ */
+function putAt(left, top) {
+    list.style.bottom = '';
+    list.style.left = '0px';
+    list.style.top = '0px';
+    const origin = list.getBoundingClientRect();
+    list.style.left = `${left - origin.left}px`;
+    list.style.top = `${top - origin.top}px`;
 }
 
 /** Puts the list right under the dropdown (above it when there is more room there). */
@@ -101,11 +222,11 @@ function placeList(select) {
     const below = window.innerHeight - box.bottom - GAP * 4;
     const above = box.top - GAP * 4;
     const up = below < 240 && above > below;
-    list.style.left = `${box.left}px`;
     list.style.width = `${box.width}px`;
     list.style.maxHeight = `${Math.max(160, Math.min(up ? above : below, window.innerHeight * 0.6))}px`;
-    list.style.top = up ? '' : `${box.bottom + GAP}px`;
-    list.style.bottom = up ? `${window.innerHeight - box.top + GAP}px` : '';
+    // Above the dropdown: its bottom right on top of it (placed by its top, measured)
+    const height = list.getBoundingClientRect().height;
+    putAt(box.left, up ? Math.max(4, box.top - GAP - height) : box.bottom + GAP);
 }
 
 function openList(select) {
@@ -121,17 +242,46 @@ function openList(select) {
     // ST closes its side panels on a tap outside them, except on a few kinds of lists; this is one
     list.className = 'select2-results';
     document.body.append(list);
+    top = topRow(select);
     renderList(select);
     placeList(select);
     list.querySelector('.stqa_active')?.scrollIntoView({ block: 'nearest' });
     document.addEventListener('pointerdown', onOutside, true);
     document.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', closeList);
+    window.addEventListener('resize', onResize);
+    // The phone's back (or Esc) closes it, and so does its panel closing some other way: the list
+    // isn't left floating over what comes up instead
+    window.addEventListener('popstate', closeList);
+    document.addEventListener('keydown', onEscape, true);
+    // Its panel starting to close (ST marks it at once, then slides it away): the list goes with it
+    // right then, not once the panel is gone
+    const drawer = select.closest('.drawer-content');
+    if (drawer) {
+        drawerWatch = new MutationObserver(() => {
+            (drawer.classList.contains('closedDrawer') || !drawer.classList.contains('openDrawer')) && closeList();
+        });
+        drawerWatch.observe(drawer, { attributes: true, attributeFilter: ['class'] });
+    }
+    anchorWatch = setInterval(() => {
+        const shown = select.isConnected && (typeof select.checkVisibility === 'function' ? select.checkVisibility() : select.getClientRects().length > 0);
+        shown || closeList();
+    }, 250);
+}
+
+let anchorWatch = null;
+let drawerWatch = null;
+
+function onEscape(event) {
+    if (event.key === 'Escape' && list) {
+        event.stopPropagation();
+        closeList();
+    }
 }
 
 /** The panel under the list scrolled: the list would float away from the dropdown. */
 function onScroll(event) {
-    if (list && !list.contains(event.target)) {
+    // (Not while typing in its search box: a phone's keyboard opening scrolls the page)
+    if (list && !list.contains(event.target) && !typing()) {
         closeList();
     }
 }

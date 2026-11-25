@@ -3,6 +3,7 @@
 // were. Kept on the server (user files), one file per chat, so every device sees the same trash;
 // the settings hold only an index of those files.
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 
 const OPTION_ID = 'stqa_option_trash';
 const TITLE = '편의성 모음';
@@ -25,12 +26,25 @@ let paused = 0;
 // Trash files are read and written one change at a time
 let writing = Promise.resolve();
 
-const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
 const queued = task => (writing = writing.then(task, task));
 const keepDays = () => Math.min(30, Math.max(1, Math.round(Number(getSettings().trashDays)) || 7));
 // Most items one chat's trash keeps (0: no limit)
 const keepCount = () => Math.max(0, Math.round(Number(getSettings().trashMax)) || 0);
-const save = () => SillyTavern.getContext().saveSettingsDebounced();
+const save = () => {
+    SillyTavern.getContext().saveSettingsDebounced();
+    showCount();
+};
+
+/** How many deletions the open chat's trash holds, on its Options menu item (none: nothing shown). */
+function showCount() {
+    const item = document.getElementById(OPTION_ID);
+    if (!item) {
+        return;
+    }
+    const key = isOn('messageTrash') ? openChat()?.key : null;
+    const count = key ? Number(getSettings().trashIndex?.[key]?.count) || 0 : 0;
+    count ? (item.dataset.stqaCount = count > 99 ? '99+' : String(count)) : delete item.dataset.stqaCount;
+}
 const stripExtension = name => String(name ?? '').replace(/\.jsonl$/, '');
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const copy = value => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
@@ -80,56 +94,182 @@ function findNear(chat, print, near) {
     return best;
 }
 
-async function readTrash(key) {
-    const entry = getSettings().trashIndex?.[key];
-    if (!entry) {
-        return [];
+/** Every time a message was sent at (its own and each of its swipes'): swiping changes its own. */
+const datesOf = message => [message?.send_date, ...(Array.isArray(message?.swipe_info) ? message.swipe_info.map(info => info?.send_date) : [])].filter(Boolean);
+
+/**
+ * The message a fingerprint names, nearest to `near`; when its text has changed since (edited,
+ * swiped), by its name and one of its send times. -1 if none.
+ */
+function findAnchor(chat, print, near) {
+    const exact = findNear(chat, print, near);
+    if (exact !== -1) {
+        return exact;
     }
+    const [date, name] = String(print ?? '').split('\u0001');
+    let best = -1;
+    chat.forEach((message, index) => {
+        if (date && message.name === name && datesOf(message).includes(date) && (best === -1 || Math.abs(index - near) < Math.abs(best - near))) {
+            best = index;
+        }
+    });
+    return best;
+}
+
+/**
+ * The message deleted swipes came from, if it is still there: the same speaker, still holding the
+ * reply it showed after the deletion (or one sent at the same time). Nearest to where it was; -1 if none.
+ */
+// How much of each remaining swipe identifies the message a deleted swipe came from
+const OWNER_PREFIX = 200;
+
+function swipeOwner(chat, item) {
+    const shown = item.template ?? {};
+    const own = new Set(Array.isArray(shown.stqaOwnSwipes) ? shown.stqaOwnSwipes : []);
+    const textsOf = message => (Array.isArray(message.swipes) && message.swipes.length ? message.swipes : [message.mes]);
+    const isOwner = message => Boolean(message.is_user) === Boolean(shown.is_user) && message.name === item.name
+        && (textsOf(message).some(text => own.has(String(text ?? '').slice(0, OWNER_PREFIX)))
+            || textsOf(message).includes(shown.mes)
+            || (Boolean(shown.send_date) && datesOf(message).includes(shown.send_date)));
+    let best = -1;
+    chat.forEach((message, index) => {
+        if (isOwner(message) && (best === -1 || Math.abs(index - item.index) < Math.abs(best - item.index))) {
+            best = index;
+        }
+    });
+    return best;
+}
+
+/**
+ * A chat's trash file, named after the chat alone: the index of trash files is in the settings,
+ * which another device may save over, and a chat's file is found again without it.
+ */
+const fileFor = key => `${FILE_PREFIX}${hash(key)}${hash([...key].reverse().join(''))}.json`;
+
+/** Whose chat a key names ("c:avatar:chat" / "g:group:chat"). */
+function chatOfKey(key) {
+    const rest = key.slice(2);
+    const cut = rest.indexOf(':');
+    return { kind: key[0], owner: rest.slice(0, cut), chat: rest.slice(cut + 1) };
+}
+
+/** Every file a chat's trash may be in: the one the index names (older ones were named by time) and its own. */
+const filesOf = key => [...new Set([getSettings().trashIndex?.[key]?.file, fileFor(key)].filter(Boolean))];
+
+/** A trash file's items; null if it isn't there or is another chat's (a file says whose it is). */
+async function readFile(file, key) {
+    const response = await fetch(`/user/files/${file}`, { cache: 'no-store' });
+    if (response.status === 404) {
+        return null;
+    }
+    if (!response.ok) {
+        throw new Error(`Trash not read (${response.status})`);
+    }
+    const data = await response.json();
+    if (!Array.isArray(data?.items)) {
+        throw new Error('Trash file not readable');
+    }
+    // (Files from before don't say: taken as this chat's)
+    return data.key === undefined || data.key === key ? data.items : null;
+}
+
+/**
+ * A chat's trash (from all its files, each item once). Only a trash that isn't there reads as
+ * empty: one that couldn't be read (network, server) throws, so nothing is written over it with
+ * what little is known.
+ */
+async function readTrash(key) {
+    const items = [];
+    const seen = new Set();
+    for (const file of filesOf(key)) {
+        for (const item of await readFile(file, key) ?? []) {
+            seen.has(item.id) || (seen.add(item.id), items.push(item));
+        }
+    }
+    return items;
+}
+
+/** True: the file is gone (or never was). */
+async function deleteFile(file) {
     try {
-        const response = await fetch(`/user/files/${entry.file}`, { cache: 'no-store' });
-        const data = response.ok ? await response.json() : null;
-        return Array.isArray(data?.items) ? data.items : [];
+        const response = await fetch('/api/files/delete', {
+            method: 'POST',
+            headers: SillyTavern.getContext().getRequestHeaders(),
+            body: JSON.stringify({ path: `user/files/${file}` }),
+        });
+        return response.ok || response.status === 404;
     } catch {
-        return [];
+        return false;
     }
 }
 
-async function deleteFile(file) {
-    await fetch('/api/files/delete', {
+async function uploadTrash(file, items, key) {
+    const response = await fetch('/api/files/upload', {
         method: 'POST',
         headers: SillyTavern.getContext().getRequestHeaders(),
-        body: JSON.stringify({ path: `user/files/${file}` }),
-    }).catch(() => {});
+        body: JSON.stringify({ name: file, data: toBase64(JSON.stringify({ key, items })) }),
+    });
+    if (!response.ok) {
+        throw new Error(`Trash not saved (${response.status})`);
+    }
 }
 
-/** Writes a chat's trash (an empty one takes its file away). `chat` is needed for a new file. */
+/**
+ * Writes a chat's trash into its own file (an empty one takes its files away); a file named the
+ * older way goes once its items are in the new one.
+ */
 async function writeTrash(key, items, chat = null) {
     const settings = getSettings();
     settings.trashIndex ??= {};
-    let entry = settings.trashIndex[key];
+    const old = filesOf(key);
     if (!items.length) {
-        if (entry) {
-            await deleteFile(entry.file);
+        for (const file of old) {
+            if (!await deleteFile(file)) {
+                throw new Error('Trash not emptied');
+            }
+        }
+        if (settings.trashIndex[key]) {
             delete settings.trashIndex[key];
             save();
         }
         return;
     }
-    if (!entry) {
-        entry = { file: `${FILE_PREFIX}${hash(key)}-${Date.now().toString(36)}.json`, kind: chat.kind, owner: chat.owner, chat: chat.chat };
-    }
-    const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        headers: SillyTavern.getContext().getRequestHeaders(),
-        body: JSON.stringify({ name: entry.file, data: toBase64(JSON.stringify({ items })) }),
-    });
-    if (!response.ok) {
-        throw new Error(`Trash not saved (${response.status})`);
+    const { kind, owner, chat: name } = chat ?? settings.trashIndex[key] ?? chatOfKey(key);
+    const entry = { file: fileFor(key), kind, owner, chat: name };
+    await uploadTrash(entry.file, items, key);
+    // An older file that won't go is made the same, so what was taken out doesn't come back from it
+    for (const file of old.filter(file => file !== entry.file)) {
+        (await deleteFile(file)) || await uploadTrash(file, items, key);
     }
     entry.oldest = Math.min(...items.map(item => item.deleted));
     entry.count = items.length;
     settings.trashIndex[key] = entry;
     save();
+}
+
+/**
+ * The open chat's trash put back in the index when another device's settings lost it (its file
+ * is named after the chat), so the cleanup by age finds it again.
+ */
+function relinkOpenChat() {
+    const chat = openChat();
+    if (!chat || !isOn('messageTrash') || getSettings().trashIndex?.[chat.key]) {
+        return;
+    }
+    queued(async () => {
+        if (getSettings().trashIndex?.[chat.key]) {
+            return;
+        }
+        const items = await readFile(fileFor(chat.key), chat.key);
+        if (items?.length) {
+            const settings = getSettings();
+            settings.trashIndex ??= {};
+            settings.trashIndex[chat.key] = { file: fileFor(chat.key), kind: chat.kind, owner: chat.owner, chat: chat.chat, oldest: Math.min(...items.map(item => item.deleted)), count: items.length };
+            save();
+        }
+    }).catch(() => {
+        // Tried again when the chat is opened next
+    });
 }
 
 /** Over the most a trash keeps, the items deleted longest ago go (the rest keep their order). */
@@ -142,20 +282,64 @@ function capped(items) {
     return items.filter(item => kept.has(item));
 }
 
-/** Adds to a chat's trash; a failure is told (the deletion itself stands). */
+/** Adds to a chat's trash; a failure is told (the deletion itself stands). True once it is there. */
 function addToTrash(key, chat, change) {
-    queued(async () => {
+    return queued(async () => {
         const items = await readTrash(key);
         change(items);
         await writeTrash(key, capped(items), chat);
+        return true;
     }).catch((error) => {
         console.error(`[${MODULE}] Trash failed`, error);
         toastr.error('지운 메시지를 휴지통에 옮기지 못했습니다.', TITLE);
+        return false;
     });
 }
 
+// Deletions gathered when the page was left: the page may close before they reach the server, so
+// they are also kept in the browser and put in the trash on the next visit (once only, by id)
+const PENDING_KEY = 'stqa_trash_pending';
+// The account signed in (ST with user accounts: several may use one browser)
+let userHandle = () => 'default-user';
+const userReady = import('../../../user.js')
+    .then(user => typeof user.getCurrentUserHandle === 'function' && (userHandle = user.getCurrentUserHandle))
+    .catch(() => {});
+
+function readPending() {
+    try {
+        const list = JSON.parse(localStorage.getItem(PENDING_KEY) ?? '[]');
+        return Array.isArray(list) ? list : [];
+    } catch {
+        return [];
+    }
+}
+
+function writePending(list) {
+    try {
+        list.length ? localStorage.setItem(PENDING_KEY, JSON.stringify(list)) : localStorage.removeItem(PENDING_KEY);
+    } catch {
+        // (Too big for the browser's storage: only the upload is left)
+    }
+}
+
+/** Puts `item` into a chat's trash, unless it is there already. */
+function addItem(key, chat, item) {
+    return addToTrash(key, chat, items => items.some(other => other.id === item.id) || items.push(item))
+        .then(done => done && writePending(readPending().filter(entry => entry.item?.id !== item.id)));
+}
+
+/** What a page left last time kept in the browser. */
+async function sendPending() {
+    await userReady;
+    // (Another account's: left for it)
+    for (const { key, chat, item, user } of readPending()) {
+        key && item?.id && (user ?? 'default-user') === userHandle() && addItem(key, chat, item);
+    }
+}
+
 // Deletions in a row (a range is deleted one message at a time) are gathered into one item
-const GATHER_MS = 300;
+// (ST's /cut and "Delete messages" save between deletions, so it can take a moment)
+const GATHER_MS = 1000;
 let gathering = null;
 
 /** A message's swipes as they are now (kept as they were while one of them is being deleted). */
@@ -180,11 +364,61 @@ function snapshot() {
     swipeShadow = swipes;
 }
 
+// Deletions being gathered into one item: { key, chat, sideleaf, before, copies, messages }. What
+// went is worked out the moment ST tells of it (the chat may be another one a moment later); the
+// short wait only puts deletions in a row into one item
+let batch = null;
+
+/** What of `before` is gone from `now`: [{ index, anchor, message }] (copies kept per message). */
+function goneFrom(before, now, copies) {
+    const left = new Set(now);
+    const gone = before.filter(message => !left.has(message));
+    // Nothing of before left in a chat that has messages: it was loaded again, nothing was deleted
+    if (!gone.length || (left.size && gone.length === before.length)) {
+        return [];
+    }
+    const messages = [];
+    // The nearest message before each that stays: where it goes back (one pass)
+    let anchor = null;
+    before.forEach((message, index) => {
+        if (left.has(message)) {
+            anchor = fingerprint(message);
+            return;
+        }
+        copies.has(message) || copies.set(message, copy(message));
+        messages.push({ index, anchor, message: copies.get(message) });
+    });
+    return messages;
+}
+
+/** The gathered deletions go to the trash now. */
+function flush(leaving = false) {
+    clearTimeout(gathering);
+    gathering = null;
+    const done = batch;
+    batch = null;
+    snapshot();
+    // Put away in 별지 (it saved a new revision meanwhile): not deleted. (Another chat open by now:
+    // what was seen when the deletion came counts)
+    const sideleafNow = openChat()?.key === done?.key ? sideleafRevision() : done?.sideleafSeen;
+    if (!done?.messages.length || !isOn('messageTrash') || sideleafNow !== done.sideleaf) {
+        return;
+    }
+    const item = { id: newId(), deleted: Date.now(), messages: done.messages };
+    leaving && writePending([...readPending(), { key: done.key, chat: done.chat, item, user: userHandle() }]);
+    addItem(done.key, done.chat, item);
+}
+
 /** The chat changed some other way: the snapshot follows it. */
 function remember() {
     // Off: nothing is kept, so nothing is copied either
-    if (!isOn('messageTrash') || gathering) {
-        // (Deletions being gathered: the chat as it was before them is kept until they are taken)
+    if (!isOn('messageTrash')) {
+        return;
+    }
+    if (batch) {
+        // Another chat open now: what was gathered from the last one goes to its trash at once
+        openChat()?.key !== batch.key && flush();
+        // (Otherwise the chat as it was before them is kept until they are taken)
         return;
     }
     // Fewer messages and no deletion heard of yet: another extension reacted to a deletion before
@@ -197,49 +431,21 @@ function remember() {
 }
 
 function onDeleted() {
-    if (paused) {
-        return;
-    }
-    clearTimeout(gathering);
-    gathering = setTimeout(collect, GATHER_MS);
-}
-
-/** The messages that were there before and are gone now go to the trash. */
-function collect() {
-    clearTimeout(gathering);
-    gathering = null;
-    const before = shadow;
-    const key = shadowKey;
-    const sideleafBefore = shadowSideleaf;
-    snapshot();
-    // Put away in 별지 (it saved a new revision meanwhile): not deleted
-    if (sideleafRevision() !== sideleafBefore) {
+    if (paused || !isOn('messageTrash')) {
         return;
     }
     const chat = openChat();
-    if (!isOn('messageTrash') || !chat || chat.key !== key) {
+    if (!chat || chat.key !== shadowKey) {
+        // (The snapshot is of another chat: nothing can be told)
+        batch && flush();
+        snapshot();
         return;
     }
-    const now = new Set(SillyTavern.getContext().chat);
-    const gone = new Set(before.filter(message => !now.has(message)));
-    // Nothing of before left in a chat that has messages: it was loaded again, nothing was deleted
-    if (!gone.size || (now.size && gone.size === before.length)) {
-        return;
-    }
-    const messages = [];
-    before.forEach((message, index) => {
-        if (!gone.has(message)) {
-            return;
-        }
-        // The nearest message before it that stays: where it goes back
-        let previous = index - 1;
-        while (previous >= 0 && gone.has(before[previous])) {
-            previous--;
-        }
-        messages.push({ index, anchor: previous >= 0 ? fingerprint(before[previous]) : null, message: copy(message) });
-    });
-    const item = { id: newId(), deleted: Date.now(), messages };
-    addToTrash(key, chat, items => items.push(item));
+    batch ??= { key: shadowKey, chat, sideleaf: shadowSideleaf, before: shadow, copies: new Map(), messages: [] };
+    batch.messages = goneFrom(batch.before, SillyTavern.getContext().chat, batch.copies);
+    batch.sideleafSeen = sideleafRevision();
+    clearTimeout(gathering);
+    gathering = setTimeout(flush, GATHER_MS);
 }
 
 /**
@@ -264,6 +470,10 @@ function onSwipeDeleted(data) {
     const anchor = index > 0 ? fingerprint(context.chat[index - 1]) : null;
     const swipe = { id: newId(), deleted: Date.now(), at: swipeId, text: before.swipes[swipeId], info: copy(before.info[swipeId]) };
     const template = copy({ ...message, swipes: undefined, swipe_info: undefined, swipe_id: undefined });
+    // ST tells of the deletion before it shows another swipe: the message is known by the swipes
+    // it still has (their starts), not by what it showed, which may be the very swipe deleted
+    template.mes = message.swipes[Number(data?.newSwipeId)] ?? message.swipes[0] ?? template.mes;
+    template.stqaOwnSwipes = message.swipes.map(text => String(text ?? '').slice(0, OWNER_PREFIX));
     addToTrash(chat.key, chat, (items) => {
         const same = items.find(item => item.kind === 'swipe' && item.index === index && item.anchor === anchor && item.name === message.name);
         if (same) {
@@ -276,16 +486,14 @@ function onSwipeDeleted(data) {
 
 /** Deletions made inside `task` are not the user's: they stay out of the trash. */
 export async function withoutTrash(task) {
+    // The user's own deletions just before go to the trash first (they are theirs, these aren't)
+    batch && flush();
     paused++;
     try {
         return await task();
     } finally {
         paused--;
-        if (!paused && isOn('messageTrash')) {
-            clearTimeout(gathering);
-            gathering = null;
-            snapshot();
-        }
+        !paused && isOn('messageTrash') && !batch && snapshot();
     }
 }
 
@@ -300,7 +508,7 @@ function restoreRuns(chat, messages) {
     for (const run of runs) {
         let at = 0;
         if (run[0].anchor !== null) {
-            const found = findNear(chat, run[0].anchor, run[0].index - 1);
+            const found = findAnchor(chat, run[0].anchor, run[0].index - 1);
             at = found === -1 ? Math.min(run[0].index, chat.length) : found + 1;
         }
         chat.splice(at, 0, ...run.map(entry => entry.message));
@@ -313,9 +521,10 @@ function restoreRuns(chat, messages) {
  */
 function restoreSwipes(chat, item, swipes) {
     const sorted = [...swipes].sort((a, b) => a.at - b.at);
-    const found = item.anchor === null ? -1 : findNear(chat, item.anchor, item.index - 1);
-    const candidate = item.anchor === null ? chat[0] : found === -1 ? null : chat[found + 1];
-    if (candidate && candidate.name === item.name && !candidate.is_user) {
+    // Only the very message they came from takes them back (never the one that is now in its place)
+    const owner = swipeOwner(chat, item);
+    const candidate = owner === -1 ? null : chat[owner];
+    if (candidate) {
         if (!Array.isArray(candidate.swipes) || !candidate.swipes.length) {
             candidate.swipes = [candidate.mes];
             candidate.swipe_info = [{ send_date: candidate.send_date, gen_started: candidate.gen_started, gen_finished: candidate.gen_finished, extra: copy(candidate.extra ?? {}) }];
@@ -324,7 +533,12 @@ function restoreSwipes(chat, item, swipes) {
         if (!Array.isArray(candidate.swipe_info)) {
             candidate.swipe_info = candidate.swipes.map(() => ({}));
         }
-        for (const swipe of sorted) {
+        // (Kept as long as the swipes, so each swipe's info stays at its own place)
+        while (candidate.swipe_info.length < candidate.swipes.length) {
+            candidate.swipe_info.push({});
+        }
+        // (A swipe that is back already, put back twice, isn't added again)
+        for (const swipe of sorted.filter(entry => !candidate.swipes.includes(entry.text))) {
             candidate.swipes.push(swipe.text);
             candidate.swipe_info.push(swipe.info ?? {});
         }
@@ -338,16 +552,34 @@ function restoreSwipes(chat, item, swipes) {
         swipe_info: sorted.map(swipe => swipe.info ?? {}),
         swipe_id: 0,
     };
+    delete message.stqaOwnSwipes;
     first.send_date && (message.send_date = first.send_date);
     first.extra && (message.extra = copy(first.extra));
+    const found = item.anchor === null ? -1 : findAnchor(chat, item.anchor, item.index - 1);
     const at = item.anchor === null ? 0 : found === -1 ? Math.min(item.index, chat.length) : found + 1;
     chat.splice(at, 0, message);
 }
 
 /** Puts trash back into the open chat. `picks`: [{ item, entries }] (messages, or a message's swipes). */
-async function restore(picks) {
+/**
+ * Puts trash back into the open chat (it must still be the chat `key` names), then reads the chat
+ * back from the server. The picked entries found there are returned (by entryKey): ST's save
+ * doesn't say when it failed, so only what came back saved may leave the trash.
+ */
+async function restore(picks, key) {
     const context = SillyTavern.getContext();
+    if (openChat()?.key !== key) {
+        throw new Error('Another chat is open');
+    }
     const chat = context.chat;
+    // How many times each swipe text is in the chat before (so one found after is the one put back)
+    const textCounts = list => list.flatMap(message => (Array.isArray(message.swipes) ? message.swipes : [message.mes]))
+        .reduce((counts, text) => counts.set(text, (counts.get(text) ?? 0) + 1), new Map());
+    const before = textCounts(chat);
+    // Whole messages (time, name, side and all of the text), counted the same way
+    const whole = message => `${message.send_date}\u0001${message.name}\u0001${Boolean(message.is_user)}\u0001${message.mes}`;
+    const messageCounts = list => list.reduce((counts, message) => counts.set(whole(message), (counts.get(whole(message)) ?? 0) + 1), new Map());
+    const messagesBefore = messageCounts(chat);
     const latestFirst = list => [...list].sort((a, b) => b.item.deleted - a.item.deleted);
     // Messages first (swipes may belong to one of them), the latest deletion first: a message
     // deleted earlier may go back after one deleted later
@@ -359,6 +591,36 @@ async function restore(picks) {
     }
     await context.saveChat();
     await context.reloadCurrentChat();
+    const now = SillyTavern.getContext();
+    const back = new Set();
+    if (openChat()?.key !== key) {
+        return back;
+    }
+    const messagesGained = messageCounts(now.chat);
+    for (const [print, count] of messagesBefore) {
+        messagesGained.set(print, (messagesGained.get(print) ?? 0) - count);
+    }
+    const takeMessage = (message) => {
+        const left = messagesGained.get(whole(message)) ?? 0;
+        messagesGained.set(whole(message), left - 1);
+        return left > 0;
+    };
+    const gained = textCounts(now.chat);
+    for (const [text, count] of before) {
+        gained.set(text, (gained.get(text) ?? 0) - count);
+    }
+    const takeGained = (text) => {
+        const left = gained.get(text) ?? 0;
+        gained.set(text, left - 1);
+        return left > 0;
+    };
+    for (const { item, entries } of picks) {
+        for (const entry of entries) {
+            const there = item.kind === 'swipe' ? takeGained(entry.text) : takeMessage(entry.message);
+            there && back.add(entryKey(item, entry));
+        }
+    }
+    return back;
 }
 
 /** An item's pickable entries: messages, or the swipes of a message. */
@@ -388,27 +650,47 @@ function ask(title, text, okButton, cancelButton = '취소') {
     return new Popup(content, POPUP_TYPE.CONFIRM, '', { okButton, cancelButton }).show();
 }
 
-const plain = text => String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-
 function formatTime(time) {
     const date = new Date(time);
     const pad = number => String(number).padStart(2, '0');
     return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** One message (or swipe) in full, drawn the way the chat draws it. */
-export function showFullText(title, text, message) {
+/**
+ * One message (or swipe) in full: drawn the way the chat draws it, or with `raw` as its text is
+ * written (the trash: regexes and HTML made for the chat come out broken out of their place).
+ */
+/**
+ * A text in a window of its own. translation: the same text translated; a button then turns
+ * between the two (starting on the translation when translated is true).
+ */
+export function showFullText(title, text, message = null, { translation = null, translated = false } = {}) {
     const context = SillyTavern.getContext();
     const view = document.createElement('div');
     view.className = 'stqa_trash_view';
-    view.innerHTML = '<h3></h3><div class="mes_text"></div>';
+    view.innerHTML = '<div class="stqa_trash_view_head"><h3></h3></div><div></div>';
     view.querySelector('h3').textContent = title;
-    const box = view.querySelector('.mes_text');
-    if (typeof context.messageFormatting === 'function') {
-        box.innerHTML = context.messageFormatting(String(text ?? ''), message?.name ?? '', Boolean(message?.is_system), Boolean(message?.is_user), -1);
-    } else {
-        box.textContent = String(text ?? '');
+    const box = view.lastElementChild;
+    // The text as written, shown as text: tags a regex turns into a screen (<loc>…</loc>, status
+    // panels) read as they are, instead of coming out as that screen's code
+    const draw = (shown) => {
+        box.className = 'stqa_raw_text';
+        box.textContent = String(shown ?? '');
+    };
+    let onTranslation = Boolean(translation) && translated;
+    if (translation) {
+        const turn = document.createElement('div');
+        turn.className = 'menu_button menu_button_icon stqa_trash_view_turn';
+        const label = () => (turn.innerHTML = `<i class="fa-solid fa-language"></i><span>${onTranslation ? '원문 보기' : '번역문 보기'}</span>`);
+        turn.addEventListener('click', () => {
+            onTranslation = !onTranslation;
+            label();
+            draw(onTranslation ? translation : text);
+        });
+        label();
+        view.firstElementChild.append(turn);
     }
+    draw(onTranslation ? translation : text);
     new context.Popup(view, context.POPUP_TYPE.TEXT, '', { okButton: '닫기', wide: true, allowVerticalScrolling: true }).show();
 }
 
@@ -418,6 +700,12 @@ async function openTrash() {
         toastr.info('열린 채팅이 없습니다.', TITLE);
         return;
     }
+    // A deletion just made may still be on its way in (gathered for a moment, then written to
+    // the server): taken in now, and the window waits for it
+    if (batch) {
+        flush();
+    }
+    await writing.catch(() => {});
     const { Popup, POPUP_TYPE } = SillyTavern.getContext();
     const content = document.createElement('div');
     content.className = 'stqa_trash';
@@ -466,18 +754,39 @@ async function openTrash() {
     const restorePicks = picks => change(async () => {
         picking = false;
         const picked = new Set(picks.flatMap(({ item, entries }) => entries.map(entry => entryKey(item, entry))));
-        await restore(picks);
-        await removePicked(chat.key, picked);
-        toastr.success(`${picked.size}개를 되살렸습니다.`, TITLE);
+        const back = await restore(picks, chat.key);
+        back.size && await removePicked(chat.key, back);
+        const missing = picked.size - back.size;
+        missing
+            ? toastr.warning(`${back.size}개를 되살렸습니다. ${missing}개는 저장된 것을 확인하지 못해 휴지통에 남겨 두었습니다.`, TITLE)
+            : toastr.success(`${picked.size}개를 되살렸습니다.`, TITLE);
     });
 
     const render = async () => {
-        const items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
+        let items = null;
+        try {
+            items = (await readTrash(chat.key)).sort((a, b) => b.deleted - a.deleted);
+        } catch (error) {
+            console.error(`[${MODULE}] Trash not read`, error);
+        }
         const days = keepDays();
         content.innerHTML = '<h3>휴지통</h3><div class="stqa_hint"></div><div class="stqa_trash_items"></div>';
         content.querySelector('.stqa_hint').textContent = `지운 지 ${days}일이 지나면 완전히 삭제됩니다.`;
         content.classList.toggle('stqa_trash_picking', picking);
         const list = content.querySelector('.stqa_trash_items');
+        // Not read (nothing is changed then): it can still be emptied
+        if (!items) {
+            list.innerHTML = '<div class="stqa_hint">휴지통을 읽지 못했습니다. 잠시 뒤 다시 열어 주세요.</div>';
+            const bottom = document.createElement('div');
+            bottom.className = 'stqa_trash_bottom';
+            bottom.append(button('fa-dumpster', '휴지통 비우기', async () => {
+                if (await ask('휴지통 비우기', '이 채팅의 휴지통을 모두 지웁니다. 되돌릴 수 없습니다.', '비우기')) {
+                    await change(() => writeTrash(chat.key, []));
+                }
+            }, true));
+            content.append(bottom);
+            return;
+        }
         if (!items.length) {
             list.innerHTML = '<div class="stqa_hint">휴지통이 비어 있습니다.</div>';
             return;
@@ -528,7 +837,7 @@ async function openTrash() {
             for (const entry of entries) {
                 const text = swipes ? entry.text : entry.message.mes;
                 const title = swipes ? `#${item.index} ${item.name ?? ''} · 스와이프` : `#${entry.index} ${entry.message.name ?? ''}`;
-                const line = tick('stqa_trash_message', `${swipes ? `스와이프 ${entry.at + 1}` : title}: ${plain(text).slice(0, 100) || '(빈 메시지)'}`);
+                const line = tick('stqa_trash_message', `${swipes ? `스와이프 ${entry.at + 1}` : title}: ${String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 100) || '(빈 메시지)'}`);
                 const box = line.querySelector('input');
                 own.push(box);
                 ticks.push([item, entry, box]);
@@ -540,7 +849,7 @@ async function openTrash() {
                 line.addEventListener('click', (event) => {
                     if (!picking) {
                         event.preventDefault();
-                        showFullText(title, text, swipes ? item.template : entry.message);
+                        showFullText(title, text, null, { raw: true });
                     }
                 });
                 block.append(line);
@@ -595,8 +904,10 @@ async function openTrash() {
 function clearAll() {
     return queued(async () => {
         const settings = getSettings();
-        for (const entry of Object.values(settings.trashIndex ?? {})) {
-            await deleteFile(entry.file);
+        for (const key of Object.keys(settings.trashIndex ?? {})) {
+            for (const file of filesOf(key)) {
+                await deleteFile(file);
+            }
         }
         settings.trashIndex = {};
         save();
@@ -609,7 +920,9 @@ function forget(match) {
         const settings = getSettings();
         for (const [key, entry] of Object.entries(settings.trashIndex ?? {})) {
             if (match(entry)) {
-                await deleteFile(entry.file);
+                for (const file of filesOf(key)) {
+                    await deleteFile(file);
+                }
                 delete settings.trashIndex[key];
             }
         }
@@ -617,20 +930,59 @@ function forget(match) {
     });
 }
 
-/** A renamed chat keeps its trash. */
-function onRenamed({ avatarId, groupId, oldFileName, newFileName }) {
-    const settings = getSettings();
-    const kind = groupId ? 'g' : 'c';
-    const owner = groupId || avatarId;
-    const oldKey = `${kind}:${owner}:${stripExtension(oldFileName)}`;
-    const entry = settings.trashIndex?.[oldKey];
-    if (!entry) {
+// Chats being deleted by this extension's own code, which takes care of their trash itself (it
+// knows whose chats they are; ST's notice of a deleted chat gives only its name)
+let ownDeletes = 0;
+
+/** Whether a chat being deleted now is this extension's doing (it says whose; ST's notice doesn't). */
+export const ownChatDelete = () => ownDeletes > 0;
+
+export async function withOwnChatDeletes(task) {
+    ownDeletes++;
+    try {
+        return await task();
+    } finally {
+        ownDeletes--;
+    }
+}
+
+/** The trash of one chat taken away (`kind`: 'c' character, 'g' group), also when the index lost it. */
+export function forgetChat(kind, owner, name) {
+    const key = `${kind}:${owner}:${stripExtension(name)}`;
+    return queued(() => writeTrash(key, []));
+}
+
+/** A chat ST deleted: it was one of the open character's (or group's), never another's of the same name. */
+function onChatDeleted(kind, name) {
+    if (ownDeletes) {
         return;
     }
-    const chat = stripExtension(newFileName);
-    delete settings.trashIndex[oldKey];
-    settings.trashIndex[`${kind}:${owner}:${chat}`] = { ...entry, chat };
-    save();
+    const context = SillyTavern.getContext();
+    const owner = kind === 'g' ? context.groupId : context.characters[context.characterId]?.avatar;
+    owner && forgetChat(kind, owner, name).catch(error => console.error(`[${MODULE}] Trash cleanup failed`, error));
+}
+
+/** A renamed chat keeps its trash. */
+function onRenamed({ avatarId, groupId, oldFileName, newFileName } = {}) {
+    const kind = groupId ? 'g' : 'c';
+    const owner = groupId || avatarId;
+    if (!owner || !oldFileName || !newFileName) {
+        return;
+    }
+    const oldKey = `${kind}:${owner}:${stripExtension(oldFileName)}`;
+    const newKey = `${kind}:${owner}:${stripExtension(newFileName)}`;
+    // Moved into the file named after the new name (written first, the old one goes after)
+    queued(async () => {
+        const items = await readTrash(oldKey);
+        if (!items.length || oldKey === newKey) {
+            return;
+        }
+        const existing = await readTrash(newKey);
+        const known = new Set(existing.map(item => item.id));
+        const moved = [...existing, ...items.filter(item => !known.has(item.id))];
+        await writeTrash(newKey, moved, { kind, owner, chat: stripExtension(newFileName) });
+        await writeTrash(oldKey, []);
+    }).catch(error => console.error(`[${MODULE}] Trash rename failed`, error));
 }
 
 /** What of an item is still within its time (swipes run out one by one); null if nothing. */
@@ -662,8 +1014,9 @@ export function applyMessageTrash() {
     if (item) {
         item.hidden = !on;
     }
+    showCount();
     if (on) {
-        gathering || snapshot();
+        batch || snapshot();
     } else {
         // Nothing is kept while off
         shadow = [];
@@ -689,8 +1042,13 @@ export function initMessageTrash() {
     const first = (type, handler) => type && (typeof eventSource.makeFirst === 'function' ? eventSource.makeFirst(type, handler) : eventSource.on(type, handler));
     first(eventTypes.MESSAGE_DELETED, onDeleted);
     first(eventTypes.MESSAGE_SWIPE_DELETED, onSwipeDeleted);
-    eventSource.on(eventTypes.CHAT_DELETED, name => forget(entry => entry.kind === 'c' && entry.chat === stripExtension(name)));
-    eventSource.on(eventTypes.GROUP_CHAT_DELETED, name => forget(entry => entry.kind === 'g' && entry.chat === stripExtension(name)));
+    eventSource.on(eventTypes.CHAT_CHANGED, relinkOpenChat);
+    eventSource.on(eventTypes.CHAT_CHANGED, showCount);
+    // Leaving the page: what is being gathered goes now (as far as the page lets it)
+    window.addEventListener('pagehide', () => batch && flush(true));
+    isOn('messageTrash') && sendPending();
+    eventSource.on(eventTypes.CHAT_DELETED, name => onChatDeleted('c', name));
+    eventSource.on(eventTypes.GROUP_CHAT_DELETED, name => onChatDeleted('g', name));
     eventSource.on(eventTypes.CHARACTER_DELETED, data => data?.character?.avatar && forget(entry => entry.kind === 'c' && entry.owner === data.character.avatar));
     eventTypes.CHAT_RENAMED && eventSource.on(eventTypes.CHAT_RENAMED, onRenamed);
 

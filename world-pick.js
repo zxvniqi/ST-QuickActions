@@ -5,6 +5,7 @@
 // chat). Chats are known once they were opened with the feature on: ST keeps a chat's world
 // inside the chat's own file, so there is no list of them to read.
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 
 const TITLE = '편의성 모음';
 const SELECT = '#world_editor_select';
@@ -76,7 +77,7 @@ async function goTo(entry, close) {
         toastr.warning('캐릭터를 찾지 못했습니다.', TITLE);
         return;
     }
-    if (document.getElementById('mes_stop')?.offsetParent) {
+    if (isGenerating()) {
         toastr.info('답변을 만드는 중에는 이동할 수 없습니다.', TITLE);
         return;
     }
@@ -84,6 +85,12 @@ async function goTo(entry, close) {
     closeWorldDrawer();
     if (String(context.characterId) !== String(index) || context.groupId) {
         await context.selectCharacterById(index);
+        // ST may quietly not switch (a chat still saving, a group replying): then no chat of this
+        // character is opened over the one open (that would point the open character at it)
+        const now = SillyTavern.getContext();
+        if (now.groupId || String(now.characterId) !== String(index)) {
+            return;
+        }
     }
     if (entry.chat && SillyTavern.getContext().getCurrentChatId() !== entry.chat && typeof context.openCharacterChat === 'function') {
         await context.openCharacterChat(entry.chat);

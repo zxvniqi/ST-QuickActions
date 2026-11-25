@@ -2,7 +2,9 @@
 // chat after the persona or the character, with or without the date, picked from a short list
 // that shows each resulting name.
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 import { onlyOwnChanges } from './mutations.js';
+import { parseStTime } from './chat-sort.js';
 
 const TITLE = '편의성 모음';
 const LIST_ID = 'select_chat_div';
@@ -27,7 +29,7 @@ async function chatFacts(context, character, fileName) {
     const persona = cleanName((locked && context.powerUserSettings?.personas?.[locked]) || context.name1);
     const fromName = fileName.match(DATE_PART)?.[1];
     const created = header?.create_date ?? (Array.isArray(lines) ? lines[1]?.send_date : null);
-    const time = Date.parse(created);
+    const time = parseStTime(created, true);
     return { persona, date: fromName ?? stDate(Number.isFinite(time) ? time : Date.now()) };
 }
 
@@ -84,7 +86,7 @@ async function renameFromList(fileName) {
         return;
     }
     // Renaming reloads the open chat: never while a reply is being written into it
-    if (document.getElementById('mes_stop')?.offsetParent) {
+    if (isGenerating()) {
         toastr.warning('답변을 만드는 중에는 이름을 바꿀 수 없습니다.', TITLE);
         return;
     }

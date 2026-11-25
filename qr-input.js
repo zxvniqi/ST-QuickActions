@@ -6,9 +6,11 @@
 //  - a QR whose AI answer came back empty: what it posted is taken back out and the QR runs
 //    again with the same answers, as many times as set for empty replies
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 import { withoutTrash } from './message-trash.js';
 import { hasNothing, retryLimit, deletesEmpty, tellEmpty } from './empty-reply.js';
-import { animation_duration } from '../../../../script.js';
+// Whole modules, not names: one ST renames leaves the rest of this extension loading
+import * as script from '../../../../script.js';
 
 const HISTORY_SIZE = 3;
 const TITLE = '편의성 모음';
@@ -185,7 +187,7 @@ function onInputPopup(dialog) {
             run.answers[step] = { value, confirmed: !cancelled };
         }
         // Only answers sent with OK go to the history (not what was typed and then cancelled)
-        if (!cancelled && value.trim()) {
+        if (!cancelled && value.trim() && isOn('qrHistory')) {
             remember(value);
         }
     });
@@ -227,13 +229,25 @@ const STALE_RUN_MS = 10 * 60 * 1000;
 // The last run that ended (the one being made again reads whether its AI answer was empty)
 let lastRun = null;
 
-const isGenerating = () => Boolean(document.getElementById('mes_stop')?.offsetParent);
 
 /* ---------- empty AI answers inside a QR (/gen and the like) ---------- */
 
 // ST's generation requests (any: a QR's, a translator's...) and how many are not answered yet
 const GENERATE_URL = /\/api\/(backends\/[\w-]+\/generate|novelai\/generate|horde\/generate)/;
 let pending = 0;
+// Set while the outermost counter hands a request on (see countRequests)
+let counting = false;
+
+async function drain(response) {
+    try {
+        const reader = response?.body?.getReader();
+        while (reader && !(await reader.read()).done) {
+            // (only waiting for the end)
+        }
+    } catch {
+        // Stopped or failed: over either way
+    }
+}
 let counter = null;
 
 /**
@@ -246,19 +260,32 @@ function countRequests() {
     }
     const fetchBefore = window.fetch;
     counter = window.fetch = async function (...args) {
-        if (!GENERATE_URL.test(String(args[0]?.url ?? args[0] ?? ''))) {
+        // An older copy of this counter further down (another extension wrapped fetch over it, and
+        // this one went on top again): the request is counted once, by the outermost
+        if (counting || !(isOn('qrSwipe') || isOn('emptyReplyDelete')) || !GENERATE_URL.test(String(args[0]?.url ?? args[0] ?? ''))) {
             return fetchBefore.apply(this, args);
         }
         pending++;
         let response;
         try {
-            response = await fetchBefore.apply(this, args);
+            counting = true;
+            const request = fetchBefore.apply(this, args);
+            counting = false;
+            response = await request;
         } catch (error) {
+            counting = false;
             pending--;
             throw error;
         }
-        // Answered once its whole body has come in
-        response.clone().arrayBuffer().catch(() => null).finally(() => pending--);
+        // Answered once its whole body has come in: a copy is read piece by piece and let go (not
+        // kept whole in memory, a streamed reply can be long)
+        let copy = null;
+        try {
+            copy = response.clone();
+        } catch {
+            // Already being read: counted as answered
+        }
+        drain(copy).finally(() => pending--);
         return response;
     };
 }
@@ -423,7 +450,8 @@ async function afterRun(started, chatId, finished, attempt) {
     }
     const added = context.chat.slice(started);
     // Stopped by the user: what the run posted stays as it is (no empty-answer handling)
-    if (!finished.stopped && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
+    // Something else added messages meanwhile: which are the run's can't be told, nothing is taken out
+    if (!finished.stopped && !finished.foreign && isOn('emptyReplyDelete') && added.length && cameEmpty(finished, added)) {
         // Extensions told of none of them (all posted after the empty /gen): taken out at once;
         // otherwise once their requests are answered
         const told = added.some(message => !(context.chat.indexOf(message) >= (finished.quietFrom ?? Infinity)));
@@ -468,7 +496,7 @@ function ensureSwipes(message) {
  */
 async function slide(messageId, xStart, xEnd) {
     const element = document.querySelector(`#chat .mes[mesid="${messageId}"]`);
-    const duration = Number(animation_duration) || 0;
+    const duration = Number(script.animation_duration) || 0;
     const parts = element ? [...element.querySelectorAll(':scope > .mes_block, :scope > .mesAvatarWrapper')] : [];
     if (!parts.length || duration <= 50) {
         return;
@@ -670,6 +698,11 @@ async function regenerateQrMessage(messageId) {
             const candidate = madeMessage(added);
             const empty = !failed && !lastRun?.stopped && isOn('emptyReplyDelete') && (lastRun?.emptyAnswer || (candidate && hasNothing(candidate)));
             // The run's own messages go (their text joins the message as its new version)
+            // (Others' messages may be among them: left in the chat, and the QR message keeps its old version)
+            if (lastRun?.foreign) {
+                failed = true;
+                break;
+            }
             if (!await takeBack(added, false)) {
                 return;
             }
@@ -704,7 +737,7 @@ async function regenerateQrMessage(messageId) {
         // A run's messages still there (an error came between): taken out, never left showing
         const left = [...document.querySelectorAll('#chat .mes.stqa_qr_temp')];
         left.forEach(element => element.classList.remove('stqa_qr_temp'));
-        if (crashed && context.getCurrentChatId() === chatId) {
+        if (crashed && !lastRun?.foreign && context.getCurrentChatId() === chatId) {
             await takeBack(left.map(element => context.chat[Number(element.getAttribute('mesid'))]).filter(Boolean), false).catch(() => {});
         }
     }
@@ -814,11 +847,23 @@ export function initQrInput() {
     // A tap on a QR button: the run it starts is the user's, also while an automatic QR runs
     document.addEventListener('click', (event) => {
         event.target.closest?.('.qr--button, .ctx-item') && (pressedAt = Date.now());
+        // The user sending a message of their own while a QR runs: the run can't tell its messages
+        // from theirs, so it takes nothing back
+        run && event.target.closest?.('#send_but') && (run.foreign = true);
+    }, true);
+    document.addEventListener('keydown', (event) => {
+        run && event.key === 'Enter' && !event.shiftKey && event.target?.id === 'send_textarea' && (run.foreign = true);
     }, true);
     const execute = QuickReplySet.prototype.executeWithOptions;
     QuickReplySet.prototype.executeWithOptions = async function (qr, options = {}) {
+        // None of the features that look at runs on (or the whole extension off): ST's own run
+        if (!isOn('qrHistory') && !isOn('qrSwipe') && !isOn('emptyReplyDelete')) {
+            return execute.call(this, qr, options);
+        }
         // Automatic QRs (and what they start with /run) and the editor's test runs are not the user's
         if (options.isAutoExecute || options.isEditor) {
+            // Messages may come from it now, not only from the run going on: that run takes nothing back
+            run && (run.foreign = true);
             automatic++;
             try {
                 return await execute.call(this, qr, options);
@@ -848,7 +893,7 @@ export function initQrInput() {
                 watchGenResults();
             }
             // This run's own record (another run may start and end meanwhile)
-            const current = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, startedAt: Date.now() };
+            const current = { set: this, qr, options: { ...options }, answers: [], emptyAnswer: false, startedAt: Date.now(), foreign: false };
             run = current;
             const started = context.chat.length;
             const replaying = Boolean(answers);

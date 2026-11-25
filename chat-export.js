@@ -193,8 +193,28 @@ export async function importChatFiles(picked, character = openCharacter()) {
         return [];
     }
     const headers = context.getRequestHeaders();
-    const listed = await fetch('/api/characters/chats', { method: 'POST', headers, body: JSON.stringify({ avatar_url: character.avatar, simple: true }) });
-    const taken = new Set((listed.ok ? Object.values(await listed.json()) : []).map(item => String(item?.file_name ?? '').replace(/\.jsonl$/, '')));
+    // The chats already there (never written to). Not known: nothing is brought in, since a name
+    // thought free could be a chat that is there
+    const listed = await fetch('/api/characters/chats', { method: 'POST', headers, body: JSON.stringify({ avatar_url: character.avatar, simple: true }) }).catch(() => null);
+    const list = listed?.ok ? await listed.json().catch(() => null) : null;
+    if (!list || typeof list !== 'object') {
+        toastr.error('지금 있는 채팅 목록을 읽지 못해 불러오지 않았습니다. 잠시 뒤 다시 해 주세요.', TITLE);
+        return [];
+    }
+    // ST answers { error } for a character with no chats, but also when reading the list failed:
+    // then each name is asked about before it is written (a chat by that name may be there)
+    const unsure = Boolean(list.error);
+    const names = unsure ? [] : Object.values(list).map(item => String(item?.file_name ?? '').replace(/\.jsonl$/, ''));
+    const isThere = async (fileName) => {
+        const response = await fetch('/api/chats/get', { method: 'POST', headers, body: JSON.stringify({ ch_name: character.name, file_name: fileName, avatar_url: character.avatar }) });
+        if (!response.ok) {
+            throw new Error(`Checking failed: ${response.status}`);
+        }
+        const lines = await response.json();
+        return Array.isArray(lines) && lines.length > 0;
+    };
+    // Compared without case: a file system may take two such names as one file
+    const taken = new Set(names.map(name => name.toLowerCase()));
     const saved = [];
     let failed = 0;
     for (const { name, text } of chats) {
@@ -204,16 +224,21 @@ export async function importChatFiles(picked, character = openCharacter()) {
             if (!lines.length || !(lines[0].chat_metadata !== undefined || lines[0].user_name !== undefined)) {
                 throw new Error('Not an ST chat');
             }
+            // A header with no messages is no chat to bring in (and the empty-save guard stops it)
+            if (lines.length < 2) {
+                throw new Error('Empty chat');
+            }
             const base = safeName(name.replace(/\.jsonl$/i, ''));
             let fileName = base;
-            for (let n = 2; taken.has(fileName); n++) {
+            for (let n = 2; taken.has(fileName.toLowerCase()) || (unsure && await isThere(fileName)); n++) {
+                taken.add(fileName.toLowerCase());
                 fileName = `${base} (${n})`;
             }
             const response = await fetch('/api/chats/save', { method: 'POST', headers, body: JSON.stringify({ ch_name: character.name, file_name: fileName, chat: lines, avatar_url: character.avatar }) });
             if (!response.ok) {
                 throw new Error(`Saving failed: ${response.status}`);
             }
-            taken.add(fileName);
+            taken.add(fileName.toLowerCase());
             saved.push(fileName);
         } catch (error) {
             console.error(`[${TITLE}] Importing ${name} failed`, error);

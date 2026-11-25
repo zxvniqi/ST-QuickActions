@@ -3,26 +3,29 @@
 // prompts to delete them or put them in / take them out of a folder, and make / rename / remove
 // folders. Folder chips at the top narrow the list; "전체" shows everything.
 import { getSettings } from './settings.js';
-import { FOLDER_AREAS, getFolders, saveFolders, listAreaItems } from './folders.js';
+import { escapeHtml } from './util.js';
+import { getFolders, saveFolders, listAreaItems } from './folders.js';
 import { enableDragging } from './layout-editor.js';
 
 const TITLE = '편의성 모음';
 const ALL = '';
 
-const nameOf = option => FOLDER_AREAS.presets.describe(option).key;
 
 function newId() {
     return Math.random().toString(36).slice(2, 10);
 }
 
-/** Prompt names in the user's order: ordered ones first, the rest (new ones) after, as the page lists them. */
+/**
+ * Prompt names in the user's order. Ones not ordered yet (new since) come first, as the page lists
+ * them; with no order set at all, the page's own order.
+ */
 export function orderedPresetNames() {
     const names = listAreaItems('presets').map(item => item.key);
     const order = getSettings().presetOrder ?? [];
     const rank = new Map(order.map((name, index) => [name, index]));
     return names
         .map((name, index) => ({ name, index }))
-        .sort((a, b) => (rank.get(a.name) ?? order.length + a.index) - (rank.get(b.name) ?? order.length + b.index))
+        .sort((a, b) => (rank.get(a.name) ?? a.index - names.length) - (rank.get(b.name) ?? b.index - names.length))
         .map(({ name }) => name);
 }
 
@@ -32,7 +35,7 @@ const folderKey = id => FOLDER_MARK + id;
 
 /**
  * The prompt list from the top, in the user's order: folders (with their prompts, in order)
- * and the prompts in no folder, mixed. Folders not placed yet come first.
+ * and the prompts in no folder, mixed. Prompts and folders not placed yet (new since) come first.
  */
 export function presetEntries() {
     const names = orderedPresetNames();
@@ -47,7 +50,8 @@ export function presetEntries() {
             members: names.filter(name => folder.keys.includes(name)),
             at: rank.get(folderKey(folder.id)) ?? index - folders.length,
         })),
-        ...names.filter(name => !filed.has(name)).map((name, index) => ({ key: name, name, at: rank.get(name) ?? order.length + index })),
+        // New prompts above everything (with no order set yet, the page's order after the folders)
+        ...names.filter(name => !filed.has(name)).map((name, index) => ({ key: name, name, at: rank.get(name) ?? (order.length ? index - names.length - folders.length : order.length + index) })),
     ].sort((a, b) => a.at - b.at);
 }
 
@@ -128,33 +132,39 @@ export async function openPresetManager() {
         }
     };
 
+    // Set while deleting (a second tap waits for nothing: it is ignored)
+    let deleting = false;
     const deletePicked = async () => {
         const names = [...picked];
         const manager = getPresetManager?.('openai');
-        if (!names.length || !manager) {
+        if (!names.length || !manager || deleting) {
             return;
         }
         // The window shows its text as HTML: names are escaped
-        const escape = text => text.replace(/[&<>"']/g, ch => `&#${ch.charCodeAt(0)};`);
-        const shown = names.slice(0, 5).map(escape).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}개` : '');
+        const shown = names.slice(0, 5).map(escapeHtml).join(', ') + (names.length > 5 ? ` 외 ${names.length - 5}개` : '');
         if (!await Popup.show.confirm(`프롬프트 ${names.length}개 삭제`, `${shown}<br>되돌릴 수 없습니다.`)) {
             return;
         }
         let failed = 0;
-        for (const name of names) {
-            try {
-                if (!await manager.deletePreset(name)) {
+        // Only those really deleted leave their folders and the order (one still there keeps its place)
+        const deleted = [];
+        deleting = true;
+        try {
+            for (const name of names) {
+                try {
+                    (await manager.deletePreset(name)) ? deleted.push(name) : failed++;
+                } catch (error) {
+                    console.error(`[${TITLE}] Deleting a prompt failed`, error);
                     failed++;
                 }
-            } catch (error) {
-                console.error(`[${TITLE}] Deleting a prompt failed`, error);
-                failed++;
             }
+        } finally {
+            deleting = false;
         }
-        removeFromFolders(names);
-        saveOrder((getSettings().presetOrder ?? []).filter(name => !names.includes(name)));
+        removeFromFolders(deleted);
+        saveOrder((getSettings().presetOrder ?? []).filter(name => !deleted.includes(name)));
         picked.clear();
-        failed ? toastr.error(`${failed}개를 지우지 못했습니다.`, TITLE) : toastr.success(`${names.length}개 삭제했습니다.`, TITLE);
+        failed ? toastr.error(`${failed}개를 지우지 못했습니다.`, TITLE) : toastr.success(`${deleted.length}개 삭제했습니다.`, TITLE);
         render();
     };
 

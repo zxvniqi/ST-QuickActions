@@ -1,0 +1,7 @@
+{
+    "name": "stqa-log",
+    "version": "1.0.0",
+    "description": "편의성 모음 서버 기록: shows the server console's recent lines in the extension's error window",
+    "type": "module",
+    "main": "index.mjs"
+}

@@ -180,6 +180,297 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     opacity: 0.95;
 }
 
+/* The server's lines in the error window: scrolls on its own */
+.stqa_error_server pre {
+    max-height: 40vh;
+    overflow: auto;
+    font-size: 0.8em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Prompt items from another prompt: the window */
+/* The window fits the screen: only its lists scroll (they share the room when both are open) */
+.stqa_pimport {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: min(680px, calc(100dvh - 150px));
+    text-align: left;
+}
+
+.stqa_pimport > * {
+    flex: none;
+}
+
+.stqa_pimport > .stqa_pimport_pick {
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+.stqa_pimport h3 {
+    margin: 0;
+    text-align: center;
+}
+
+.stqa_pimport_pick {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stqa_pimport_pick > * {
+    flex: none;
+}
+
+.stqa_pimport_field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.85em;
+}
+
+.stqa_pimport_field > span {
+    opacity: 0.75;
+}
+
+.stqa_pimport_field select {
+    margin: 0;
+    font-size: 1.1em;
+}
+
+.stqa_pimport_pick .stqa_panel_search {
+    margin: 0;
+}
+
+.stqa_pimport_list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 0 !important;
+    min-height: 90px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px;
+}
+
+.stqa_pimport_row {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.stqa_pimport_row input {
+    flex: none;
+    margin: 2px 0 0;
+}
+
+.stqa_pimport_row.stqa_pimport_chosen {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+}
+
+/* On / off in its own prompt: a dot */
+.stqa_pimport_state {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-top: 7px;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--SmartThemeBodyColor) 45%, transparent);
+}
+
+.stqa_pimport_state.stqa_on {
+    border-color: var(--SmartThemeQuoteColor);
+    background: var(--SmartThemeQuoteColor);
+}
+
+.stqa_pimport_legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -2px 2px 0;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.stqa_pimport_legend .stqa_pimport_state {
+    margin: 0;
+}
+
+.stqa_pimport_no_state .stqa_pimport_state {
+    display: none;
+}
+
+.stqa_pimport_text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.stqa_pimport_text b {
+    overflow-wrap: anywhere;
+}
+
+.stqa_pimport_text b i {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.stqa_pimport_text small {
+    opacity: 0.65;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.stqa_pimport_same {
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 0.75em;
+    font-weight: 500;
+    color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+}
+
+.stqa_pimport_none {
+    padding: 16px 0;
+    text-align: center;
+    opacity: 0.6;
+}
+
+/* 넣을 위치: a row to open this prompt's list; the item tapped gets a line under it (the spot) */
+.stqa_pimport_place {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    padding-top: 8px;
+    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+}
+
+.stqa_pimport_place_head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 70%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.stqa_pimport_place_head span {
+    flex: none;
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+
+.stqa_pimport_place_head b {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* Opened: as much room as the items' list (each half) */
+.stqa_pimport_place:has(.stqa_pimport_slots:not([hidden])) {
+    flex: 1 1 0 !important;
+}
+
+.stqa_pimport_slots {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 0 6px;
+}
+
+/* (flex: none: a long list scrolls instead of squeezing its rows) */
+.stqa_pimport_slot {
+    flex: none;
+    position: relative;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.stqa_pimport_slot_top {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+.stqa_pimport_slot.stqa_pimport_here {
+    font-weight: 700;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 14%, transparent);
+}
+
+/* The spot: a line under the item (over the list for 맨 위) */
+.stqa_pimport_slot.stqa_pimport_here::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--SmartThemeQuoteColor);
+}
+
+.popup:has(.stqa_pimport) .popup-button-ok.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* A prompt picked with ☰: the next tap on another prompt puts it there */
+#completion_prompt_manager_list li.stqa_prompt_picked {
+    outline: 2px solid var(--SmartThemeQuoteColor);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 20%, transparent);
+}
+
+#completion_prompt_manager_list li.stqa_prompt_picked .drag-handle {
+    color: var(--SmartThemeQuoteColor);
+}
+
+/* ☰ easier to hit with a finger (the room around it counts, the row's layout stays) */
+body.stqa_prompt_tapmove_on #completion_prompt_manager_list .drag-handle {
+    position: relative;
+}
+
+/* (An invisible area around it takes the touch: the row's layout stays exactly as it is) */
+body.stqa_prompt_tapmove_on #completion_prompt_manager_list .drag-handle::after {
+    content: "";
+    position: absolute;
+    /* (Mostly to the right, over the row's own icons: the left is the screen's edge) */
+    inset: -4px -18px -4px -6px;
+}
+
+/* Picked with a tap on ≡: the next tap on a row puts it there */
+.stqa_layout_row.stqa_move_picked {
+    border-color: var(--SmartThemeQuoteColor);
+    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 22%, transparent);
+}
+
+.stqa_layout_row.stqa_move_picked .stqa_layout_handle {
+    color: var(--SmartThemeQuoteColor);
+}
+
 .stqa_layout_handle {
     padding: 6px 4px;
     cursor: grab;
@@ -225,13 +516,6 @@ body:not(.stqa_delete_on) .stqa_mes_delete {
     display: block;
     margin: 2px 0 6px;
     opacity: 0.75;
-}
-
-.stqa_name_field > span.stqa_wide_label {
-    flex: 0 0 auto;
-    align-self: flex-start;
-    padding-top: 6px;
-    font-family: inherit;
 }
 
 .stqa_name_fields.stqa_off {
@@ -363,10 +647,17 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort {
 
 .stqa_picker_title {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .stqa_picker_export,
-.stqa_picker_import {
+.stqa_picker_import,
+.stqa_picker_import_one,
+.stqa_picker_backups,
+.stqa_picker_delete {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
@@ -475,23 +766,6 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort {
     outline: 2px dashed var(--SmartThemeQuoteColor);
 }
 
-/* Settings window: one section per topic */
-.stqa_section {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 0;
-    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 50%, transparent);
-}
-
-.stqa_section:first-of-type {
-    border-top: none;
-}
-
-.stqa_section > b {
-    margin-bottom: 2px;
-}
-
 .stqa_chips {
     display: flex;
     flex-wrap: wrap;
@@ -566,6 +840,7 @@ body.stqa_footer_swipe_on #chat .mes.last_mes:not([is_user="true"]):not([is_syst
     display: flex;
 }
 
+body:not(.stqa_redraw_on) .stqa_mes_redraw,
 body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     display: none !important;
 }
@@ -695,62 +970,12 @@ body:not(.stqa_to_bottom_on) .stqa_mes_to_bottom {
     color: var(--SmartThemeQuoteColor);
 }
 
-body.stqa_hide_placeholder #send_textarea::placeholder {
-    color: transparent;
-}
-
-/* Message range form */
-.stqa_range_fields {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-}
-
-.stqa_range_fields label {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-
-.stqa_range_fields input {
-    width: 5.5em;
-    margin: 0;
-}
-
-.stqa_range_note {
-    display: block;
-    margin-top: 8px;
-    opacity: 0.75;
-}
-
 /* QR input popup: 삭제 / 복사 / 기록 at the top right of the input box */
 .stqa_qr_tools {
     display: flex;
     justify-content: flex-end;
     gap: 6px;
     margin: 0 0 6px;
-}
-
-.stqa_qr_tool {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 28px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 8px;
-    font-size: 0.9em;
-    opacity: 0.75;
-    cursor: pointer;
-    user-select: none;
-}
-
-.stqa_qr_tool:hover,
-.stqa_qr_tool.stqa_active {
-    opacity: 1;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor) 30%, transparent);
 }
 
 .stqa_qr_history {
@@ -975,9 +1200,14 @@ body.stqa_qrc_handle #qr--bar#qr--bar::before {
     transition: width 0.3s, opacity 0.3s;
 }
 
+/* Folded: the line in the middle of the strip between the chat and the bar under it */
 body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar {
-    margin-top: 2px;
+    margin-top: 0;
     padding-bottom: 3px !important;
+}
+
+body.stqa_qrc_handle:not(.stqa_qrc_unfolded) #qr--bar#qr--bar::before {
+    margin: 2px auto 4px !important;
 }
 
 body.stqa_qrc_handle.stqa_qrc_unfolded:not(.stqa_qrc_closing) #qr--bar#qr--bar::before {
@@ -1048,6 +1278,11 @@ body.stqa_qrc_sets #qr--bar#qr--bar > .qr--buttons.stqa_qr_set_open .qr--button 
     cursor: pointer;
 }
 
+/* (No QR bar to fold: no button for it) */
+body:not(:has(#qr--bar .qr--button)) #stqa_qr_arrow {
+    display: none;
+}
+
 /* Folders (wand menu, regex scripts, prompts) */
 .stqa_folder_header {
     display: flex;
@@ -1087,20 +1322,14 @@ div.stqa_folder_header:not(.list-group-item) {
     transform: rotate(-90deg);
 }
 
-.stqa_folder.stqa_folded > .stqa_folder_body,
 [data-stqa-folder].stqa_folded {
     display: none !important;
 }
 
 /* Items in a folder: indented, tinted and lined on the left, so they stand apart from the rest */
-.stqa_folder_body > *,
 [data-stqa-folder] {
     box-shadow: inset 3px 0 0 var(--SmartThemeQuoteColor) !important;
     background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 9%, transparent) !important;
-}
-
-.stqa_folder_body > * {
-    padding-left: 14px !important;
 }
 
 [data-stqa-folder] {
@@ -1239,12 +1468,6 @@ div.stqa_folder_header:not(.list-group-item):not(.stqa_folded) {
     display: none;
 }
 
-.stqa_folder_buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
 /* Chips (prompt toggle combinations) */
 .stqa_variant_chips {
     display: flex;
@@ -1275,64 +1498,15 @@ div.stqa_folder_header:not(.list-group-item):not(.stqa_folded) {
     border-style: dashed;
 }
 
-.stqa_variant_remove {
-    opacity: 0.6;
-    padding-left: 2px;
-}
-
 /* Toggle combinations above the prompt list */
 .stqa_toggle_sets {
     margin: 4px 0 6px;
-}
-/* Settings window: folding sections */
-details.stqa_section > summary {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    cursor: pointer;
-    list-style: none;
-}
-
-details.stqa_section > summary::-webkit-details-marker {
-    display: none;
-}
-
-details.stqa_section > summary::after {
-    content: '\f078';
-    font-family: 'Font Awesome 6 Free';
-    font-weight: 900;
-    margin-left: auto;
-    font-size: 0.8em;
-    opacity: 0.6;
-    transition: transform 0.15s;
-}
-
-details.stqa_section[open] > summary::after {
-    transform: rotate(180deg);
-}
-
-details.stqa_section > summary small {
-    opacity: 0.6;
-    font-size: 0.82em;
-    overflow-wrap: anywhere;
-}
-
-details.stqa_section[open] > summary {
-    margin-bottom: 4px;
 }
 
 .stqa_layout_actions {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-}
-
-/* Preset picker */
-.stqa_preset_picker {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    text-align: left;
 }
 
 .stqa_picker_head {
@@ -1346,69 +1520,6 @@ details.stqa_section[open] > summary {
     margin: 0;
 }
 
-.stqa_picker_header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor) 18%, transparent);
-    cursor: pointer;
-}
-
-.stqa_picker_header span {
-    flex: 1;
-    min-width: 0;
-    font-weight: 600;
-    overflow-wrap: anywhere;
-}
-
-.stqa_picker_header small {
-    opacity: 0.6;
-}
-
-.stqa_picker_group.stqa_folded .stqa_picker_body {
-    display: none;
-}
-
-.stqa_picker_group.stqa_folded .stqa_folder_caret {
-    transform: rotate(-90deg);
-}
-
-.stqa_picker_body {
-    display: flex;
-    flex-direction: column;
-    margin: 2px 0 0 12px;
-    border-left: 3px solid color-mix(in srgb, var(--SmartThemeQuoteColor) 60%, transparent);
-}
-
-.stqa_picker_item {
-    padding: 7px 10px;
-    cursor: pointer;
-    overflow-wrap: anywhere;
-}
-
-.stqa_picker_item:hover {
-    background: color-mix(in srgb, var(--SmartThemeBorderColor) 25%, transparent);
-}
-
-.stqa_picker_item.stqa_active {
-    font-weight: 600;
-    color: var(--SmartThemeQuoteColor);
-}
-/* Settings window: master switch, tabs, features with folding descriptions */
-.stqa_panel_head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.stqa_panel_head h3 {
-    margin: 0;
-}
-
 .stqa_tab_body {
     max-height: 60vh;
     overflow-y: auto;
@@ -1418,18 +1529,6 @@ details.stqa_section[open] > summary {
 .stqa_tab_body.stqa_off {
     opacity: 0.45;
     pointer-events: none;
-}
-
-.stqa_tab_page {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.stqa_tab_page[hidden],
-.stqa_feature[hidden],
-.stqa_search_empty[hidden] {
-    display: none;
 }
 
 /* Search box over the tabs */
@@ -1453,140 +1552,6 @@ details.stqa_section[open] > summary {
     width: 100%;
     margin: 0;
     padding-left: 32px !important;
-}
-
-/* The settings window's tabs: names only, four to a row */
-.stqa_panel_tabs {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.stqa_panel_tabs .stqa_tab {
-    padding: 6px 4px;
-    font-size: 0.85em;
-}
-
-.stqa_searching .stqa_panel_tabs {
-    opacity: 0.5;
-}
-
-/* While searching, each tab's name heads its features */
-.stqa_page_title {
-    display: none;
-    margin: 6px 2px 0;
-    font-size: 0.8em;
-    font-weight: bold;
-    color: var(--SmartThemeQuoteColor);
-}
-
-.stqa_searching .stqa_page_title {
-    display: block;
-}
-
-.stqa_search_empty {
-    padding: 20px 0;
-    text-align: center;
-    opacity: 0.6;
-}
-
-/* A feature: a card with its name and switch, one line on what it does, and where it shows up */
-.stqa_feature {
-    padding: 9px 12px 10px;
-    border: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
-    border-radius: 10px;
-    background: color-mix(in srgb, var(--SmartThemeBorderColor) 10%, transparent);
-}
-
-.stqa_feature_summary {
-    margin: 2px 0 0 26px;
-    font-size: 0.84em;
-    line-height: 1.4;
-    opacity: 0.72;
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-}
-
-.stqa_feature_where {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    margin: 6px 0 0;
-    padding: 1px 8px;
-    border-radius: 999px;
-    font-size: 0.76em;
-    color: var(--SmartThemeQuoteColor);
-    background: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
-}
-
-.stqa_feature_where[hidden],
-.stqa_desc_toggle[hidden] {
-    display: none;
-}
-
-/* Switched off: its own settings fold away, the rest dims */
-.stqa_feature_off .stqa_feature_extra {
-    display: none !important;
-}
-
-.stqa_feature_off .stqa_feature_summary {
-    opacity: 0.45;
-}
-
-.stqa_feature_head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.stqa_feature_head .checkbox_label {
-    flex: 1;
-    min-width: 0;
-    font-weight: 600;
-}
-
-.stqa_desc_toggle {
-    flex: none;
-    padding: 6px 8px;
-    border-radius: 6px;
-    font-size: 0.95em;
-    opacity: 0.55;
-    cursor: pointer;
-}
-
-.stqa_desc_toggle:hover {
-    opacity: 0.9;
-}
-
-.stqa_desc_open .stqa_desc_toggle {
-    opacity: 1;
-    color: var(--SmartThemeQuoteColor);
-}
-
-.stqa_desc[hidden] {
-    display: none;
-}
-
-.stqa_desc {
-    margin: 3px 0 0 26px;
-    font-size: 0.86em;
-    line-height: 1.45;
-    opacity: 0.72;
-    white-space: pre-line;
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-}
-
-.stqa_feature_extra:not(:empty) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin: 6px 0 0 26px;
-}
-
-.stqa_feature_extra .stqa_panel_button {
-    margin: 0;
 }
 
 /* Name replacement window */
@@ -1789,7 +1754,7 @@ body.stqa_wand_grid #extensionsMenu .list-group-item img {
     line-height: 20px !important;
 }
 
-body.stqa_wand_grid #extensionsMenu .list-group-item > :not([class*="fa-"]):not(svg):not(img):not(:has([class*="fa-"], svg, img)) {
+body.stqa_wand_grid #extensionsMenu .list-group-item > :not([class*="fa-"]):not(svg):not(img):not(.stqa_link_letter):not(:has([class*="fa-"], svg, img)) {
     display: none !important;
 }
 
@@ -1844,6 +1809,39 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
     font-size: 16px !important;
     line-height: 20px !important;
     text-align: center;
+}
+
+/* 휴지통 in the Options menu: how many are in the open chat's trash */
+#stqa_option_trash[data-stqa-count]::after {
+    content: attr(data-stqa-count);
+    margin-left: auto;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #c2564f;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
+
+/* (Icons only: a small number on the icon's corner) */
+body.stqa_options_grid #options .options-content > #stqa_option_trash {
+    position: relative;
+}
+
+body.stqa_options_grid #options .options-content > #stqa_option_trash[data-stqa-count]::after {
+    position: absolute;
+    top: 2px;
+    right: 1px;
+    min-width: 15px;
+    height: 14px;
+    padding: 0 3px;
+    margin: 0;
+    font-size: 9px !important;
+    line-height: 14px !important;
 }
 
 /* 채팅에서 찾기: the box above the chat, the buttons in place of the input, and the marked word */
@@ -1902,7 +1900,7 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
 }
 
 /* 🔍 on a red notice: opens the error details (the notice itself still closes on a tap) */
-#toast-container > .toast-error {
+#toast-container > .toast-error:has(.stqa_toast_detail) {
     position: relative;
     padding-right: 44px !important;
 }
@@ -2011,18 +2009,41 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
     text-align: center;
 }
 
+/* An extension's settings: its icon is a button that picks another */
+.stqa_menu_pick_row > .stqa_menu_pick_icon {
+    width: 1.9em;
+    height: 1.9em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* 처음 탭, in its row's box under the name */
+.stqa_menu_pick_row.stqa_menu_pick_with_tab {
+    flex-wrap: wrap;
+    row-gap: 6px;
+}
+
+.stqa_menu_pick_row > .stqa_menu_pick_tab {
+    flex: 1 0 100%;
+    width: auto;
+    margin: 0;
+    font-size: 0.85em;
+}
+
+.stqa_palette .stqa_menu_pick_row > .stqa_menu_pick_icon {
+    border-color: var(--stqa-strong-line);
+}
+
 .stqa_menu_pick_row > span {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-/* Themes put transitions on everything (some with !important): the name shows at once */
-.stqa_wand_tip:not(#stqa_no_such_id) {
-    transition: none !important;
-    animation: none !important;
 }
 
 .stqa_wand_tip {
@@ -2044,15 +2065,9 @@ body.stqa_options_grid #options .options-content > a > [class*="fa-"] {
     pointer-events: none;
 }
 
-
-
-
-
-
-
-/* Start screen: recent chats only */
-body.stqa_welcome_recent #chat:has(> .welcomePanel) > .mes {
-    display: none;
+/* Start screen: recent chats only (the doubled id and !important outweigh themes that set how messages show) */
+body.stqa_welcome_recent #chat#chat:has(> .welcomePanel) > .mes.mes {
+    display: none !important;
 }
 
 /* Only the recent chats: no logo and version, nor the links and temporary chat button */
@@ -2163,12 +2178,64 @@ body.stqa_preset_list_on #settings_preset_openai {
     color: var(--SmartThemeQuoteColor);
 }
 
-.stqa_preset_edit {
+/* The first row (프롬프트 관리 and the search box), staying in sight while the list scrolls */
+.stqa_preset_top {
+    position: sticky;
+    top: -4px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: -4px 0 4px;
+    padding: 4px 0 4px 6px;
+    border-bottom: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.stqa_preset_top .stqa_preset_edit {
+    /* All the room right of the search box, the icon in its middle */
+    order: 1;
+    flex: none;
     justify-content: center;
-    margin-top: 4px;
-    border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
-    font-size: 0.88em;
+    width: 44px;
+    min-height: 30px;
+    padding: 0;
+    border-radius: 6px;
+    font-size: 1.15em;
+}
+
+.stqa_preset_edit > * {
     opacity: 0.75;
+}
+
+.stqa_preset_search {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.stqa_preset_search i {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.stqa_preset_search input.text_pole {
+    width: 100%;
+    min-height: 30px;
+    margin: 0;
+    padding: 3px 8px 3px 26px !important;
+    font-size: 0.88em;
+}
+
+.stqa_preset_none {
+    padding: 10px 12px;
+    text-align: center;
+    opacity: 0.6;
 }
 
 /* Regex folder row: its ≡ drags the folder and its scripts together */
@@ -2224,6 +2291,8 @@ body.stqa_preset_list_on #settings_preset_openai {
 
 .stqa_footer_swipe .stqa_footer_button {
     display: flex;
+    /* A little wider than the other footer buttons: easier to hit */
+    width: 42px;
     height: 100%;
     border: none;
     border-radius: 0;
@@ -2713,28 +2782,6 @@ body:not(.stqa_chat_rename_on) .stqa_chat_rename {
     display: none !important;
 }
 
-.stqa_tr_view {
-    cursor: pointer;
-    color: inherit;
-}
-
-div.stqa_tr_view {
-    box-sizing: border-box;
-    width: 100%;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    text-align: left;
-    border-style: dashed;
-}
-
-div.stqa_tr_view.stqa_tr_long {
-    max-height: 50vh;
-    overflow-y: auto;
-}
-
-
-
 .stqa_tr_toggle.stqa_active {
     border-color: var(--SmartThemeQuoteColor);
     color: var(--SmartThemeQuoteColor);
@@ -2803,7 +2850,6 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 }
 
 /* Prompt list column titles: the buttons centred between "Name" and "Tokens", out of the layout */
-
 
 /* QR tools: sized to OK / Cancel by the script; icon in the middle */
 .stqa_qr_btn {
@@ -2901,16 +2947,16 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 /* Chat list header: ST spreads its items evenly over the line, which leaves big uneven gaps once
    buttons are added. The title stays on the left and the buttons sit together on the right,
    all with the same gap */
-#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) {
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io:not([style*="none"])) {
     justify-content: flex-start;
     column-gap: 6px;
 }
 
-#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) > #selectChatPopupHeaderText {
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io:not([style*="none"])) > #selectChatPopupHeaderText {
     margin-right: auto;
 }
 
-#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io) > .menu_button {
+#select_chat_popup [name="selectChatPopupHeader"]:has(#stqa_chat_io:not([style*="none"])) > .menu_button {
     margin: 0;
 }
 
@@ -2945,7 +2991,10 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 #stqa_chat_io .menu_button,
 .stqa_qr_btn,
 .stqa_picker_export,
-.stqa_picker_import {
+.stqa_picker_import,
+.stqa_picker_import_one,
+.stqa_picker_backups,
+.stqa_picker_delete {
     gap: 0 !important;
     justify-content: center;
 }
@@ -2981,6 +3030,18 @@ body.stqa_char_tools_on.stqa_char_tools_float #rm_print_characters_block .charac
 .stqa_tr_menu .list-group-item i {
     width: 1.2em;
     text-align: center;
+}
+
+/* The prompt ··· menu: a little smaller than the others */
+.stqa_tr_menu.stqa_prompt_menu {
+    min-width: 0;
+    padding: 3px;
+    font-size: 0.88em;
+}
+
+.stqa_tr_menu.stqa_prompt_menu .list-group-item {
+    gap: 8px;
+    padding: 6px 9px;
 }
 
 .stqa_prompt_menu .stqa_danger {
@@ -3093,6 +3154,23 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     text-align: left;
 }
 
+.stqa_trash_view_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.stqa_trash_view_head h3 {
+    flex: 1;
+}
+
+.stqa_trash_view_head .stqa_trash_view_turn {
+    flex: none;
+    margin: 0;
+    font-size: 0.85em;
+}
+
 .stqa_trash_view h3 {
     margin: 0 0 8px;
     text-align: center;
@@ -3139,17 +3217,6 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     width: 4em;
     margin: 0;
     text-align: center;
-}
-
-.stqa_trash_days {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.stqa_trash_days input.text_pole {
-    width: 4.5em;
-    margin: 0;
 }
 
 /* Backups window and a backup shown as a chat. Bubbles take their colors from the theme's text
@@ -3247,13 +3314,13 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 12%, transparent);
 }
 
-.stqa_backup_message .mes_text {
+.stqa_backup_message .stqa_raw_text {
     max-height: 8em;
     overflow: hidden;
     color: inherit;
 }
 
-.stqa_backup_message.stqa_backup_open .mes_text {
+.stqa_backup_message.stqa_backup_open .stqa_raw_text {
     max-height: none;
 }
 
@@ -3265,18 +3332,8 @@ body.stqa_swipe_list_on #chat .stqa_footer_count {
     opacity: 0.85;
 }
 
-.stqa_backup_missing,
-.stqa_backup_changed {
-    border-width: 2px;
-    border-color: var(--SmartThemeQuoteColor);
-}
-
 .stqa_backup_name small {
     color: var(--SmartThemeQuoteColor);
-}
-
-.stqa_backup_only_differing > .stqa_backup_message:not(.stqa_backup_missing):not(.stqa_backup_changed) {
-    display: none;
 }
 
 /* Swipe list: one card per swipe, the one on show marked */
@@ -3394,24 +3451,6 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
     display: none;
 }
 
-.stqa_backup_chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: center;
-}
-
-.stqa_backup_chip {
-    padding: 1px 9px;
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 999px;
-    font-size: 0.85em;
-}
-
-.stqa_backup_chip_accent {
-    border-color: var(--SmartThemeQuoteColor);
-    color: var(--SmartThemeQuoteColor);
-}
 /* Extension settings shortcuts: the picker (one row per extension, a box per place) and the
    first-letter icon of an extension that has none */
 .stqa_link_grid {
@@ -3607,35 +3646,9 @@ body.stqa_backup_view_on button.menu_button:has(> .fa-box-open) > .fa-chevron-up
     display: none;
 }
 
-/* Settings window: sheets instead of scrolling. The ‹ 1 / 3 › sits over the features (it keeps
-   its place whatever the sheet's height); features on other sheets are out of the layout */
-.stqa_pager {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin: -4px 0 8px;
-    font-size: 0.9em;
-}
-
-.stqa_pager[hidden],
-.stqa_paged_out {
-    display: none !important;
-}
-
-.stqa_pager .menu_button {
-    margin: 0;
-    padding: 4px 14px;
-}
-
-.stqa_pager .menu_button.stqa_dim {
-    opacity: 0.35;
-    pointer-events: none;
-}
-
 /* Start screen: ST's own start messages stay hidden without the recent chats panel too */
-body.stqa_welcome_recent.stqa_at_start #chat > .mes {
-    display: none;
+body.stqa_welcome_recent.stqa_at_start #chat#chat > .mes.mes {
+    display: none !important;
 }
 
 /* World info picker: the dropdown takes no taps (its row opens the window instead) */
@@ -3716,10 +3729,6 @@ body.stqa_world_pick_on #world_editor_select + .select2 {
     flex-wrap: wrap;
     align-items: center;
     gap: 4px;
-}
-
-#stqa_world_links {
-    margin: 4px 0 6px;
 }
 
 .stqa_world_avatar {
@@ -3906,11 +3915,6 @@ i.stqa_persona_link {
     margin-left: auto;
 }
 
-/* Settings window: the ‹ 1 / 3 › goes under the features */
-.stqa_tab_body + .stqa_pager {
-    margin: 8px 0 0;
-}
-
 /* World info window: the search box with the order button beside it; the star at a row's right */
 .stqa_world_top {
     display: flex;
@@ -3942,4 +3946,1228 @@ body:not(.stqa_chat_sort_on) .stqa_chat_sort.stqa_world_sort {
 .stqa_world_pick .stqa_tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
+}
+
+/* Translation shown bigger (⤢ on a translated box): read only, the box fills the window down to
+   its button and scrolls inside (no part of the text left below the box's edge) */
+.popup:has(.stqa_tr_big) .popup-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.stqa_tr_big {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.stqa_tr_big textarea {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    height: calc(100dvh - 240px) !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    resize: none;
+}
+
+/* Chat word replace: the range of messages, two small number boxes in a row */
+.stqa_replace_range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_replace .stqa_replace_range input.text_pole {
+    width: 5.5em;
+    flex: 0 0 auto;
+}
+
+/* Error details: the earlier errors folded under the notice's own */
+.stqa_error_earlier {
+    margin-top: 10px;
+    text-align: left;
+}
+
+.stqa_error_earlier > summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+/* Trash and backup previews: a message as its text is written, lines kept */
+.stqa_raw_text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: left;
+    font-size: 0.92em;
+    line-height: 1.5;
+}
+
+/* Range delete / hide: 한 메시지 위·아래 on the right, above the bar that stands in for the input */
+#stqa_range_steps {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: 0;
+    z-index: 3000;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+}
+
+.stqa_range_steps_side {
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+/* Round, borderless, icon only */
+.stqa_range_step {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 17px;
+    color: var(--SmartThemeBodyColor);
+    background-color: var(--SmartThemeBlurTintColor);
+    /* A shade off the page, so the circle shows on themes whose tint is the page colour */
+    background-color: color-mix(in srgb, var(--SmartThemeBlurTintColor) 88%, var(--SmartThemeBodyColor));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.stqa_range_step:active {
+    filter: brightness(0.85);
+}
+
+/* Settings window: categories, a search, and the features' list (only the list scrolls) */
+/* Its own colours, whatever the theme */
+.popup:has(.stqa_palette:not([data-palette="theme"])) {
+    backdrop-filter: none !important;
+}
+
+.popup:has(.stqa_palette[data-palette="forest"]) {
+    background: #f1f2ec !important;
+    color: #1d221c !important;
+}
+
+.popup:has(.stqa_palette[data-palette="ocean"]) {
+    background: #eef2f6 !important;
+    color: #1b2430 !important;
+}
+
+.popup:has(.stqa_palette[data-palette="rose"]) {
+    background: #f6efef !important;
+    color: #2a2020 !important;
+}
+
+.popup:has(.stqa_palette[data-palette="lavender"]) {
+    background: #f1f0f6 !important;
+    color: #221f2e !important;
+}
+
+.popup:has(.stqa_palette[data-palette="night"]) {
+    background: #1b1e22 !important;
+    color: #e6e8eb !important;
+}
+
+/* The window's own buttons and title sit outside the coloured part: the same colours there */
+.popup:has(.stqa_palette:not([data-palette="theme"])) h3 {
+    color: inherit;
+}
+
+.popup:has(.stqa_palette:not([data-palette="theme"])) .popup-controls .menu_button {
+    color: var(--stqa-pc-ink) !important;
+    background-color: var(--stqa-pc-field) !important;
+    border: 1px solid var(--stqa-pc-line) !important;
+}
+
+.popup:has(.stqa_palette[data-palette="forest"]) {
+    --stqa-pc-ink: #1d221c;
+    --stqa-pc-field: #f4f5f0;
+    --stqa-pc-line: #dde0d6;
+}
+
+.popup:has(.stqa_palette[data-palette="ocean"]) {
+    --stqa-pc-ink: #1b2430;
+    --stqa-pc-field: #f3f6f9;
+    --stqa-pc-line: #d8e0ea;
+}
+
+.popup:has(.stqa_palette[data-palette="rose"]) {
+    --stqa-pc-ink: #2a2020;
+    --stqa-pc-field: #faf5f5;
+    --stqa-pc-line: #ead9db;
+}
+
+.popup:has(.stqa_palette[data-palette="lavender"]) {
+    --stqa-pc-ink: #221f2e;
+    --stqa-pc-field: #f6f5fa;
+    --stqa-pc-line: #dfdbea;
+}
+
+.popup:has(.stqa_palette[data-palette="night"]) {
+    --stqa-pc-ink: #e6e8eb;
+    --stqa-pc-field: #2a2f35;
+    --stqa-pc-line: #33383f;
+}
+
+/* No room left empty at the window's sides (its own padding and its content's) */
+.popup:has(.stqa_set) {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+}
+
+.popup:has(.stqa_set) .popup-content {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+.stqa_set_head {
+    padding: 0 4px;
+}
+
+.stqa_set > .stqa_panel_search {
+    margin-left: 4px !important;
+    margin-right: 4px !important;
+}
+
+/* 즐겨찾기: ☆ under each row, ★ when starred */
+/* In the name's line, right after its last word */
+.stqa_set_fav {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 22px;
+    margin: -4px 0 -2px 1px;
+    vertical-align: 0.1em;
+    font-size: 0.9em;
+    color: var(--stqa-off);
+    cursor: pointer;
+}
+
+.stqa_set_fav.stqa_set_fav_on {
+    color: #c99a2e;
+}
+
+/* The star stays small, the finger gets more room around it */
+.stqa_set_fav {
+    position: relative;
+}
+
+.stqa_set_fav::after {
+    content: "";
+    position: absolute;
+    inset: -10px -9px;
+}
+
+/* The shortcut buttons' chips: the chip itself shows on / off (no tick box), small */
+.stqa_set_opt .stqa_chips {
+    gap: 5px;
+}
+
+.stqa_set_opt .stqa_chip {
+    gap: 5px;
+    padding: 3px 9px;
+    border: 1px solid transparent;
+    border: 1px dashed var(--stqa-strong-line) !important;
+    border-radius: 999px;
+    font-size: 0.8em;
+    color: var(--stqa-chip-ink);
+    background: transparent;
+}
+
+.stqa_set_opt .stqa_chip input {
+    display: none;
+}
+
+.stqa_set_opt .stqa_chip:has(input:checked) {
+    color: var(--stqa-accent);
+    border: 1.5px solid var(--stqa-accent) !important;
+    background: color-mix(in srgb, var(--stqa-accent) 16%, transparent);
+    font-weight: 600;
+}
+
+.stqa_set {
+    --stqa-ink: #1d221c;
+    --stqa-sub: #4c564a;
+    --stqa-accent: #2c6a4d;
+    --stqa-line: #dde0d6;
+    --stqa-strong-line: #c3c9bb;
+    --stqa-soft: #e0efe5;
+    --stqa-field: #f4f5f0;
+    --stqa-rail: #edf4ef;
+    --stqa-off: #a7aea3;
+    --stqa-card: #ffffff;
+    --stqa-chip-bg: #e9ebe4;
+    --stqa-chip-ink: #78806f;
+    color: var(--stqa-ink);
+    display: flex;
+    flex-direction: column;
+    height: min(700px, calc(100dvh - 150px));
+    /* (A short screen, or a keyboard up: smaller rather than out of the screen) */
+    min-height: min(320px, calc(100dvh - 150px));
+    container-type: inline-size;
+}
+
+/* The colours (숲 unless another is picked) */
+.stqa_palette {
+    --stqa-ink: #1d221c;
+    --stqa-sub: #4c564a;
+    --stqa-accent: #2c6a4d;
+    --stqa-line: #dde0d6;
+    --stqa-strong-line: #c3c9bb;
+    --stqa-soft: #e0efe5;
+    --stqa-field: #f4f5f0;
+    --stqa-rail: #edf4ef;
+    --stqa-off: #a7aea3;
+    --stqa-card: #ffffff;
+    --stqa-chip-bg: #e9ebe4;
+    --stqa-chip-ink: #78806f;
+}
+
+/* Windows in these colours: ST's own colour names point at them inside, so what is drawn with
+   the theme's colours (rows, boxes, buttons) takes these instead (the theme's own: as it is) */
+.stqa_palette {
+    color: var(--stqa-ink);
+}
+
+.stqa_palette:not([data-palette="theme"]) {
+    --SmartThemeBodyColor: var(--stqa-ink);
+    --SmartThemeEmColor: var(--stqa-sub);
+    --SmartThemeQuoteColor: var(--stqa-accent);
+    --SmartThemeBorderColor: var(--stqa-line);
+    --SmartThemeBlurTintColor: var(--stqa-card);
+    --SmartThemeChatTintColor: var(--stqa-card);
+    /* (A ticked box is filled with the accent: its tick in the card colour) */
+    --SmartThemeCheckboxTickColor: var(--stqa-card);
+    --SmartThemeShadowColor: transparent;
+}
+
+.stqa_palette h3 {
+    color: var(--stqa-ink);
+}
+
+.stqa_palette .stqa_hint {
+    color: var(--stqa-sub);
+    opacity: 1;
+}
+
+.stqa_palette .text_pole,
+.stqa_palette select {
+    color: var(--stqa-ink) !important;
+    background-color: var(--stqa-field) !important;
+    border: 1px solid var(--stqa-line) !important;
+}
+
+.stqa_palette .menu_button {
+    color: var(--stqa-ink);
+    background-color: var(--stqa-field);
+    border: 1px solid var(--stqa-line);
+}
+
+.stqa_palette .stqa_layout_group_title {
+    color: var(--stqa-accent);
+    font-weight: 700;
+    opacity: 1;
+}
+
+/* Tick boxes (some themes colour a ticked one with !important) */
+.stqa_palette:not([data-palette="theme"]) input[type="checkbox"]:not(.stqa_set_switch input) {
+    background-color: var(--stqa-card) !important;
+    outline-color: var(--stqa-strong-line);
+}
+
+.stqa_palette:not([data-palette="theme"]) input[type="checkbox"]:not(.stqa_set_switch input):checked {
+    background-color: var(--stqa-accent) !important;
+    outline-color: var(--stqa-accent);
+}
+
+/* 메뉴 항목 추가 */
+.stqa_palette .stqa_menu_pick_row {
+    background: var(--stqa-card);
+    border: 1px solid var(--stqa-line);
+}
+
+.stqa_palette .stqa_menu_pick_row:hover {
+    background: var(--stqa-soft);
+}
+
+.stqa_palette .stqa_menu_pick_row > i,
+.stqa_palette .stqa_link_head,
+.stqa_palette .stqa_link_icon {
+    color: var(--stqa-accent);
+}
+
+/* Icon choice */
+.stqa_palette .stqa_icon_cell {
+    color: var(--stqa-ink);
+    background: var(--stqa-card);
+    border-color: var(--stqa-line);
+}
+
+/* 메뉴 정리 in the settings window's colours */
+.stqa_layout_editor.stqa_palette {
+    color: var(--stqa-ink);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_hint {
+    color: var(--stqa-sub);
+    opacity: 1;
+}
+
+.stqa_layout_editor.stqa_palette .stqa_tabs {
+    background: var(--stqa-chip-bg);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_tab {
+    color: var(--stqa-sub);
+    opacity: 1;
+}
+
+.stqa_layout_editor.stqa_palette .stqa_tab.stqa_tab_active {
+    color: var(--stqa-accent);
+    background: var(--stqa-card);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_group_title {
+    color: var(--stqa-accent);
+    font-weight: 700;
+    opacity: 1;
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_row {
+    color: var(--stqa-ink);
+    background: var(--stqa-card);
+    border-color: var(--stqa-line);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_row.stqa_dragging,
+.stqa_layout_editor.stqa_palette .stqa_layout_row.stqa_move_picked {
+    border-color: var(--stqa-accent);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_row.stqa_move_picked {
+    background: var(--stqa-soft);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_handle,
+.stqa_layout_editor.stqa_palette .stqa_layout_eye {
+    color: var(--stqa-sub);
+}
+
+.stqa_layout_editor.stqa_palette .stqa_layout_row.stqa_move_picked .stqa_layout_handle,
+.stqa_layout_editor.stqa_palette .stqa_layout_icon {
+    color: var(--stqa-accent);
+}
+
+.stqa_layout_editor.stqa_palette .menu_button {
+    color: var(--stqa-ink);
+    background-color: var(--stqa-field);
+    border: 1px solid var(--stqa-line);
+}
+
+.stqa_palette[data-palette="ocean"] {
+    --stqa-ink: #1b2430;
+    --stqa-sub: #4a5768;
+    --stqa-accent: #2a5d8f;
+    --stqa-line: #d8e0ea;
+    --stqa-strong-line: #bccadb;
+    --stqa-soft: #dde9f5;
+    --stqa-field: #f3f6f9;
+    --stqa-rail: #e9f1f8;
+    --stqa-off: #a3adba;
+    --stqa-chip-bg: #e6ebf1;
+    --stqa-chip-ink: #717f90;
+}
+
+.stqa_palette[data-palette="rose"] {
+    --stqa-ink: #2a2020;
+    --stqa-sub: #5f4e4e;
+    --stqa-accent: #a2445a;
+    --stqa-line: #ead9db;
+    --stqa-strong-line: #d9bfc3;
+    --stqa-soft: #f6e1e5;
+    --stqa-field: #faf5f5;
+    --stqa-rail: #f7eaec;
+    --stqa-off: #b9a9ab;
+    --stqa-chip-bg: #efe4e5;
+    --stqa-chip-ink: #887579;
+}
+
+.stqa_palette[data-palette="lavender"] {
+    --stqa-ink: #221f2e;
+    --stqa-sub: #575070;
+    --stqa-accent: #6a4fa3;
+    --stqa-line: #dfdbea;
+    --stqa-strong-line: #c7c0db;
+    --stqa-soft: #e8e2f5;
+    --stqa-field: #f6f5fa;
+    --stqa-rail: #efebf8;
+    --stqa-off: #aaa4bc;
+    --stqa-chip-bg: #e8e5f0;
+    --stqa-chip-ink: #7a7391;
+}
+
+.stqa_palette[data-palette="night"] {
+    --stqa-ink: #e6e8eb;
+    --stqa-sub: #a3aab3;
+    --stqa-accent: #6dbb94;
+    --stqa-line: #33383f;
+    --stqa-strong-line: #454c55;
+    --stqa-soft: #26372f;
+    --stqa-field: #2a2f35;
+    --stqa-rail: #222b27;
+    --stqa-off: #555c65;
+    --stqa-card: #24282d;
+    --stqa-chip-bg: #2e3339;
+    --stqa-chip-ink: #939ba5;
+}
+
+/* The ST theme's own colours */
+.stqa_palette[data-palette="theme"] {
+    --stqa-ink: var(--SmartThemeBodyColor);
+    --stqa-sub: color-mix(in srgb, var(--SmartThemeBodyColor) 72%, transparent);
+    --stqa-accent: var(--SmartThemeQuoteColor);
+    --stqa-line: color-mix(in srgb, var(--SmartThemeBorderColor) 60%, transparent);
+    --stqa-strong-line: var(--SmartThemeBorderColor);
+    --stqa-soft: color-mix(in srgb, var(--SmartThemeQuoteColor) 16%, transparent);
+    --stqa-field: color-mix(in srgb, var(--SmartThemeBodyColor) 6%, transparent);
+    --stqa-rail: color-mix(in srgb, var(--SmartThemeQuoteColor) 8%, transparent);
+    --stqa-off: color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+    --stqa-card: color-mix(in srgb, var(--SmartThemeBodyColor) 5%, transparent);
+    --stqa-chip-bg: color-mix(in srgb, var(--SmartThemeBodyColor) 10%, transparent);
+    --stqa-chip-ink: color-mix(in srgb, var(--SmartThemeBodyColor) 62%, transparent);
+}
+
+.stqa_palette[data-palette="theme"] .stqa_select_list {
+    background: var(--SmartThemeBlurTintColor);
+}
+
+/* 🎨 next to 사용, and the choice under it */
+.stqa_set_head {
+    position: relative;
+}
+
+.stqa_set_head_end {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stqa_set_palette_btn {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    color: var(--stqa-accent);
+    cursor: pointer;
+}
+
+.stqa_set_palettes {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 5;
+    display: grid;
+    grid-template-columns: repeat(3, 64px);
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--stqa-line);
+    border-radius: 12px;
+    background: var(--stqa-card);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.stqa_set[data-palette="theme"] .stqa_set_palettes {
+    background: var(--SmartThemeBlurTintColor);
+}
+
+.stqa_set_palette {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 2px 5px;
+    border-radius: 9px;
+    font-size: 0.8em;
+    color: var(--stqa-sub);
+    cursor: pointer;
+}
+
+.stqa_set_palette_dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+}
+
+.stqa_set_palette.stqa_set_current {
+    color: var(--stqa-accent);
+    font-weight: 700;
+    background: var(--stqa-soft);
+}
+
+.stqa_set [hidden] {
+    display: none !important;
+}
+
+.stqa_set_head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: none;
+}
+
+.stqa_set_title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.stqa_set_title h3 {
+    margin: 0;
+    font-size: 1.15em;
+}
+
+.stqa_set_brand {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: none;
+    border-radius: 9px;
+    color: var(--stqa-accent);
+    background: var(--stqa-soft);
+}
+
+.stqa_set > .stqa_panel_search {
+    flex: none;
+    margin: 10px 0;
+}
+
+.stqa_set > .stqa_panel_search input.text_pole {
+    background-color: var(--stqa-card) !important;
+}
+
+.stqa_set .text_pole,
+.stqa_set textarea,
+.stqa_set select {
+    color: var(--stqa-ink) !important;
+    background-color: var(--stqa-field) !important;
+    border: 1px solid var(--stqa-line) !important;
+}
+
+.stqa_set .text_pole::placeholder {
+    color: var(--stqa-sub);
+    opacity: 0.8;
+}
+
+.stqa_set .stqa_select_list {
+    color: var(--stqa-ink);
+    background: var(--stqa-card);
+    border-color: var(--stqa-line);
+}
+
+.stqa_set .stqa_select_item.stqa_selected {
+    color: var(--stqa-accent);
+    background: var(--stqa-soft);
+}
+
+.stqa_set .menu_button {
+    color: var(--stqa-ink);
+    background-color: var(--stqa-field);
+    border: 1px solid var(--stqa-line);
+}
+
+/* Categories: underlined tabs along the top, slid sideways (narrow); a column at the left with
+   icon, name and count (wide) */
+.stqa_set_body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.stqa_set_nav {
+    flex: none;
+    display: flex;
+    overflow-x: auto;
+    overscroll-behavior: contain;
+    padding: 0 2px;
+    border-bottom: 1px solid var(--stqa-line);
+    scrollbar-width: none;
+}
+
+.stqa_set_nav::-webkit-scrollbar {
+    display: none;
+}
+
+/* More categories that way: that end fades, with an arrow over it */
+.stqa_set_body {
+    position: relative;
+}
+
+.stqa_set_nav.stqa_nav_fade_r {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+}
+
+.stqa_set_nav.stqa_nav_fade_l {
+    -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+}
+
+.stqa_set_nav.stqa_nav_fade_l.stqa_nav_fade_r {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+}
+
+.stqa_set_nav_more {
+    position: absolute;
+    top: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    font-size: 0.75em;
+    color: var(--stqa-accent);
+    pointer-events: none;
+}
+
+.stqa_set_nav_more[hidden] {
+    display: none;
+}
+
+.stqa_set_nav_left {
+    left: 0;
+}
+
+.stqa_set_nav_right {
+    right: 0;
+}
+
+/* Search results: the category beside the name, and the chips found */
+.stqa_set_cat {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 0.72em;
+    font-weight: 500;
+    vertical-align: 2px;
+    color: var(--stqa-accent);
+    background: var(--stqa-soft);
+}
+
+.stqa_set_cat[hidden] {
+    display: none;
+}
+
+.stqa_set_chip.stqa_chip_found {
+    box-shadow: 0 0 0 2.5px #f0c94a !important;
+}
+
+.stqa_set_chip.stqa_chip_dim {
+    opacity: 0.4;
+}
+
+.stqa_set_navbtn {
+    flex: none;
+    display: flex;
+    align-items: center;
+    padding: 8px 10px 7px;
+    border-bottom: 2.5px solid transparent;
+    font-size: 0.92em;
+    white-space: nowrap;
+    color: var(--stqa-sub);
+    cursor: pointer;
+}
+
+.stqa_set_navbtn i,
+.stqa_set_navbtn small {
+    display: none;
+}
+
+.stqa_set_navbtn.stqa_set_current {
+    font-weight: 700;
+    color: var(--stqa-accent);
+    border-bottom-color: var(--stqa-accent);
+}
+
+.stqa_set_content {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 4px;
+}
+
+.stqa_set_content_head {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 2px 4px;
+}
+
+.stqa_set_heading {
+    font-size: 1.05em;
+}
+
+.stqa_set_count {
+    font-size: 0.8em;
+    color: var(--stqa-sub);
+}
+
+.stqa_set_list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 2px 4px 10px 0;
+}
+
+/* Everything off: the switches rest, but help, stars and scrolling still work */
+.stqa_set_all_off .stqa_set_list {
+    opacity: 0.45;
+}
+
+.stqa_set_all_off .stqa_set_list .stqa_set_switch,
+.stqa_set_all_off .stqa_set_list .stqa_set_chip,
+.stqa_set_all_off .stqa_set_list .stqa_set_opts {
+    pointer-events: none;
+}
+
+/* Something reached with the keyboard shows where it is */
+.stqa_set [role="button"]:focus-visible,
+.stqa_set .stqa_set_navbtn:focus-visible {
+    outline: 2px solid var(--stqa-accent);
+    outline-offset: 2px;
+}
+
+@container (min-width: 560px) {
+    .stqa_set_body {
+        display: grid;
+        grid-template-columns: 152px minmax(0, 1fr);
+        border-top: 1px solid var(--stqa-line);
+    }
+
+    .stqa_set_nav {
+        min-height: 0;
+        flex-direction: column;
+        gap: 2px;
+        overflow-x: visible;
+        overflow-y: auto;
+        padding: 8px 6px;
+        background: var(--stqa-rail);
+        border-bottom: none;
+        border-right: 1px solid var(--stqa-line);
+    }
+
+    .stqa_set_navbtn {
+        gap: 9px;
+        padding: 7px 9px;
+        min-height: 36px;
+        border-bottom: none;
+        border-radius: 8px;
+        font-size: 0.9em;
+    }
+
+    .stqa_set_navbtn i {
+        display: inline;
+        width: 16px;
+        font-size: 0.95em;
+        text-align: center;
+    }
+
+    .stqa_set_navbtn small {
+        display: inline;
+        margin-left: auto;
+        font-size: 0.85em;
+        opacity: 0.75;
+    }
+
+    .stqa_set_navbtn.stqa_set_current {
+        background: var(--stqa-soft);
+    }
+
+    .stqa_set_content {
+        padding: 0 0 0 16px;
+    }
+}
+
+/* A group in a category: a line over its name, but over the first */
+.stqa_set_group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 0 2px;
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--stqa-accent);
+}
+
+.stqa_set_group::after {
+    content: "";
+    flex: 1;
+    height: 1.5px;
+    background: var(--stqa-strong-line);
+}
+
+.stqa_set_list > .stqa_set_group:not([hidden]):not(.stqa_set_group:not([hidden]) ~ .stqa_set_group) {
+    margin-top: 0;
+}
+
+.stqa_set_empty {
+    padding: 24px 0;
+    text-align: center;
+    opacity: 0.6;
+}
+
+/* A row: icon, name, one line, switch (or chips); its settings; where it is and its help */
+.stqa_set_row {
+    padding: 11px 11px 10px;
+    background: var(--stqa-card);
+    border: 1px solid var(--stqa-line);
+    border-radius: 11px;
+}
+
+.stqa_set_main {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
+}
+
+.stqa_set_icon {
+    display: grid;
+    border: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    color: var(--stqa-accent);
+    background: var(--stqa-soft);
+    font-size: 0.85em;
+}
+
+.stqa_set_name {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.stqa_set_name_end {
+    white-space: nowrap;
+}
+
+.stqa_set_name b {
+    font-weight: 700;
+}
+
+/* The line under the name opens the help: ⌄ at its end, turned over when open */
+.stqa_set_sum.stqa_set_helpbtn {
+    cursor: pointer;
+}
+
+.stqa_set_chev {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 6px;
+    border-right: 1.6px solid var(--stqa-accent);
+    border-bottom: 1.6px solid var(--stqa-accent);
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.18s ease;
+}
+
+.stqa_set_helpbtn[aria-expanded="true"] .stqa_set_chev {
+    transform: translateY(1px) rotate(-135deg);
+}
+
+.stqa_set_sum {
+    margin-top: 1px;
+    font-size: 0.86em;
+    line-height: 1.45;
+    color: var(--stqa-sub);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+}
+
+.stqa_set_off .stqa_set_sum,
+.stqa_set_off .stqa_set_name {
+    opacity: 0.55;
+}
+
+/* Switches drawn here, not with the theme's checkbox look */
+.stqa_set_switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    cursor: pointer;
+}
+
+.stqa_set_master {
+    font-size: 0.85em;
+}
+
+/* (ST and themes draw checkboxes as small boxes, some with !important) */
+.stqa_set .stqa_set_switch input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: none;
+    width: 38px !important;
+    height: 22px !important;
+    margin: 0;
+    padding: 0;
+    border: none !important;
+    outline: none;
+    overflow: visible;
+    border-radius: 999px !important;
+    background-color: var(--stqa-off) !important;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.stqa_set .stqa_set_switch input[type="checkbox"]::before {
+    content: "" !important;
+    display: block;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px !important;
+    height: 18px !important;
+    border-radius: 50% !important;
+    background: #fff !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+    transform: none !important;
+    clip-path: none !important;
+    transition: transform 0.15s;
+}
+
+.stqa_set .stqa_set_switch input[type="checkbox"]::after {
+    display: none;
+}
+
+.stqa_set .stqa_set_switch input[type="checkbox"]:checked {
+    background-color: var(--stqa-accent) !important;
+}
+
+.stqa_set .stqa_set_switch input[type="checkbox"]:checked::before {
+    transform: translateX(16px) !important;
+}
+
+/* Features of one kind: a chip each */
+.stqa_set_chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0 0 40px;
+}
+
+/* Off: flat grey and faint. On: filled green with a tick */
+.stqa_set_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 4px 11px;
+    border: 1px dashed var(--stqa-strong-line);
+    border-radius: 999px;
+    font-size: 0.88em;
+    color: var(--stqa-chip-ink);
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stqa_set_chip input {
+    display: none;
+}
+
+.stqa_set_chip i {
+    font-size: 0.85em;
+}
+
+.stqa_set_chip:has(input:checked) {
+    font-weight: 600;
+    color: var(--stqa-accent);
+    border: 1.5px solid var(--stqa-accent) !important;
+    background: color-mix(in srgb, var(--stqa-accent) 16%, transparent);
+}
+
+/* A feature's own settings, under it while it is on */
+.stqa_set_opts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 8px 0 2px 40px;
+}
+
+.stqa_set_opt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.stqa_set_opt_title {
+    flex: none;
+    font-size: 0.85em;
+    color: var(--stqa-sub);
+}
+
+.stqa_set_opt_part {
+    flex-wrap: nowrap;
+    gap: 8px;
+}
+
+.stqa_set_opt_part > .stqa_select {
+    flex: 1 1 auto;
+}
+
+.stqa_set_opt .stqa_panel_button {
+    margin: 0;
+}
+
+/* A select shares its line with what goes with it (a count, a second select) */
+.stqa_set_opt > .stqa_select {
+    flex: 1 1 120px;
+    min-width: 0;
+}
+
+.stqa_set_opt .stqa_chips {
+    margin: 0;
+}
+
+.stqa_set_help {
+    margin: 12px 0 2px 40px;
+    padding: 10px 12px;
+    border-left: 2px solid var(--stqa-accent);
+    border-radius: 0 8px 8px 0;
+    background: var(--stqa-rail);
+    font-size: 0.86em;
+    line-height: 1.6;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+}
+
+.stqa_set_help p {
+    margin: 0;
+}
+
+.stqa_set_help ul {
+    margin: 3px 0 0;
+    padding-left: 17px;
+}
+
+.stqa_set_help li {
+    margin: 1px 0;
+}
+
+.stqa_set_part + .stqa_set_part {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--stqa-line);
+}
+
+.stqa_set_part_title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.stqa_set_part_title i {
+    font-size: 0.85em;
+    color: var(--stqa-accent);
+}
+
+.stqa_set_where {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    font-size: 0.92em;
+    color: var(--stqa-sub);
+}
+
+.stqa_set_where i {
+    font-size: 0.85em;
+    color: var(--stqa-accent);
+}
+
+::highlight(stqa-found) {
+    background-color: #f6e3a1;
+    color: #1d221c;
+}
+
+@container (max-width: 420px) {
+    .stqa_set_chips,
+    .stqa_set_opts,
+    .stqa_set_help {
+        margin-left: 0;
+    }
+
+}
+
+/* A prompt item just brought in: tinted, with "가져옴", fading in a few seconds */
+#completion_prompt_manager_list li.stqa_prompt_fresh {
+    animation: stqa-fresh 5s ease-out var(--stqa-fresh-delay, 0ms) forwards;
+}
+
+#completion_prompt_manager_list li.stqa_prompt_fresh .stqa_fresh_tag {
+    animation: stqa-fresh-tag 5s ease-out var(--stqa-fresh-delay, 0ms) forwards;
+}
+
+.stqa_fresh_tag {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--SmartThemeQuoteColor);
+    border-radius: 5px;
+    color: var(--SmartThemeQuoteColor);
+    font-size: 0.75em;
+    font-weight: 700;
+    line-height: 1.4;
+    vertical-align: 1px;
+}
+
+@keyframes stqa-fresh {
+    0%, 70% {
+        background-color: color-mix(in srgb, var(--SmartThemeQuoteColor) 18%, transparent);
+        box-shadow: inset 3px 0 0 var(--SmartThemeQuoteColor);
+    }
+    100% {
+        background-color: transparent;
+        box-shadow: inset 3px 0 0 transparent;
+    }
+}
+
+@keyframes stqa-fresh-tag {
+    0%, 70% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
 }

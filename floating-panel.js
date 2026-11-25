@@ -2,13 +2,15 @@
 // In the input bar (the shortcuts open as a row above the input, in the page flow, so they
 // cover nothing) or floating (a small button stuck to a screen edge; long-press to move it).
 // The floating position is kept as a share of the window, so it stays put after a rotation.
-import { MODULE, getSettings, isOn } from './settings.js';
+import { MODULE, getSettings, isOn, paintPalette } from './settings.js';
+import { isGenerating } from './util.js';
 import { getStoredName, setOverride, setOverrideEnabled, setStatusRealName, setNameSwap } from './name-override.js';
 import { askAndHideRange } from './range-delete.js';
 import { findMenuItem, listItems } from './layout-manager.js';
-import { settingsOnPage, openExtensionLink, letterOf, iconFor } from './extension-links.js';
-import { showMoreMessages } from '../../../../script.js';
-import { flashHighlight } from '../../../utils.js';
+import { settingsOnPage, openExtensionLink, letterOf, iconFor, pickIcon, applyExtensionLinks, tabSelectFor, savePinnedTabs } from './extension-links.js';
+// Whole modules, not names: one ST renames leaves the rest of this extension loading
+import * as script from '../../../../script.js';
+import * as utils from '../../../utils.js';
 
 const PANEL_ID = 'stqa_floating_panel';
 const INPUT_TOGGLE_ID = 'stqa_shortcuts_toggle';
@@ -104,9 +106,16 @@ export async function pickMenuItems() {
     const entries = new Map();
     const root = document.createElement('div');
     root.className = 'stqa_panel stqa_menu_pick';
+    // (Opened from the settings window: in its colours)
+    paintPalette(root);
     root.innerHTML = '<h3>바로가기에 메뉴 항목 추가</h3><div class="stqa_hint">고른 항목이 바로가기 줄에 아이콘으로 생깁니다. 누르면 원래 메뉴에서 누른 것과 같습니다.</div>';
     // Extensions' settings (hidden ones in 메뉴 정리 too: reached through the shortcut)
-    const extensionSettings = settingsOnPage().map(({ key, label, icon }) => ({ key, label, icon, shown: iconFor(key, icon), selector: EXTENSION_SETTINGS }));
+    const extensionSettings = settingsOnPage().map(entry => ({ key: entry.key, label: entry.label, icon: entry.icon, shown: iconFor(entry.key, entry.icon), selector: EXTENSION_SETTINGS, entry }));
+    // The tab each opens on (as in 확장 설정 바로가기), saved with the list
+    const tabSelects = [];
+    // Their icons can be picked here too (the same ones 확장 설정 바로가기 picks), saved with the list
+    const icons = { ...(settings.extensionIcons ?? {}) };
+    const iconsBefore = JSON.stringify(icons);
     for (const { title, selectors } of [...MENU_SOURCES, { title: '확장 설정', selectors: [] }]) {
         // The shortcuts' own ··· isn't one to add
         const items = (selectors.length ? selectors.flatMap(selector => listItems(selector, { natural: true }).map(item => ({ ...item, selector }))) : extensionSettings)
@@ -126,8 +135,38 @@ export async function pickMenuItems() {
             row.innerHTML = '<input type="checkbox"><i></i><span></span>';
             row.querySelector('input').dataset.key = key;
             row.querySelector('input').checked = chosen.has(key);
-            row.querySelector('i').className = (item.selector === EXTENSION_SETTINGS ? item.shown : item.icon) || FALLBACK_ICON;
             row.querySelector('span').textContent = item.label;
+            if (item.selector === EXTENSION_SETTINGS) {
+                const iconButton = row.querySelector('i');
+                const draw = () => {
+                    const icon = icons[item.key] || item.icon;
+                    iconButton.className = `stqa_menu_pick_icon ${icon || 'stqa_link_letter'}`;
+                    iconButton.textContent = icon ? '' : letterOf(item.label);
+                };
+                draw();
+                iconButton.title = '아이콘 고르기';
+                iconButton.addEventListener('click', async (event) => {
+                    // (Not a tick of the row)
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const icon = await pickIcon(item.label);
+                    if (icon === null) {
+                        return;
+                    }
+                    icon ? (icons[item.key] = icon) : delete icons[item.key];
+                    draw();
+                });
+            } else {
+                row.querySelector('i').className = item.icon || FALLBACK_ICON;
+            }
+            const tabSelect = item.selector === EXTENSION_SETTINGS ? tabSelectFor(item.entry) : null;
+            if (tabSelect) {
+                // Inside its row's box, under the name (a tap on it ticks nothing)
+                tabSelect.classList.add('stqa_menu_pick_tab');
+                tabSelects.push(tabSelect);
+                row.classList.add('stqa_menu_pick_with_tab');
+                row.append(tabSelect);
+            }
             group.append(row);
         }
         root.append(group);
@@ -140,8 +179,12 @@ export async function pickMenuItems() {
     // Items added before that aren't on the page right now (an extension switched off) stay
     const kept = (settings.floatingExtras ?? []).filter(item => !entries.has(extraKey(item.selector, item.key)));
     settings.floatingExtras = [...kept, ...ticked.map(key => entries.get(key))];
+    const iconsChanged = JSON.stringify(icons) !== iconsBefore;
+    iconsChanged && (settings.extensionIcons = icons);
+    tabSelects.length && savePinnedTabs(Object.fromEntries(tabSelects.map(select => [select.dataset.key, select.value])));
     SillyTavern.getContext().saveSettingsDebounced();
     applyFloatingSettings();
+    iconsChanged && applyExtensionLinks();
     return true;
 }
 
@@ -164,7 +207,7 @@ let open = false;
 async function jumpTo(messageId) {
     const first = Number(document.querySelector('#chat > .mes[mesid]')?.getAttribute('mesid'));
     if (Number.isInteger(first) && messageId < first) {
-        await showMoreMessages(first - messageId);
+        await script.showMoreMessages(first - messageId);
     }
 }
 
@@ -369,18 +412,64 @@ async function stepMessage(direction) {
     }
 }
 
+// (Asked once at a time: a second press while asked does nothing)
+let askingDelete = false;
+
 async function deleteLastMessage() {
+    if (askingDelete) {
+        return;
+    }
+    askingDelete = true;
+    try {
+        await askAndDeleteLast();
+    } finally {
+        askingDelete = false;
+    }
+}
+
+async function askAndDeleteLast() {
     const context = SillyTavern.getContext();
     if (!context.chat.length) {
         toastr.info('메시지 없음', TITLE);
         return;
     }
-    const confirmed = await context.Popup.show.confirm('최근 메시지 삭제', '되돌릴 수 없음');
-    if (confirmed) {
-        await context.deleteLastMessage();
-        // ST's deleteLastMessage leaves the chat file as it was: saved now, so it stays deleted
-        await context.saveChat();
+    if (isGenerating()) {
+        toastr.info('답변 생성 중에는 지울 수 없습니다.', TITLE);
+        return;
     }
+    // The very message asked about: the question may stay up while another chat opens or a reply comes
+    const chatId = context.getCurrentChatId();
+    const last = context.chat.at(-1);
+    // With swipes: the one on show alone, or the whole message
+    const swipe = Array.isArray(last.swipes) && last.swipes.length > 1 && typeof context.deleteMessage === 'function'
+        ? Math.min(Math.max(0, last.swipe_id ?? 0), last.swipes.length - 1)
+        : null;
+    let choice;
+    if (swipe === null) {
+        choice = await context.Popup.show.confirm('최근 메시지 삭제', '되돌릴 수 없음') ? 'message' : null;
+    } else {
+        const result = await new context.Popup(`<h3>최근 메시지 삭제</h3><div>스와이프 ${swipe + 1}/${last.swipes.length}</div>`, context.POPUP_TYPE.CONFIRM, '', {
+            okButton: '이 스와이프만',
+            cancelButton: '취소',
+            customButtons: ['메시지 전체'],
+        }).show();
+        choice = result === context.POPUP_RESULT.AFFIRMATIVE ? 'swipe' : result === 2 ? 'message' : null;
+    }
+    const now = SillyTavern.getContext();
+    // (The swipe on show must still be the one asked about)
+    if (!choice || now.getCurrentChatId() !== chatId || now.chat.at(-1) !== last || (choice === 'swipe' && (last.swipe_id ?? 0) !== swipe) || isGenerating()) {
+        choice && toastr.info('그사이 채팅이 바뀌어 지우지 않았습니다.', TITLE);
+        return;
+    }
+    // ST's own deletion (it keeps the last-message marks, swipe arrows and the chat's state right)
+    if (choice === 'swipe') {
+        await now.deleteMessage(now.chat.length - 1, swipe, false);
+    } else {
+        typeof now.deleteMessage === 'function'
+            ? await now.deleteMessage(now.chat.length - 1, undefined, false)
+            : await now.deleteLastMessage();
+    }
+    await now.saveChat();
 }
 
 async function askAndJump() {
@@ -404,7 +493,7 @@ async function askAndJump() {
     settleAtMessage(number);
     // The message flashes as with /chat-jump, to find it at a glance
     const message = document.querySelector(`#chat .mes[mesid="${number}"]`);
-    message && flashHighlight($(message), 2000);
+    message && utils.flashHighlight?.($(message), 2000);
 }
 
 // Fields in the order the user reads them
@@ -630,6 +719,9 @@ function enableMoving() {
         if (event.button !== 0) {
             return;
         }
+        // A second finger (or a press whose end was lost): the earlier one is over first, so
+        // nothing (a slow scroll above all) is left running
+        press && end(new Event('pointercancel'));
         const box = panel.getBoundingClientRect();
         press = {
             x: event.clientX, y: event.clientY, left: box.left, top: box.top,
@@ -657,6 +749,10 @@ function enableMoving() {
     });
     // Holding must not open the phone's context menu or start a text selection
     panel.addEventListener('contextmenu', event => event.preventDefault());
+    // The page put away mid-press (another app, a notice pulled down): the end may never come
+    const lost = () => press && end(new Event('pointercancel'));
+    window.addEventListener('blur', lost);
+    document.addEventListener('visibilitychange', () => document.hidden && lost());
 }
 
 /** A shortcut button (a menu item's icon may be in any Font Awesome style, so its classes go as they are). */
@@ -767,6 +863,8 @@ export function applyFloatingSettings() {
 
 export function initFloatingPanel() {
     applyFloatingSettings();
+    // Other features' own buttons for a shortcut (range delete / hide shows 한 메시지 위·아래)
+    document.addEventListener('stqa-shortcut', event => typeof event.detail === 'string' && runAction(event.detail));
     // The theme may still be loading when this extension starts
     const { eventSource, eventTypes } = SillyTavern.getContext();
     eventSource.on(eventTypes.APP_READY, matchTheme);

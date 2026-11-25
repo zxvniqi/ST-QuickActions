@@ -55,7 +55,11 @@ export function createInlineSelect({ options, value, onChange }) {
                     break;
                 }
             }
-            root.classList.toggle('stqa_up', bottom - box.bottom < height + 8 && box.top - top > bottom - box.bottom);
+            const up = bottom - box.bottom < height + 8 && box.top - top > bottom - box.bottom;
+            root.classList.toggle('stqa_up', up);
+            // No taller than the room on that side (the box around would cut it off, out of reach)
+            const room = (up ? box.top - top : bottom - box.bottom) - 8;
+            list.style.maxHeight = `${Math.max(80, Math.min(260, room))}px`;
         }
         open ? document.addEventListener('click', onOutside, true) : document.removeEventListener('click', onOutside, true);
     };

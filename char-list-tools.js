@@ -1,10 +1,11 @@
 // Character list: a ★ (favorite) and a tag button on each character, so neither needs the
 // character opened. Tags are ST's own (same list, same filters).
 import { isOn } from './settings.js';
-import { addTagsToEntity, removeTagFromEntity, tags, tag_map, TAG_FOLDER_DEFAULT_TYPE } from '../../../tags.js';
-import { DEFAULT_FILTER_STATE } from '../../../filters.js';
-import { uuidv4 } from '../../../utils.js';
-import { favsToHotswap } from '../../../RossAscends-mods.js';
+// Whole modules, not names: one ST renames leaves the rest of this extension loading
+import * as tagsApi from '../../../tags.js';
+import * as filters from '../../../filters.js';
+import * as utils from '../../../utils.js';
+import * as mods from '../../../RossAscends-mods.js';
 import { onlyOwnChanges } from './mutations.js';
 
 const TITLE = '편의성 모음';
@@ -17,26 +18,47 @@ function isFav(character) {
     return character.fav === true || character.fav === 'true';
 }
 
+// Characters whose ★ is being saved (a second tap meanwhile waits for nothing: it is ignored)
+const favSaving = new Set();
+
 async function toggleFav(character) {
-    const fav = !isFav(character);
-    const response = await fetch('/api/characters/merge-attributes', {
-        method: 'POST',
-        headers: SillyTavern.getContext().getRequestHeaders(),
-        body: JSON.stringify({ avatar: character.avatar, fav, data: { extensions: { fav } } }),
-    });
-    if (!response.ok) {
-        toastr.error('즐겨찾기를 바꾸지 못했습니다.', TITLE);
+    if (favSaving.has(character.avatar)) {
         return;
+    }
+    favSaving.add(character.avatar);
+    try {
+        await saveFav(character);
+    } catch (error) {
+        console.error('[편의성 모음] Favorite failed', error);
+        toastr.error('즐겨찾기를 바꾸지 못했습니다.', TITLE);
+    } finally {
+        favSaving.delete(character.avatar);
+    }
+}
+
+async function saveFav(character) {
+    const fav = !isFav(character);
+    const context = SillyTavern.getContext();
+    const open = !context.groupId && context.characters[context.characterId] === character;
+    if (open && document.getElementById('favorite_button')) {
+        // The open character: ST keeps its ★ itself and saves it with the character, so its own
+        // button does it (a ★ saved around it would be put back by ST's next save of the character)
+        $('#favorite_button').trigger('click');
+    } else {
+        const response = await fetch('/api/characters/merge-attributes', {
+            method: 'POST',
+            headers: context.getRequestHeaders(),
+            body: JSON.stringify({ avatar: character.avatar, fav, data: { extensions: { fav } } }),
+        });
+        if (!response.ok) {
+            toastr.error('즐겨찾기를 바꾸지 못했습니다.', TITLE);
+            return;
+        }
     }
     character.fav = fav;
     character.data ??= {};
     character.data.extensions ??= {};
     character.data.extensions.fav = fav;
-    // The open character's own ★ button follows too
-    if (SillyTavern.getContext().characters[SillyTavern.getContext().characterId] === character) {
-        $('#favorite_button').toggleClass('fav_on', fav).toggleClass('fav_off', !fav);
-        $('#fav_checkbox').prop('checked', fav);
-    }
     // Only what shows the favorite changes (redrawing the whole list is slow with many characters)
     document.querySelectorAll(`${LIST} .character_select[data-chid]`).forEach((row) => {
         if (characterOf(row) === character) {
@@ -44,7 +66,7 @@ async function toggleFav(character) {
             decorate(row, row.querySelector('.stqa_char_tools')?.style.justifyContent ?? '');
         }
     });
-    favsToHotswap();
+    mods.favsToHotswap?.();
 }
 
 /** Tags for the characters (avatar files): tap a tag to give it to all of them, tap again to take it away. */
@@ -53,9 +75,9 @@ async function openTagPopup(avatars) {
     const content = document.createElement('div');
     content.className = 'stqa_tag_popup';
 
-    const has = (tag, avatar) => (tag_map[avatar] ?? []).includes(tag.id);
+    const has = (tag, avatar) => (tagsApi.tag_map?.[avatar] ?? []).includes(tag.id);
     const render = () => {
-        const sorted = [...tags].sort((a, b) => a.name.localeCompare(b.name));
+        const sorted = [...tagsApi.tags].sort((a, b) => a.name.localeCompare(b.name));
         content.innerHTML = `
             <h3></h3>
             <div class="stqa_hint">태그를 누르면 넣고, 다시 누르면 뺍니다.</div>
@@ -75,7 +97,7 @@ async function openTagPopup(avatars) {
                 chip.style.setProperty('--stqa_tag_color', tag.color);
             }
             chip.addEventListener('click', () => {
-                count === avatars.length ? removeTagFromEntity(tag, avatars) : addTagsToEntity(tag, avatars);
+                count === avatars.length ? tagsApi.removeTagFromEntity(tag, avatars) : tagsApi.addTagsToEntity(tag, avatars);
                 render();
             });
             chips.append(chip);
@@ -86,23 +108,23 @@ async function openTagPopup(avatars) {
             if (!name) {
                 return;
             }
-            let tag = tags.find(item => item.name.toLowerCase() === name.toLowerCase());
+            let tag = tagsApi.tags.find(item => item.name.toLowerCase() === name.toLowerCase());
             if (!tag) {
                 // The same fields ST gives a new tag
                 tag = {
-                    id: uuidv4(),
+                    id: utils.uuidv4(),
                     name,
-                    folder_type: TAG_FOLDER_DEFAULT_TYPE,
-                    filter_state: DEFAULT_FILTER_STATE,
-                    sort_order: Math.max(0, ...tags.map(item => item.sort_order ?? 0)) + 1,
+                    folder_type: tagsApi.TAG_FOLDER_DEFAULT_TYPE,
+                    filter_state: filters.DEFAULT_FILTER_STATE,
+                    sort_order: Math.max(0, ...tagsApi.tags.map(item => item.sort_order ?? 0)) + 1,
                     is_hidden_on_character_card: false,
                     color: '',
                     color2: '',
                     create_date: Date.now(),
                 };
-                tags.push(tag);
+                tagsApi.tags.push(tag);
             }
-            addTagsToEntity(tag, avatars);
+            tagsApi.addTagsToEntity(tag, avatars);
             render();
         };
         content.querySelector('.stqa_tag_new .menu_button').addEventListener('click', create);

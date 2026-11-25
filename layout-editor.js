@@ -1,10 +1,13 @@
 // Settings window for hiding / reordering wand menu items, input bar buttons and extension panels.
 // Changes are kept as a draft and only applied when the user presses 저장 (save).
 import { LAYOUT_AREAS, listItems, saveLayout } from './layout-manager.js';
+import { paintPalette } from './settings.js';
 
 const FALLBACK_ICON = 'fa-solid fa-puzzle-piece';
 const AUTO_SCROLL_EDGE = 40;
 const AUTO_SCROLL_STEP = 10;
+// How far a finger may move on ≡ and it still counts as a tap (picking the row to move)
+const TAP_SLOP = 8;
 
 /** Draft per container selector: items in order, with their hidden flag. */
 function createDrafts() {
@@ -50,11 +53,62 @@ function renderList(listElement, items) {
     listElement.replaceChildren(fragment);
 }
 
+// The row picked by a tap on ≡, one for all lists: one picked in the left list goes to the right
+// one by a tap there
+let picked = null;
+
 /**
  * Pointer-based drag (works with touch): the row follows the finger, others make room. With
  * `lists` (the lists a row may go to, this one among them) a row can be dragged into another.
  */
 export function enableDragging(listElement, onReorder, lists = () => [listElement]) {
+    const rowsOf = list => [...list.querySelectorAll(':scope > .stqa_layout_row')];
+    const reorder = () => onReorder(rowsOf(listElement).map(child => child.dataset.key));
+
+    // Tap ≡ (without moving) to pick a row, then tap where it goes: no holding and dragging
+    // through a long list. Tapping ≡ again, or outside the lists, lets it go.
+    const letGo = () => {
+        picked?.classList.remove('stqa_move_picked');
+        picked = null;
+        document.removeEventListener('click', onPlace, true);
+    };
+    /** The picked row put in `row`'s place (after it when coming from above), or at `target`'s end. */
+    const place = (target, row) => {
+        if (row) {
+            const rows = rowsOf(target);
+            const below = rows.indexOf(picked) !== -1 && rows.indexOf(picked) < rows.indexOf(row);
+            below ? row.after(picked) : row.before(picked);
+        } else {
+            target.append(picked);
+        }
+        letGo();
+        reorder();
+    };
+    const onPlace = (event) => {
+        // (A tap on ≡ is handled where it is pressed)
+        if (event.target.closest('.stqa_layout_handle')) {
+            return;
+        }
+        if (!picked?.isConnected) {
+            letGo();
+            return;
+        }
+        const target = lists().find(list => list.contains(event.target));
+        if (!target) {
+            // (Elsewhere: nothing moves, and the tap does what it does)
+            letGo();
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const row = event.target.closest('.stqa_layout_row');
+        if (row === picked) {
+            letGo();
+            return;
+        }
+        place(target, row && target.contains(row) ? row : null);
+    };
+
     listElement.addEventListener('pointerdown', (event) => {
         const handle = event.target.closest('.stqa_layout_handle');
         if (!handle) {
@@ -63,10 +117,20 @@ export function enableDragging(listElement, onReorder, lists = () => [listElemen
         event.preventDefault();
         const row = handle.closest('.stqa_layout_row');
         const scroller = listElement.closest('.popup-content') ?? listElement.parentElement;
-        row.classList.add('stqa_dragging');
+        const startY = event.clientY;
+        let dragging = false;
 
         const onMove = (moveEvent) => {
             const y = moveEvent.clientY;
+            // A tap may move the finger a little: a drag starts only past that
+            if (!dragging) {
+                if (Math.abs(y - startY) < TAP_SLOP) {
+                    return;
+                }
+                dragging = true;
+                letGo();
+                row.classList.add('stqa_dragging');
+            }
             const box = scroller.getBoundingClientRect();
             if (y < box.top + AUTO_SCROLL_EDGE) {
                 scroller.scrollTop -= AUTO_SCROLL_STEP;
@@ -79,17 +143,36 @@ export function enableDragging(listElement, onReorder, lists = () => [listElemen
                 return y < rect.top ? rect.top - y : Math.max(0, y - rect.bottom);
             };
             const target = lists().reduce((best, list) => (distance(list) < distance(best) ? list : best));
-            const next = [...target.querySelectorAll(':scope > .stqa_layout_row')].find(other => other !== row && y < other.getBoundingClientRect().top + other.offsetHeight / 2);
+            const next = rowsOf(target).find(other => other !== row && y < other.getBoundingClientRect().top + other.offsetHeight / 2);
             next ? target.insertBefore(row, next) : target.append(row);
         };
         // Listen on the document (not pointer capture), so the drag keeps working wherever the
         // finger goes and with any input type
         const onEnd = () => {
-            row.classList.remove('stqa_dragging');
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerup', onEnd);
             document.removeEventListener('pointercancel', onEnd);
-            onReorder([...listElement.querySelectorAll(':scope > .stqa_layout_row')].map(child => child.dataset.key));
+            if (dragging) {
+                row.classList.remove('stqa_dragging');
+                reorder();
+                return;
+            }
+            // A tap on ≡: picks this row (or lets it go). The click that follows the tap is the
+            // one being handled now, so the next tap is listened for a moment later
+            if (picked === row) {
+                letGo();
+                return;
+            }
+            // Another row picked already (in a list it may come from): it goes here
+            if (picked?.isConnected && lists().some(list => list.contains(picked))) {
+                const target = lists().find(list => list.contains(row));
+                target && place(target, row);
+                return;
+            }
+            letGo();
+            picked = row;
+            row.classList.add('stqa_move_picked');
+            setTimeout(() => picked === row && document.addEventListener('click', onPlace, true));
         };
         document.addEventListener('pointermove', onMove);
         document.addEventListener('pointerup', onEnd);
@@ -141,12 +224,18 @@ function buildGroup(selector, label, drafts, area = null) {
 export async function openLayoutEditor() {
     const { Popup, POPUP_TYPE, POPUP_RESULT } = SillyTavern.getContext();
     const drafts = createDrafts();
+    // How each list was when the window opened: only areas changed here are saved (the others
+    // keep what is saved, which may be newer than what this page knows)
+    const shapeOf = selector => JSON.stringify(drafts.get(selector).map(item => [item.key, Boolean(item.hidden)]));
+    const opened = new Map([...drafts.keys()].map(selector => [selector, shapeOf(selector)]));
 
     const root = document.createElement('div');
     root.className = 'stqa_panel stqa_layout_editor';
+    // In the settings window's colours
+    paintPalette(root);
     root.innerHTML = `
         <h3>메뉴 정리</h3>
-        <div class="stqa_hint">왼쪽 ≡ 를 끌어서 순서를 바꾸고, 오른쪽 눈 아이콘을 눌러 숨깁니다. 🔒 항목은 숨길 수 없습니다. 저장을 눌러야 적용됩니다.</div>
+        <div class="stqa_hint">순서: ≡ 를 끌거나, ≡ 를 누른 뒤 넣을 자리를 누릅니다.<br>숨기기: 눈 아이콘(🔒는 숨길 수 없음). 저장해야 적용됩니다.</div>
         <div class="stqa_tabs"></div>
         <div class="stqa_layout_actions">
             <div class="menu_button stqa_panel_button stqa_layout_reset"><i class="fa-solid fa-rotate-left"></i> 이 탭 처음 상태로</div>
@@ -167,8 +256,8 @@ export async function openLayoutEditor() {
             const hint = document.createElement('div');
             hint.className = 'stqa_hint';
             hint.textContent = area.domMove
-                ? '≡ 를 끌어 왼쪽 열과 오른쪽 열 사이로도 옮길 수 있습니다. (폰에서는 왼쪽 열이 위, 오른쪽 열이 아래에 보입니다)'
-                : '≡ 를 끌어 왼쪽과 오른쪽 사이로도 옮길 수 있습니다.';
+                ? '≡ 를 끌거나 눌러서 왼쪽 열과 오른쪽 열 사이로도 옮길 수 있습니다. (폰에서는 왼쪽 열이 위, 오른쪽 열이 아래에 보입니다)'
+                : '≡ 를 끌거나 눌러서 왼쪽과 오른쪽 사이로도 옮길 수 있습니다.';
             body.prepend(hint);
         }
     };
@@ -199,6 +288,10 @@ export async function openLayoutEditor() {
     }
     for (const [selector, items] of drafts) {
         const area = LAYOUT_AREAS.find(entry => entry.containers.some(container => container.selector === selector));
+        // (Sides items move between are one area: changed if either side is)
+        if (area.containers.every(container => shapeOf(container.selector) === opened.get(container.selector))) {
+            continue;
+        }
         saveLayout(selector, {
             order: items.map(item => item.key),
             hidden: items.filter(item => item.hidden).map(item => item.key),

@@ -138,10 +138,15 @@ function mark() {
     if (!places.length) {
         return;
     }
-    highlights()?.set(HIGHLIGHT, new Highlight(...places));
+    // (No highlights in this browser: going from one to the next still works, unmarked)
+    const marks = highlights();
+    if (!marks) {
+        return;
+    }
+    marks.set(HIGHLIGHT, new Highlight(...places));
     const currentMark = new Highlight(places[place]);
     currentMark.priority = 1;
-    highlights()?.set(HIGHLIGHT_CURRENT, currentMark);
+    marks.set(HIGHLIGHT_CURRENT, currentMark);
 }
 
 /** Brings the current place a third of the way down the chat (the message drawn for real first). */
@@ -411,7 +416,12 @@ function start() {
             step(action === 'up' ? -1 : 1);
         }
     });
-    formDisplay = form.style.display;
+    // Another mode standing in for the input (ST's or this extension's range delete / hide):
+    // closed first, so the input bar is never put back hidden
+    if (document.getElementById('dialogue_del_mes')?.style.display === 'block') {
+        document.getElementById('dialogue_del_mes_cancel')?.click();
+    }
+    formDisplay = form.style.display === 'none' ? '' : form.style.display;
     form.style.display = 'none';
     form.after(bar);
     searchedChat = chatKey();

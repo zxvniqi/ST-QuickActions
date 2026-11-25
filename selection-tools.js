@@ -218,6 +218,9 @@ function keepTranslationFor(message) {
 async function applySourceText(messageId, field, text, { silent = false } = {}) {
     const context = SillyTavern.getContext();
     const message = context.chat[messageId];
+    message.extra ??= {};
+    // Changed by hand, as ST marks its own edits (a chat untouched is one ST may refill from the card)
+    context.chatMetadata && (context.chatMetadata.tainted = true);
     if (field === BACKUP_FIELD) {
         // The translation waiting while the original is shown: nothing on screen changes
         message.extra[BACKUP_FIELD] = text;
@@ -322,7 +325,7 @@ function buildEditTargets(messageId, field, source, range) {
         // Parts the user's regex scripts hide on screen (removed blocks, status cards) are left out
         const info = messageInfo(chat, messageId);
         const otherRange = mapToMatchingPart(maskHidden(source, info), range, maskHidden(otherSource, info));
-        targets.push({ ...other, source: otherSource, range: otherRange });
+        targets.push({ ...other, source: otherSource, range: { start: otherRange.start, end: otherRange.end }, guessed: Boolean(otherRange.guessed) });
     }
     for (const target of targets) {
         target.initial = target.source.slice(target.range.start, target.range.end);
@@ -379,8 +382,13 @@ async function editSelection({ messageId, field, source, range }) {
     switchButton = popup.dlg.querySelector('.popup-button-custom');
     updateMode();
 
+    const target = targetOf(messageId);
     const result = await popup.show();
     if (result === null || result === false || result === POPUP_RESULT.CANCELLED) {
+        return;
+    }
+    if (!stillThere(messageId, target)) {
+        toastr.warning('그사이 채팅이나 메시지가 바뀌어 고치지 않았습니다.', TITLE);
         return;
     }
     targets[active].text = popup.mainInput.value;
@@ -456,9 +464,13 @@ function buildRangePicker(target) {
     box.className = 'stqa_compare_text stqa_range_box';
     let shown = null;
     let first = null; // the word tapped first, waiting for the last one
+    // The text shown only grows: a first tap narrowing the part to one word must not take away
+    // the paragraphs after it (where the last word may be)
+    const initial = contextAround(target.source, target.range);
 
     const render = () => {
-        shown = contextAround(target.source, target.range);
+        const around = contextAround(target.source, target.range);
+        shown = { start: Math.min(initial.start, around.start), end: Math.max(initial.end, around.end) };
         const mark = document.createElement('mark');
         mark.className = 'stqa_range_mark';
         mark.classList.toggle('stqa_range_pending', Boolean(first));
@@ -522,11 +534,13 @@ async function confirmDelete(targets) {
     if (translated) {
         // The shown version, and the matching part found in the other one
         const [shown, matched] = targets;
-        const unsure = matched.initial.length > Math.max(UNSURE_MATCH_MIN, shown.initial.length * UNSURE_MATCH_RATIO);
+        // Found only roughly (widened to the sentence), or far longer than the selection: the other
+        // version's deletion starts off, to be checked and switched on by the user
+        const unsure = matched.guessed || matched.initial.length > Math.max(UNSURE_MATCH_MIN, shown.initial.length * UNSURE_MATCH_RATIO);
         checks[1].checked = !unsure;
         const unsureNote = root.querySelector('.stqa_unsure');
         unsureNote.hidden = !unsure;
-        unsureNote.textContent = `⚠️ ${matched.label} 위치가 넓게 잡혀서 ${matched.label} 삭제는 꺼 둠`;
+        unsureNote.textContent = `⚠️ ${matched.label} 위치를 정확히 못 찾아 ${matched.label} 삭제는 꺼 둠`;
 
         const keepBox = buildKeepTranslationOption(getSettings());
         root.append(keepBox);
@@ -546,24 +560,47 @@ async function confirmDelete(targets) {
     return targets.filter((_, index) => checks[index].checked);
 }
 
-/** Puts a message's original and translation back exactly as they were. */
-async function restoreMessage(messageId, snapshot) {
+/** Which message (and which of its replies) an action is about, to check it is still that one. */
+function targetOf(messageId) {
     const context = SillyTavern.getContext();
     const message = context.chat[messageId];
+    return { chatId: context.getCurrentChatId(), message, swipeId: message?.swipe_id };
+}
+
+/** The same chat open, the same message at that number, showing the same reply. */
+function stillThere(messageId, target) {
+    const context = SillyTavern.getContext();
+    return context.getCurrentChatId() === target.chatId && context.chat[messageId] === target.message
+        && target.message?.swipe_id === target.swipeId;
+}
+
+/**
+ * Puts a message's original and translation back exactly as they were, only while it is still
+ * that message as the deletion left it (another chat, another reply or a later change: nothing).
+ */
+async function restoreMessage(messageId, snapshot) {
+    const context = SillyTavern.getContext();
+    if (!stillThere(messageId, snapshot.target) || snapshot.target.message.mes !== snapshot.after) {
+        toastr.warning('그사이 채팅이나 메시지가 바뀌어 되돌리지 않았습니다.', TITLE);
+        return;
+    }
+    const message = context.chat[messageId];
+    message.extra ??= {};
     message.mes = snapshot.mes;
     if (message.swipe_id !== undefined && Array.isArray(message.swipes)) {
         message.swipes[message.swipe_id] = snapshot.mes;
     }
-    if (snapshot.displayText !== undefined) {
-        message.extra ??= {};
-        message.extra.display_text = snapshot.displayText;
-    }
-    if (snapshot.translatedFrom !== undefined) {
-        message.extra.original_text_for_translation = snapshot.translatedFrom;
-    }
-    if (snapshot.backup !== undefined) {
-        message.extra[BACKUP_FIELD] = snapshot.backup;
-    }
+    // The translation side only where it still is as the deletion left it (edited since: kept)
+    const untouched = key => message.extra[key] === snapshot.afterExtra?.[key];
+    const putBack = (key, value) => {
+        if (!untouched(key)) {
+            return;
+        }
+        value === undefined ? delete message.extra[key] : (message.extra[key] = value);
+    };
+    putBack('display_text', snapshot.displayText);
+    putBack('original_text_for_translation', snapshot.translatedFrom);
+    putBack(BACKUP_FIELD, snapshot.backup);
     context.updateMessageBlock(messageId, message);
     await context.saveChat();
 }
@@ -577,8 +614,14 @@ async function deleteSelection({ messageId, field, source, range }) {
         backup: message.extra?.[BACKUP_FIELD],
     };
     const original = showingOriginal(message);
+    const target = targetOf(messageId);
     const targets = await confirmDelete(buildEditTargets(messageId, field, source, range));
     if (!targets?.length) {
+        return;
+    }
+    // (While the question was up, another chat or reply may have come)
+    if (!stillThere(messageId, target)) {
+        toastr.warning('그사이 채팅이나 메시지가 바뀌어 지우지 않았습니다.', TITLE);
         return;
     }
 
@@ -593,9 +636,13 @@ async function deleteSelection({ messageId, field, source, range }) {
     if (snapshot.displayText && !original && !chat[messageId].extra?.display_text) {
         await applySourceText(messageId, 'display_text', snapshot.displayText);
     }
+    snapshot.target = target;
+    snapshot.after = chat[messageId].mes;
+    const extra = chat[messageId].extra ?? {};
+    snapshot.afterExtra = { display_text: extra.display_text, original_text_for_translation: extra.original_text_for_translation, [BACKUP_FIELD]: extra[BACKUP_FIELD] };
     toastr.success('삭제됨. 이 알림을 누르면 되돌리기', TITLE, {
         timeOut: 6000,
-        onclick: () => restoreMessage(messageId, snapshot),
+        onclick: () => restoreMessage(messageId, snapshot).catch(error => console.error(`[${MODULE}] Undo failed`, error)),
     });
 }
 

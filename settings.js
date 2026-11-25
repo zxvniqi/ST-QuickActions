@@ -28,6 +28,18 @@ const defaultSettings = Object.freeze({
     emptyReplyRetries: 0,
     // A ··· menu on each prompt of the prompt list: copy, to the top / bottom, delete
     promptCopy: true,
+    // Items of another prompt: brought in (by ✚), or one put in an item's place (교체 in ···)
+    promptImport: true,
+    // ☰ tapped, then the place tapped: the item moves there
+    promptTapMove: true,
+    // 교체 in an item's ··· (another prompt's item in its place)
+    promptReplace: true,
+    // While messages are being deleted (or hidden): ⇈ ↑ ↓ ⇊ over the delete bar
+    rangeStepButtons: true,
+    // Where 문서 번역 puts its buttons and shows translations
+    entryTranslatePrompts: true,
+    entryTranslateWorld: true,
+    entryTranslateCharacter: true,
     // Deleted messages kept for a while (days); the trash files of chats, by chat
     messageTrash: false,
     trashDays: 7,
@@ -102,6 +114,12 @@ const defaultSettings = Object.freeze({
     toggleLinks: {},
     // Status panels in translated messages are taken from the original
     keepStatusPanels: true,
+    // ⟳ in the message menu: draws a message again
+    redrawButton: true,
+    // Settings window rows starred (row ids), shown on its 즐겨찾기 page
+    settingsFavorites: [],
+    // Settings window colours: forest | ocean | rose | lavender | night | theme (the ST theme's)
+    settingsPalette: 'forest',
     hdAvatars: true,
     hideInputPlaceholder: false,
     hideSettingHints: true,
@@ -123,6 +141,16 @@ const defaultSettings = Object.freeze({
     layout: {},
 });
 
+const PALETTE_IDS = Object.freeze(['forest', 'ocean', 'rose', 'lavender', 'night', 'theme']);
+
+/** A window opened from the settings window, in the settings window's colours (style.css). */
+export function paintPalette(element) {
+    const id = getSettings().settingsPalette;
+    element.classList.add('stqa_palette');
+    element.dataset.palette = PALETTE_IDS.includes(id) ? id : PALETTE_IDS[0];
+    return element;
+}
+
 /** Whether a feature is on (and the extension as a whole). */
 export function isOn(key) {
     const settings = getSettings();
@@ -138,6 +166,23 @@ export function getSettings() {
     const settings = extensionSettings[MODULE];
     if (filled.has(settings)) {
         return settings;
+    }
+    // ⟳ was part of 정규식 렌더링 픽스 before it had a switch of its own: it starts as that was
+    if (!Object.hasOwn(settings, 'redrawButton') && settings.keepStatusPanels === false) {
+        settings.redrawButton = false;
+    }
+    // 가져오기·교체 and ☰ moving were part of the ··· menu before: they start as it was
+    for (const key of ['promptImport', 'promptTapMove']) {
+        if (!Object.hasOwn(settings, key) && settings.promptCopy === false) {
+            settings[key] = false;
+        }
+    }
+    // 교체 was part of 가져오기·교체, and the delete mode's buttons part of the shortcuts
+    if (!Object.hasOwn(settings, 'promptReplace') && settings.promptImport === false) {
+        settings.promptReplace = false;
+    }
+    if (!Object.hasOwn(settings, 'rangeStepButtons') && settings.floatingPanel === false) {
+        settings.rangeStepButtons = false;
     }
     for (const [key, value] of Object.entries(defaultSettings)) {
         if (!Object.hasOwn(settings, key)) {

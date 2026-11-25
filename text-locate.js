@@ -245,6 +245,7 @@ function maskOneSidedBlocks(text, other) {
  * @returns {{ start: number, end: number }}
  */
 export function mapToMatchingPart(fromSource, range, toSource) {
+    widened = false;
     const fromText = maskOneSidedBlocks(fromSource, toSource);
     const toText = maskOneSidedBlocks(toSource, fromSource);
     let fromSpan = { start: 0, end: fromText.length };
@@ -269,6 +270,8 @@ export function mapToMatchingPart(fromSource, range, toSource) {
             const low = before.length > 0 ? Math.max(...before) + 1 : 0;
             const high = after.length > 0 ? Math.min(...after) - 1 : toPieces.length - 1;
             matched = high >= low && high - low < 2 ? indexes(low, high + 1) : [];
+            // (Placed between its neighbours: a guess)
+            widened ||= matched.length > 0;
         }
         if (matched.length === 0) {
             break;
@@ -283,7 +286,9 @@ export function mapToMatchingPart(fromSource, range, toSource) {
     }
     const found = edgeUnits ? narrowToSelectedPart(fromSource, range, toSource, toSpan, edgeUnits) : toSpan;
     const selected = fromSource.slice(range.start, range.end).trim();
-    return includeQuoteMarks(selected, toSource, withoutEdgeTags(toSource, found));
+    // `guessed`: the part couldn't be pinned down and is wider than what was selected (callers
+    // should let the user check it rather than act on it by themselves)
+    return { ...includeQuoteMarks(selected, toSource, withoutEdgeTags(toSource, found)), guessed: widened };
 }
 
 const EDGE_TAG_START = /^\s*<\/?[A-Za-z][^<>]*>/;
@@ -401,23 +406,6 @@ function charClass(char) {
 }
 
 /**
- * Where a word may start or end: at spaces and punctuation, and in Japanese (no spaces) where
- * kanji / katakana begins after other characters (words often start that way, particles and
- * endings in hiragana stay attached).
- */
-function isWordEdge(text, position, span) {
-    if (position <= span.start || position >= span.end) {
-        return true;
-    }
-    const before = charClass(text[position - 1]);
-    const after = charClass(text[position]);
-    if (before === after) {
-        return false;
-    }
-    return ['space', 'mark'].includes(before) || ['space', 'mark'].includes(after) || after !== 'hiragana';
-}
-
-/**
  * The word at `position`, for picking a range by tapping: a word between spaces, a single
  * character in Japanese (no spaces to tell words apart), or punctuation (marks in a row, such
  * as …… or !?, count as one). Null on a space.
@@ -455,20 +443,6 @@ export function wordAt(text, position) {
     return { start, end };
 }
 
-/** `side` says which way a tie goes: toward the end of the text for a start, the other way for an end. */
-function nearestWordEdge(text, position, span, side) {
-    for (let distance = 0; distance <= span.end - span.start; distance++) {
-        // Ties go inward: picking a word too many reads worse than one too few
-        const candidates = side === 'start' ? [position + distance, position - distance] : [position - distance, position + distance];
-        for (const candidate of candidates) {
-            if (candidate >= span.start && candidate <= span.end && isWordEdge(text, candidate, span)) {
-                return candidate;
-            }
-        }
-    }
-    return position;
-}
-
 function lettersOf(text, { start, end }) {
     const positions = [];
     for (let index = start; index < end; index++) {
@@ -480,33 +454,15 @@ function lettersOf(text, { start, end }) {
 }
 
 /**
- * The point in `toUnit` that sits as far into it as `position` sits into `fromUnit`, counted in
- * letters (spaces and punctuation differ by language), moved to the nearest word edge.
+ * Where a selection's edge lands in the other version, pinned by words both versions share
+ * (anchors): inside an anchor, on that anchor's edge; right next to one (or at the unit's edge),
+ * right there. Anywhere else the place can't be told: guessed by letter share, it goes wrong
+ * whenever the word order changes (그는 잠시 … ↔ 少し考えてから、彼は…), so the edge goes out to
+ * the anchors around it (none: the unit's own edge). A wider part to fix in beats a wrong one.
  */
-function matchingPoint(fromText, fromUnit, position, toText, toUnit, side) {
-    const fromLetters = lettersOf(fromText, fromUnit);
-    const toLetters = lettersOf(toText, toUnit);
-    const before = fromLetters.filter(index => index < position).length;
-    if (before === 0 || toLetters.length === 0) {
-        return side === 'start' ? toUnit.start : null;
-    }
-    if (before === fromLetters.length) {
-        return side === 'end' ? toUnit.end : null;
-    }
-    // Letter counts per word differ between languages, so the estimate is off by a letter or so:
-    // the end is rounded down (a word too few is easier to fix than a word too many)
-    const share = before / fromLetters.length * toLetters.length;
-    const point = side === 'start'
-        ? toLetters[Math.min(Math.round(share), toLetters.length - 1)]
-        : toLetters[Math.max(Math.floor(share), 1) - 1] + 1;
-    return nearestWordEdge(toText, point, toUnit, side);
-}
+// Set while mapping when an edge could only be widened, not pinned (see mapToMatchingPart)
+let widened = false;
 
-/**
- * Like matchingPoint, but first pins the point between words both versions share (anchors):
- * inside an anchor it lands on that anchor's edge, otherwise the letter share is counted only
- * in the stretch between the anchors around it.
- */
 function anchoredPoint(fromText, fromUnit, position, toText, toUnit, side) {
     const anchors = findAnchors(fromText, fromUnit, toText, toUnit);
     const inside = anchors.find(({ from }) => (side === 'start'
@@ -519,17 +475,17 @@ function anchoredPoint(fromText, fromUnit, position, toText, toUnit, side) {
     const after = anchors.find(({ from }) => from.start >= position);
     const fromGap = { start: before?.from.end ?? fromUnit.start, end: after?.from.start ?? fromUnit.end };
     const toGap = { start: before?.to.end ?? toUnit.start, end: after?.to.start ?? toUnit.end };
-    const point = matchingPoint(fromText, fromGap, position, toText, toGap, side);
-    if (point === toGap.start && before && side === 'start') {
-        // A Japanese particle right after the anchor belongs to it (スリッパ|の|底 -> 底)
-        const particle = toText.slice(point, toGap.end).match(/^\p{Script=Hiragana}{1,2}(?=[\p{Script=Han}\p{Script=Katakana}])/u);
-        return point + (particle?.[0].length ?? 0);
+    // Pinned only when the edge is right at an anchor (or the unit's edge); else it was widened
+    const gapLetters = lettersOf(fromText, fromGap);
+    const pinned = side === 'end' ? !gapLetters.some(index => index >= position) : !gapLetters.some(index => index < position);
+    widened ||= !pinned;
+    if (side === 'end') {
+        return toGap.end;
     }
-    if (point !== null) {
-        return point;
-    }
-    // The point sits right at an anchor's edge
-    return side === 'end' ? (before ? toGap.start : null) : (after ? toGap.end : null);
+    // Starting right after an anchor: a Japanese particle following it belongs to it (スリッパ|の|底 -> 底)
+    const rightAfter = before && pinned;
+    const particle = rightAfter && toText.slice(toGap.start, toGap.end).match(/^\p{Script=Hiragana}{1,2}(?=[\p{Script=Han}\p{Script=Katakana}])/u);
+    return toGap.start + (particle ? particle[0].length : 0);
 }
 
 /** Drops spaces and punctuation at the edges that the selection itself doesn't have. */
@@ -583,18 +539,19 @@ function latinPoint(fromText, fromUnit, position, toText, toUnit, side) {
 }
 
 /**
- * When only part of the matched units is selected, picks the same part of the other version:
- * the start is placed within the first unit and the end within the last one, each at the same
- * share of letters, then moved to a word edge. Languages with a similar word order (Korean /
- * Japanese) line up well this way; units in English keep their whole length.
+ * When only part of the matched units is selected, picks the same part of the other version: the
+ * start within the first unit and the end within the last one, as far as words both versions
+ * share pin them (see anchoredPoint); units in English keep their whole length.
  */
 function narrowToSelectedPart(fromText, range, toText, toSpan, [[fromFirst, toFirst], [fromLast, toLast]]) {
+    // (English parts are only ever a guess by share)
+    widened ||= isLatinText(toText, toFirst) || isLatinText(toText, toLast);
     const start = isLatinText(toText, toFirst)
         ? latinPoint(fromText, fromFirst, range.start, toText, toFirst, 'start')
-        : anchoredPoint(fromText, fromFirst, range.start, toText, toFirst, 'start') ?? toFirst.end;
+        : anchoredPoint(fromText, fromFirst, range.start, toText, toFirst, 'start');
     const end = isLatinText(toText, toLast)
         ? latinPoint(fromText, fromLast, range.end, toText, toLast, 'end')
-        : anchoredPoint(fromText, fromLast, range.end, toText, toLast, 'end') ?? toLast.start;
+        : anchoredPoint(fromText, fromLast, range.end, toText, toLast, 'end');
     if (end <= start) {
         return toSpan;
     }

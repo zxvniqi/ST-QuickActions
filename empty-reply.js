@@ -3,6 +3,7 @@
 // reasoning, no picture or file. Generated again up to the number of times set (never endlessly,
 // for an API that keeps failing).
 import { MODULE, getSettings, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 import { withoutTrash } from './message-trash.js';
 
 const TITLE = '편의성 모음';
@@ -58,9 +59,11 @@ export function tellEmpty(again, next, tries) {
 let watch = null;
 // A retry asked for here: which one, and when (a generation starting soon after is it)
 let retrying = null;
-const RETRY_START_MS = 3000;
+// (A slow server may take a while to start it)
+const RETRY_START_MS = 30000;
 let emptyRun = { count: 0, at: 0 };
-const EMPTY_RUN_MS = 60000;
+// (An API that times out may take over a minute to come back empty)
+const EMPTY_RUN_MS = 5 * 60000;
 
 function onStarted(type, _params, dryRun) {
     type ||= 'normal';
@@ -74,11 +77,6 @@ function onStarted(type, _params, dryRun) {
     watch = { type, chatId: context.getCurrentChatId(), last: context.chat.at(-1), tokens: false, stopped: false, attempt: retrying && Date.now() - retrying.at < RETRY_START_MS ? retrying.attempt : 0 };
     retrying = null;
 }
-
-const isGenerating = () => {
-    const stop = document.getElementById('mes_stop');
-    return Boolean(stop) && getComputedStyle(stop).display !== 'none';
-};
 
 /** Nothing at all in the message: no text, reasoning, picture or file. */
 export function hasNothing(message, streamFailed = false) {
@@ -115,7 +113,10 @@ async function check(current, streamFailed) {
     const next = current.attempt + 1;
     const retry = next <= limit && emptyRun.count <= limit;
     const deleted = deletesEmpty();
-    if (deleted) {
+    // A whole message made again: ST's regenerate takes the last reply away itself (taken away
+    // first, the message before it would go in its place)
+    const remade = deleted && retry && swipes <= 1;
+    if (deleted && !remade) {
         await withoutTrash(() => (swipes > 1
             ? context.deleteMessage(id, message.swipe_id ?? swipes - 1, false)
             : context.deleteMessage(id, undefined, false, false)));
@@ -127,15 +128,26 @@ async function check(current, streamFailed) {
     retrying = { attempt: next, at: Date.now() };
     // Kept (only generating again), or deleted as one swipe of several: a new swipe on the
     // message, as ST's own swipe makes it; a deleted message: a new reply in its place
-    if (!deleted || (swipes > 1 && chat.at(-1) === message)) {
+    if (!remade && (!deleted || chat.at(-1) === message)) {
         // As from a slash command (as the ‹ › buttons do): works with ST's arrows hidden or off too
         const to = context.swipe?.to;
         typeof to === 'function'
             ? await to(null, 'right', { source: 'slash_command', message })
             : document.querySelector('#chat .last_mes .swipe_right')?.click();
-    } else {
-        // 'regenerate' leaves what is typed in the input bar alone
-        await context.generate('regenerate');
+    } else if (remade && chat.at(-1) === message) {
+        // 'regenerate' leaves what is typed in the input bar alone. The empty reply it takes away
+        // stays out of the trash (only until then: the user's own deletions while it writes go there)
+        const { eventSource, eventTypes } = context;
+        await withoutTrash(() => new Promise((resolve) => {
+            const done = () => {
+                clearTimeout(timer);
+                eventSource.removeListener(eventTypes.MESSAGE_DELETED, done);
+                resolve();
+            };
+            const timer = setTimeout(done, 10000);
+            eventSource.on(eventTypes.MESSAGE_DELETED, done);
+            context.generate('regenerate').catch(error => console.error(`[${MODULE}] Generating again failed`, error)).finally(done);
+        }));
     }
 }
 
@@ -158,8 +170,20 @@ function onEnded() {
         }
     };
     setTimeout(() => {
-        // Other extensions still handling the reply (translating, summarizing...): after them
-        rendering ? (afterRendering = run) : run();
+        // Other extensions still handling the reply (translating, summarizing...): after them, but
+        // not forever (one that never says it is done would stop the checks for good)
+        if (rendering) {
+            afterRendering = run;
+            setTimeout(() => {
+                if (afterRendering === run) {
+                    afterRendering = null;
+                    rendering = 0;
+                    run();
+                }
+            }, RENDER_WAIT_MS);
+        } else {
+            run();
+        }
     }, SETTLE_MS);
 }
 
@@ -167,6 +191,7 @@ function onEnded() {
 // reply is deleted only once all of them are done with it, never under one still using it.
 let rendering = 0;
 let afterRendering = null;
+const RENDER_WAIT_MS = 10000;
 
 function onReceived() {
     rendering++;
@@ -193,5 +218,12 @@ export function initEmptyReply() {
     eventSource.on(eventTypes.STREAM_TOKEN_RECEIVED, () => watch && (watch.tokens = true));
     eventSource.on(eventTypes.GENERATION_STOPPED, () => watch && (watch.stopped = true));
     eventSource.on(eventTypes.GENERATION_ENDED, onEnded);
-    eventSource.on(eventTypes.CHAT_CHANGED, () => (watch = null));
+    // Another chat: nothing of the last one carries over
+    eventSource.on(eventTypes.CHAT_CHANGED, () => {
+        watch = null;
+        retrying = null;
+        rendering = 0;
+        afterRendering = null;
+        emptyRun = { count: 0, at: 0 };
+    });
 }

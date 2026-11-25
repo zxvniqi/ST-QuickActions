@@ -1,5 +1,6 @@
 // A delete button next to the message edit button (no need to enter edit mode).
 import { MODULE, isOn } from './settings.js';
+import { isGenerating } from './util.js';
 
 const DELETE_BTN_CLASS = 'stqa_mes_delete';
 const DELETE_ON_CLASS = 'stqa_delete_on';
@@ -30,6 +31,10 @@ async function deleteMessageAt(messageId) {
     }
     if (document.querySelector('#chat .edit_textarea')) {
         toastr.info('편집 중인 메시지를 먼저 닫기', '편의성 모음');
+        return;
+    }
+    if (isGenerating()) {
+        toastr.info('답변 생성 중에는 지울 수 없습니다.', '편의성 모음');
         return;
     }
 

@@ -16,7 +16,7 @@ export const CHAT_SORTS = Object.freeze([
 const ST_TIME = /(\d{4})-(\d{1,2})-(\d{1,2})\s?@(\d{1,2})h\s?(\d{1,2})m\s?(\d{1,2})s(?:\s?(\d+)ms)?/;
 
 /** `loose`: also ST's other message time formats (never for chat names: a name "12" is no time). */
-function parseStTime(text, loose = false) {
+export function parseStTime(text, loose = false) {
     const match = String(text ?? '').match(ST_TIME);
     if (!match) {
         // "October 27, 2025 11:02pm", ISO, numbers
@@ -128,6 +128,9 @@ export function createSortButton(onChange) {
         button.title = `정렬: ${CHAT_SORTS.find(sort => sort.value === select.value).label}`;
     };
     sync();
+    // (Changed from the other list meanwhile: shown as it is now, so picking it again is a change)
+    select.addEventListener('pointerdown', sync);
+    select.addEventListener('focus', sync);
     select.addEventListener('change', () => {
         getSettings().chatSortMode = select.value;
         SillyTavern.getContext().saveSettingsDebounced();

@@ -123,6 +123,24 @@ function findArea(selector) {
 /** Re-applies (or, switched off, removes) every arrangement. */
 export function applyLayoutSettings() {
     writeStyles();
+    // Panels moved to the other column of the extension settings go back (or are moved again)
+    if (isOn('layoutManager')) {
+        LAYOUT_AREAS.filter(area => area.domMove).forEach(area => moveBetweenColumns(area));
+    } else {
+        putBackMoved();
+    }
+}
+
+/** Every panel moved to the other column back to its own. */
+function putBackMoved() {
+    for (const [key, selector] of movedFrom) {
+        const home = document.querySelector(selector);
+        const element = LAYOUT_AREAS.filter(area => area.domMove)
+            .flatMap(area => area.containers.flatMap(({ selector: own }) => [...document.querySelector(own)?.children ?? []]))
+            .find(child => keyOf(child, false) === key);
+        element && home && element.parentElement !== home && home.append(element);
+    }
+    movedFrom.clear();
 }
 
 /** For per-message buttons: the first class that names this button specifically. */
@@ -283,7 +301,7 @@ const movedFrom = new Map();
  */
 function moveBetweenColumns(area) {
     const columns = area.containers.map(({ selector }) => document.querySelector(selector));
-    if (columns.some(column => !column)) {
+    if (!isOn('layoutManager') || columns.some(column => !column)) {
         return;
     }
     const layouts = area.containers.map(({ selector }) => getLayout(selector));
@@ -518,7 +536,8 @@ function applyCrossArea(area) {
  */
 function withoutTransitions(measure) {
     const style = document.createElement('style');
-    style.textContent = ':not(#stqa_no_such_id) { transition: none !important; }';
+    // Only where it measures (the input bar): the whole page restyled would be slow on a long chat
+    style.textContent = '#send_form#send_form, #send_form#send_form * { transition: none !important; }';
     document.head.append(style);
     try {
         return measure();
@@ -658,8 +677,18 @@ function withoutOwnRules(measure) {
  * Buttons the current theme actually shows on messages, collected from the last few rendered
  * messages (user and AI messages can differ). Falls back to the message template when no chat is open.
  */
+/** The button rows of the last `count` messages, from the end of the chat (not the whole chat). */
+function recentRows(count) {
+    const rows = [];
+    for (let element = document.getElementById('chat')?.lastElementChild; element && rows.length < count; element = element.previousElementSibling) {
+        const row = element.classList.contains('mes') ? element.querySelector(MESSAGE_ROW) : null;
+        row && rows.unshift(row);
+    }
+    return rows;
+}
+
 function messageButtons() {
-    const rendered = [...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].slice(-RECENT_MESSAGES);
+    const rendered = recentRows(RECENT_MESSAGES);
     const template = document.querySelector(`#message_template ${MESSAGE_ROW}`);
     const buttons = new Map();
     const add = (element, mustShow) => {
@@ -686,7 +715,7 @@ function messageButtons() {
  * template has go after their template neighbour.
  */
 function naturalMessageKeys() {
-    const keys = rowKeys([...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].at(-1));
+    const keys = rowKeys(recentRows(1)[0]);
     const templateKeys = rowKeys(document.querySelector(`#message_template ${MESSAGE_ROW}`));
     templateKeys.forEach((key, index) => {
         if (!keys.includes(key)) {
@@ -700,8 +729,26 @@ function naturalMessageKeys() {
 // Whether the theme shows the feature-button box inline (no "…" menu); kept while no chat is open
 let nestedBoxInline = false;
 
+const expandedActions = () => document.body.classList.contains('expandMessageActions');
+
+/**
+ * The "…" menu folded or not changes with the theme and ST's "expand message actions": the
+ * buttons are arranged again (measured anew) when either changes, not left as first measured.
+ */
+function watchFolding() {
+    let expanded = expandedActions();
+    new MutationObserver(() => {
+        if (expandedActions() !== expanded) {
+            expanded = expandedActions();
+            applyMessageStyles({ force: true });
+        }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    // (The theme's stylesheet is put in after the choice: measured once it is)
+    $('#themes').on('change', () => setTimeout(() => applyMessageStyles({ force: true }), 400));
+}
+
 function detectInlineBox() {
-    const row = [...document.querySelectorAll(`#chat .mes ${MESSAGE_ROW}`)].at(-1);
+    const row = recentRows(1)[0];
     const box = row?.querySelector(`:scope > .${NESTED_BOX}`);
     if (!box) {
         return;
@@ -729,8 +776,8 @@ function applyMessageStyles({ force = false } = {}) {
         messageRuleCache.clear();
     }
     const natural = naturalMessageKeys();
-    // The theme decides whether the "…" box shows inline
-    const signature = JSON.stringify([natural, order, hidden, document.getElementById('themes')?.value]);
+    // The theme, and ST's "expand message actions", decide whether the "…" box shows inline
+    const signature = JSON.stringify([natural, order, hidden, document.getElementById('themes')?.value, expandedActions()]);
     if (messageRuleCache.has(signature)) {
         const cached = messageRuleCache.get(signature);
         if (cached !== messageRules) {
@@ -751,6 +798,11 @@ function applyMessageStyles({ force = false } = {}) {
         const full = arrange(order, natural);
         rules.push(`${scopes.map(scope => `${scope} *`).join(', ')} { order: ${full.length}; }`);
         full.forEach((key, index) => rules.push(`${selectorFor(key)} { order: ${index}; }`));
+        // Folded behind "…": the box stays where "…" is (not after the edit button)
+        const hintAt = full.indexOf('extraMesButtonsHint');
+        if (!nestedBoxInline && hintAt !== -1) {
+            rules.push(`#chat .mes ${MESSAGE_ROW} > .${NESTED_BOX} { order: ${hintAt}; }`);
+        }
     }
     for (const key of hidden) {
         if (!lockedKeys.has(key)) {
@@ -861,6 +913,83 @@ export function listItems(selector, { natural = false } = {}) {
  * Stores and applies a container's arrangement (locked items can never be hidden). An order
  * that matches the page's own isn't stored, so untouched containers stay as the page lays them out.
  */
+/* ---------- the arrangement kept apart from the settings ----------
+ * ST saves all its settings as one piece, so another device (or an old tab) saving its own older
+ * copy puts an older arrangement back. The arrangement is also kept in a file of its own with the
+ * time it was changed, and the newer of the two wins (on load, and when the page comes back). */
+const LAYOUT_FILE = 'stqa-layout.json';
+let fileTimer = null;
+
+function uploadLayoutFile(savedAt, layout) {
+    const bytes = new TextEncoder().encode(JSON.stringify({ savedAt, layout }));
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return fetch('/api/files/upload', {
+        method: 'POST',
+        headers: SillyTavern.getContext().getRequestHeaders(),
+        body: JSON.stringify({ name: LAYOUT_FILE, data: btoa(binary) }),
+    }).then((response) => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return response;
+    });
+}
+
+/** The arrangement just changed: noted with its time, and written to its file a moment later. */
+function storeLayoutFile() {
+    const settings = getSettings();
+    settings.layoutSavedAt = Date.now();
+    clearTimeout(fileTimer);
+    fileTimer = setTimeout(() => {
+        uploadLayoutFile(settings.layoutSavedAt, settings.layout)
+            .catch(error => console.warn(`[${MODULE}] Layout file not saved`, error));
+    }, 800);
+}
+
+/** Every container arranged again (after the arrangement was replaced as a whole). */
+function reapplyAll() {
+    applyMessageStyles({ force: true });
+    for (const { selector, perMessage } of CONTAINERS) {
+        perMessage || !document.querySelector(selector) || applyContainer(selector);
+    }
+}
+
+let fileCheckedAt = 0;
+
+/** The file's arrangement, when newer than the one in the settings, takes its place. */
+async function loadLayoutFile() {
+    fileCheckedAt = Date.now();
+    try {
+        const response = await fetch(`/user/files/${LAYOUT_FILE}`, { cache: 'no-store' });
+        const settings = getSettings();
+        const ownAt = Number(settings.layoutSavedAt) || 0;
+        // Not read (the server busy, the file broken): nothing is decided, and above all nothing
+        // is written over it. Only a file that isn't there is made
+        if (!response.ok && response.status !== 404) {
+            return;
+        }
+        const data = response.ok ? await response.json().catch(() => null) : null;
+        if (response.ok && (!data || typeof data.layout !== 'object')) {
+            return;
+        }
+        const fileAt = Number(data?.savedAt) || 0;
+        if (data?.layout && fileAt > ownAt) {
+            settings.layout = data.layout;
+            settings.layoutSavedAt = fileAt;
+            SillyTavern.getContext().saveSettingsDebounced();
+            reapplyAll();
+        } else if (response.status === 404 || ownAt > fileAt) {
+            // No file yet, or the settings are the newer: the file follows them
+            await uploadLayoutFile(ownAt, settings.layout);
+        }
+    } catch (error) {
+        console.warn(`[${MODULE}] Layout file not read`, error);
+    }
+}
+
 export function saveLayout(selector, { order, hidden, listed = order }) {
     const natural = listItems(selector, { natural: true }).map(item => item.key);
     const unchanged = order.length === natural.length && order.every((key, index) => key === natural[index]);
@@ -869,6 +998,7 @@ export function saveLayout(selector, { order, hidden, listed = order }) {
     // so one that went to the other side is that side's to hide.
     const kept = getLayout(selector).hidden.filter(key => !listed.includes(key));
     getSettings().layout[selector] = { order: unchanged ? [] : [...order], hidden: unique([...hidden, ...kept]).filter(key => !lockedKeys.has(key)) };
+    storeLayoutFile();
     findContainer(selector)?.perMessage ? applyMessageStyles({ force: true }) : applyContainer(selector);
 }
 
@@ -908,6 +1038,12 @@ export function initLayoutManager() {
     migrateNestedLayout();
     applyMessageStyles();
     watchRenderedMessages();
+    watchFolding();
+    // The arrangement another device (or this one, before) saved last
+    loadLayoutFile();
+    document.addEventListener('visibilitychange', () => {
+        document.visibilityState === 'visible' && Date.now() - fileCheckedAt > 10000 && loadLayoutFile();
+    });
     for (const { selector, perMessage } of CONTAINERS) {
         const container = perMessage ? null : document.querySelector(selector);
         if (!container) {

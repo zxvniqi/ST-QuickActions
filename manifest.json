@@ -5,7 +5,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "zxvniqi",
-    "version": "1.5.3",
+    "version": "2.0.0",
     "homePage": "https://github.com/zxvniqi/ST-QuickActions",
     "auto_update": true,
     "cache_files": [
@@ -47,6 +47,8 @@
         "persona-tools.js",
         "empty-reply.js",
         "prompt-copy.js",
+        "prompt-import.js",
+        "util.js",
         "swipe-list.js",
         "backup-view.js",
         "ko-fill.js",
